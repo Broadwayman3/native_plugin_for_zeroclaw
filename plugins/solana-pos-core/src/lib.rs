@@ -3,8 +3,6 @@
 //! High-performance native Solana Pay URL generation, Token-2022 transfer fee calculation,
 //! Triple Payment Verification, Priority Fees, and Squads v4 Multisig Proposal construction.
 
-use serde::{Deserialize, Serialize};
-
 // Generate WASI p2 bindings from WIT interface definition
 wit_bindgen::generate!({
     path: "../../wit/v0/pos_core.wit",
@@ -67,10 +65,14 @@ impl exports::zeroclaw::plugin::pos_core::Guest for PosCorePlugin {
         }
 
         let atomic_amount = usdc_to_atomic_units(req.amount_usdc);
-        let proposal_index = 42u64;
+        let proposal_index = req.proposal_index;
+
+        // Anchor discriminator for Squads v4 `create_proposal`: sha256("global:create_proposal")[..8]
+        let anchor_discriminator: [u8; 8] = [132, 116, 68, 174, 216, 160, 198, 22];
 
         let instruction_payload = serde_json::json!({
             "program_id": "SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm",
+            "anchor_discriminator_hex": hex_encode(&anchor_discriminator),
             "action": "create_proposal",
             "multisig": req.multisig_pubkey,
             "vault": req.vault_pubkey,
@@ -113,7 +115,15 @@ pub fn usdc_to_atomic_units(amount_usdc: f64) -> u64 {
     scaled.round() as u64
 }
 
-fn calculate_token2022_fee_internal(amount_usdc: f64, fee_basis_points: u16, max_fee_units: u64) -> f64 {
+fn calculate_token2022_fee_internal(
+    amount_usdc: f64,
+    fee_basis_points: u16,
+    max_fee_units: u64,
+) -> f64 {
+    if fee_basis_points > 10000 {
+        return (max_fee_units as f64) / USDC_SCALE;
+    }
+
     let amount_units = usdc_to_atomic_units(amount_usdc) as u128;
     if amount_units == 0 {
         return 0.0;
@@ -135,9 +145,13 @@ fn url_encode(s: &str) -> String {
     s.replace(' ', "%20")
 }
 
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
 fn base64_encode(input: &[u8]) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
         let b = match chunk.len() {
             3 => ((chunk[0] as u32) << 16) | ((chunk[1] as u32) << 8) | (chunk[2] as u32),
@@ -174,6 +188,12 @@ mod tests {
         assert_eq!(usdc_to_atomic_units(1e25), u64::MAX);
     }
 
+    #[test]
+    fn test_fee_bp_exceeding_max() {
+        let fee = calculate_token2022_fee_internal(100.0, 20000, 500_000);
+        assert_eq!(fee, 0.50);
+    }
+
     // Property-based testing: mathematical stability for arbitrary float inputs
     proptest! {
         #[test]
@@ -182,7 +202,7 @@ mod tests {
         }
 
         #[test]
-        fn prop_fee_calc_never_panics(amount in 0.0..1_000_000_000.0f64, bp in 0u16..10000u16) {
+        fn prop_fee_calc_never_panics(amount in 0.0..1_000_000_000.0f64, bp in 0u16..65535u16) {
             let fee = calculate_token2022_fee_internal(amount, bp, 500_000);
             prop_assert!(fee >= 0.0);
         }

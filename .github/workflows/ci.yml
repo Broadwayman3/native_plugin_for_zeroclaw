@@ -1,4 +1,4 @@
-name: ZeroClaw Solana POS CI Pipeline
+name: ZeroClaw Solana POS CI/CD Pipeline
 
 on:
   push:
@@ -16,6 +16,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
+          components: clippy, rustfmt
+
+      - name: Install WASI Wasm-Tools
+        run: |
+          curl -sLf https://github.com/bytecodealliance/wasm-tools/releases/download/v1.216.0/wasm-tools-1.216.0-x86_64-linux.tar.gz | tar -xz
+          sudo mv wasm-tools-1.216.0-x86_64-linux/wasm-tools /usr/local/bin/
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
@@ -28,22 +34,36 @@ jobs:
       - name: Initialize Environment
         run: ./scripts/setup.sh
 
+      - name: Check Rust Code Formatting
+        run: |
+          cd plugins/solana-pos-core
+          cargo fmt --check
+          cd -
+
       - name: Run Cargo Clippy (Strict Static Analysis)
         run: |
-          if command -v cargo >/dev/null 2>&1; then
-            cd plugins/solana-pos-core
-            cargo clippy --target wasm32-wasip2 -- -D warnings || true
-            cd -
-          fi
+          cd plugins/solana-pos-core
+          cargo clippy --target wasm32-wasip2 -- -D warnings
+          cd -
 
-      - name: Build and Test Rust WASM Plugin
+      - name: Run Rust Unit & Property-Based Tests (proptest)
+        run: |
+          cd plugins/solana-pos-core
+          cargo test --lib --release
+          cd -
+
+      - name: Build WASM Plugin to wasm32-wasip2
         run: ./scripts/build_wasm.sh
 
-      - name: Test Local SQLite POS API Backend
+      - name: Validate WASI Component Specification via wasm-tools
+        run: |
+          wasm-tools validate plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm --features component-model
+
+      - name: Test Local SQLite POS API Backend & Nonce Pools
         run: python3 scripts/pos_backend.py --test
 
       - name: Run Security Audit & Prompt Injection Suite
         run: python3 scripts/test_prompt_inj.py
 
-      - name: Run 35 Comprehensive Boundary & Edge Case Tests
+      - name: Run 75 Comprehensive Boundary & Stress Test Cases
         run: python3 scripts/test_boundary_cases.py

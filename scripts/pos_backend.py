@@ -20,6 +20,28 @@ def get_db_connection():
     conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
+def allocate_free_nonce_account(conn):
+    """
+    Атомарно виділяє вільний Nonce-аккаунт із пулу з 15-хвилинним TTL авто-звільненням завислих локів.
+    """
+    cursor = conn.cursor()
+    # 1. Автоматично звільняємо локи, що висять понад 15 хвилин (TTL auto-release)
+    cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE status = 'locked' AND locked_at < datetime('now', '-15 minutes')")
+    # 2. Беремо вільний nonce
+    cursor.execute("SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1")
+    row = cursor.fetchone()
+    if row:
+        nonce_pubkey = row[0]
+        cursor.execute("UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP WHERE pubkey = ?", (nonce_pubkey,))
+        conn.commit()
+        return nonce_pubkey
+    return None
+
+def release_nonce_account(conn, nonce_pubkey):
+    cursor = conn.cursor()
+    cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE pubkey = ?", (nonce_pubkey,))
+    conn.commit()
+
 def check_and_register_telegram_update(conn, update_id):
     cursor = conn.cursor()
     # Auto TTL cleanup for updates older than 24 hours (1 day)
@@ -50,6 +72,37 @@ def generate_atomic_refund_instructions(payer_pubkey="REFUND_SESSION_KEY", recip
         }
     ]
 
+def verify_solana_transaction_payload(tx_json, expected_merchant_ata, expected_usdc_atomic):
+    """
+    Автоматичний захист від Reverted Transactions (meta.err) та Fake Token Attacks.
+    """
+    if not tx_json or not isinstance(tx_json, dict):
+        return {"is_valid": False, "error": "Invalid transaction JSON payload"}
+
+    # 1. Перевірка на ончейн помилку транзакції (Solana RPC Trap #1)
+    meta = tx_json.get("meta")
+    if not meta or meta.get("err") is not None:
+        return {"is_valid": False, "error": "Transaction failed or reverted on-chain"}
+
+    # 2. Перевірка інструкцій
+    instructions = tx_json.get("transaction", {}).get("message", {}).get("instructions", [])
+    for inst in instructions:
+        parsed = inst.get("parsed")
+        if parsed and parsed.get("type") in ["transfer", "transferChecked"]:
+            info = parsed.get("info", {})
+            dest = info.get("destination")
+            amount_str = info.get("amount") or info.get("tokenAmount", {}).get("amount")
+            
+            if dest == expected_merchant_ata and amount_str:
+                try:
+                    paid_atomic = int(amount_str)
+                    if paid_atomic >= expected_usdc_atomic:
+                        return {"is_valid": True, "paid_atomic": paid_atomic}
+                except (ValueError, TypeError):
+                    continue
+
+    return {"is_valid": False, "error": "No valid transfer to merchant ATA found"}
+
 
 def init_db():
     os.makedirs("data", exist_ok=True)
@@ -67,9 +120,16 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'pending',
             tx_signature TEXT,
             customer_address TEXT,
+            pix_id TEXT,
+            pix_payload TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_tx_sig 
+        ON invoices(tx_signature) 
+        WHERE tx_signature IS NOT NULL;
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS squads_proposals (
@@ -89,24 +149,40 @@ def init_db():
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS nonce_accounts (
+            pubkey TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'free',
+            locked_at TIMESTAMP
+        )
+    """)
     
+    # Initialize default Durable Nonce Pool
+    cursor.execute("SELECT COUNT(*) FROM nonce_accounts")
+    if cursor.fetchone()[0] == 0:
+        cursor.executemany("INSERT INTO nonce_accounts (pubkey, status) VALUES (?, 'free')", [
+            ("Nonce111111111111111111111111111111111111111",),
+            ("Nonce222222222222222222222222222222222222222",),
+            ("Nonce333333333333333333333333333333333333333",)
+        ])
+        
     # Insert sample POS data if empty
     cursor.execute("SELECT COUNT(*) FROM invoices")
     if cursor.fetchone()[0] == 0:
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         sample_data = [
-            ("INV-101", "7xRefKey11111111111111111111111111111111111", "UAH", 200.0, 4.82, "paid", "5k9X...Signature1", "9xK2...Customer1", now, now),
-            ("INV-102", "8xRefKey22222222222222222222222222222222222", "UAH", 150.0, 3.61, "paid", "5k9X...Signature2", "9xK2...Customer2", now, now),
-            ("INV-103", "9xRefKey33333333333333333333333333333333333", "USD", 10.0, 10.00, "pending", None, None, now, now),
+            ("INV-101", "7xRefKey11111111111111111111111111111111111", "UAH", 200.0, 4.82, "paid", "5k9X...Signature1", "9xK2...Customer1", None, None, now, now),
+            ("INV-102", "8xRefKey22222222222222222222222222222222222", "UAH", 150.0, 3.61, "paid", "5k9X...Signature2", "9xK2...Customer2", None, None, now, now),
+            ("INV-103", "9xRefKey33333333333333333333333333333333333", "USD", 10.0, 10.00, "pending", None, None, None, None, now, now),
         ]
         cursor.executemany("""
-            INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, tx_signature, customer_address, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, tx_signature, customer_address, pix_id, pix_payload, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, sample_data)
         
     conn.commit()
     conn.close()
-    print(f"✅ SQLite Database (WAL Mode) initialized at {DB_PATH}")
+    print(f"✅ SQLite Database (WAL Mode & Nonce Pool & PIX Support) initialized at {DB_PATH}")
 
 class POSApiHandler(BaseHTTPRequestHandler):
     def _set_headers(self, status=200):
@@ -119,6 +195,22 @@ class POSApiHandler(BaseHTTPRequestHandler):
         conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+
+        # ✅ x402 Machine Commerce Handshake Support
+        if self.headers.get('X-ACCEPT-PAYMENT') == 'x402' and self.path == '/api/v1/sales/premium_analytics':
+            self.send_response(402)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('X-PAYMENT-REQUIRED-AMOUNT', '1.00 USDC')
+            self.send_header('X-PAYMENT-RECIPIENT', '8xAZmQ1111111111111111111111111111111111111')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "error": "Payment Required",
+                "x402_spec": "solana-pay",
+                "amount_usdc": 1.00,
+                "pay_url": "solana:8xAZmQ11111111111111111111111111111111111?amount=1.00&spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            }).encode('utf-8'))
+            conn.close()
+            return
 
         if self.path == '/api/v1/sales/summary':
             cursor.execute("SELECT COUNT(*) as total_invoices, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid'")

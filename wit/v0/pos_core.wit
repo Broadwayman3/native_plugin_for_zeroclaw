@@ -1,14 +1,14 @@
 package zeroclaw:plugin@0.1.0;
 
 interface pos-core {
-    record InvoiceRequest {
+    record invoice-request {
         merchant-pubkey: string,
         amount-usdc: f64,
         reference-pubkey: string,
         spl-token-mint: string,
     }
 
-    record InvoiceInstructionResult {
+    record invoice-instruction-result {
         success: bool,
         solana-pay-url: string,
         reference-key: string,
@@ -16,25 +16,26 @@ interface pos-core {
         error: option<string>,
     }
 
-    record SquadsProposalRequest {
+    record squads-proposal-request {
         multisig-pubkey: string,
         vault-pubkey: string,
         proposer-pubkey: string,
         recipient-pubkey: string,
         amount-usdc: f64,
+        proposal-index: u64,
         memo: string,
     }
 
-    record SquadsProposalResult {
+    record squads-proposal-result {
         success: bool,
         proposal-tx-base64: string,
         proposal-index: u64,
         error: option<string>,
     }
 
-    build-solana-pay-instruction: func(req: InvoiceRequest) -> InvoiceInstructionResult;
+    build-solana-pay-instruction: func(req: invoice-request) -> invoice-instruction-result;
     calculate-token2022-fee: func(amount: f64, fee-basis-points: u16, max-fee: u64) -> f64;
-    build-squads-v4-proposal: func(req: SquadsProposalRequest) -> SquadsProposalResult;
+    build-squads-v4-proposal: func(req: squads-proposal-request) -> squads-proposal-result;
 }
 
 world plugin {

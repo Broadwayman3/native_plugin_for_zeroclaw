@@ -30,7 +30,7 @@ if command -v cargo >/dev/null 2>&1; then
     echo ""
     echo "🦀 Executing Rust unit and property-based tests..."
     cd "$PLUGIN_DIR"
-    cargo test --release
+    cargo test --lib --release
 
     echo ""
     echo "🔨 Compiling WASM module to target wasm32-wasip2..."
