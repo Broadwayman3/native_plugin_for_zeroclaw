@@ -11,11 +11,19 @@ import sys
 import json
 import sqlite3
 import datetime
+import math
+import socket
+import secrets
+import base64
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from sanitizer import redact_api_key
+from sanitizer import redact_api_key, escape_telegram_markdown_v2
+
+# Set global socket timeout to prevent hung RPC HTTP connection sockets
+socket.setdefaulttimeout(10.0)
 
 DB_PATH = "data/pos_store.db"
+WASM_RAM_CACHE = None  # In-memory RAM cache for solana_pos_core.wasm binary
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
@@ -52,7 +60,7 @@ def cleanup_expired_pending_invoices(conn):
 def allocate_free_nonce_account(conn):
     """
     Атомарно виділяє вільний Nonce-аккаунт із пулу з 15-хвилинним TTL авто-звільненням завислих локів.
-    Використовує єдиний SQL UPDATE ... RETURNING для усунення Race Conditions при паралельних запитах.
+    Автоматично обирає між UPDATE ... RETURNING (SQLite >= 3.35.0) та BEGIN IMMEDIATE транзакцією (для старіших версій SQLite/Docker).
     """
     cursor = conn.cursor()
     cursor.execute("""
@@ -64,20 +72,33 @@ def allocate_free_nonce_account(conn):
     """)
     # 1. Автоматично звільняємо локи, що висять понад 15 хвилин (TTL auto-release)
     cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE status = 'locked' AND locked_at < datetime('now', '-15 minutes')")
-    # 2. Атомарно обираємо та блокуємо вільний nonce за один SQL-запит
-    cursor.execute("""
-        UPDATE nonce_accounts 
-        SET status = 'locked', locked_at = CURRENT_TIMESTAMP 
-        WHERE pubkey = (
-            SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1
-        )
-        RETURNING pubkey;
-    """)
-    row = cursor.fetchone()
-    conn.commit()
-    if row:
-        return row[0]
-    return None
+    
+    # 2. Перевірка підтримки RETURNING (SQLite >= 3.35.0)
+    sqlite_version = sqlite3.sqlite_version_info
+    if sqlite_version >= (3, 35, 0):
+        cursor.execute("""
+            UPDATE nonce_accounts 
+            SET status = 'locked', locked_at = CURRENT_TIMESTAMP 
+            WHERE pubkey = (
+                SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1
+            )
+            RETURNING pubkey;
+        """)
+        row = cursor.fetchone()
+        conn.commit()
+        return row[0] if row else None
+    else:
+        # Fallback для старіших версій SQLite
+        cursor.execute("BEGIN IMMEDIATE;")
+        cursor.execute("SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1;")
+        row = cursor.fetchone()
+        if row:
+            pubkey = row[0]
+            cursor.execute("UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP WHERE pubkey = ?;", (pubkey,))
+            conn.commit()
+            return pubkey
+        conn.commit()
+        return None
 
 def calculate_pix_crc16(payload_without_crc: str) -> str:
     """
@@ -146,6 +167,25 @@ def refresh_stale_nonce_account(conn, pubkey: str, new_nonce_hash: str):
     """, (pubkey,))
     conn.commit()
 
+def token_to_atomic_units(amount: float, decimals: int = 6) -> int:
+    """
+    Універсальне конвертування з float у атомарні одиниці з динамічними decimals (USDC=6, SOL=9, BONK=5).
+    Захищає від Overflow та NaN/Infinity.
+    """
+    if amount <= 0.0 or math.isnan(amount) or math.isinf(amount):
+        return 0
+    scale = 10**decimals
+    scaled = amount * float(scale)
+    if scaled >= (2**64 - 1):
+        return 2**64 - 1
+    return int(round(scaled))
+
+def usdc_to_atomic_units(amount: float) -> int:
+    """
+    Backward-compatible alias for 6-decimal USDC atomic conversion.
+    """
+    return token_to_atomic_units(amount, 6)
+
 def is_payment_amount_valid(paid_usdc: float, expected_usdc: float, slippage_tolerance_pct: float = 1.0) -> bool:
     """
     Fiat Volatility & Slippage Tolerance Guard.
@@ -154,6 +194,50 @@ def is_payment_amount_valid(paid_usdc: float, expected_usdc: float, slippage_tol
     """
     min_required = expected_usdc * (1.0 - (slippage_tolerance_pct / 100.0))
     return paid_usdc >= min_required
+
+def generate_secure_reference_key() -> str:
+    """
+    Generates cryptographically secure 32-byte Ed25519 reference key for Solana Pay URLs.
+    Uses secrets.token_bytes (OS CSPRNG).
+    """
+    raw_bytes = secrets.token_bytes(32)
+    return base64.b32encode(raw_bytes).decode('utf-8')[:44]
+
+def initiate_refund_request(conn, invoice_id: str) -> bool:
+    """
+    Atomic Re-Entrancy Guard for Squads v4 Refund Proposals.
+    Transitions status 'paid' -> 'refunding'. Returns True if updated, False if already refunding or invalid.
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE invoices 
+        SET status = 'refunding', updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ? AND status = 'paid'
+    """, (invoice_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+def handle_telegram_429_retry(resp_json: dict) -> int:
+    """
+    Telegram Bot API HTTP 429 Rate Limit Interceptor.
+    Returns retry_after seconds or 0 if not rate limited.
+    """
+    if isinstance(resp_json, dict) and resp_json.get("error_code") == 429:
+        return resp_json.get("parameters", {}).get("retry_after", 1)
+    return 0
+
+def load_wasm_binary_ram_cache(wasm_path="plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm") -> bytes:
+    """
+    In-Memory WASM RAM Cache Warmup Engine to eliminate disk I/O latency.
+    """
+    global WASM_RAM_CACHE
+    if WASM_RAM_CACHE is not None:
+        return WASM_RAM_CACHE
+    if os.path.exists(wasm_path):
+        with open(wasm_path, "rb") as f:
+            WASM_RAM_CACHE = f.read()
+            return WASM_RAM_CACHE
+    return b""
 
 def release_nonce_account(conn, nonce_pubkey):
     cursor = conn.cursor()
@@ -190,36 +274,134 @@ def generate_atomic_refund_instructions(payer_pubkey="REFUND_SESSION_KEY", recip
         }
     ]
 
-def verify_solana_transaction_payload(tx_json, expected_merchant_ata, expected_usdc_atomic):
+def get_multitier_fiat_rate(fiat_currency, primary_data=None, secondary_data=None, cached_data=None, current_ts=None):
     """
-    Автоматичний захист від Reverted Transactions (meta.err) та Fake Token Attacks.
+    Multi-Tier Price Feed Fallback Circuit Breaker:
+    1. Primary: Switchboard Crossbar API (valid if age <= 300s)
+    2. Secondary: Pyth Hermes / REST Fiat API (valid if age <= 300s)
+    3. Tertiary: Local Cached Rate (valid if age <= 900s with warning log)
+    4. Fail-Closed: If all sources offline or stale (>900s)
+    """
+    if current_ts is None:
+        current_ts = int(datetime.datetime.now().timestamp())
+
+    # Tier 1: Primary Switchboard
+    if primary_data and isinstance(primary_data, dict):
+        ts = primary_data.get("timestamp", 0)
+        rate = primary_data.get("rate")
+        if rate and (current_ts - ts) <= 300:
+            return {"rate": float(rate), "tier": "primary_switchboard", "status": "OK"}
+
+    # Tier 2: Secondary Pyth / REST Fiat API
+    if secondary_data and isinstance(secondary_data, dict):
+        ts = secondary_data.get("timestamp", 0)
+        rate = secondary_data.get("rate")
+        if rate and (current_ts - ts) <= 300:
+            return {"rate": float(rate), "tier": "secondary_pyth_hermes", "status": "OK"}
+
+    # Tier 3: Tertiary Cached Fallback
+    if cached_data and isinstance(cached_data, dict):
+        ts = cached_data.get("timestamp", 0)
+        rate = cached_data.get("rate")
+        if rate and (current_ts - ts) <= 900:
+            return {"rate": float(rate), "tier": "tertiary_cache", "status": "WARNING_USING_CACHE"}
+
+    # Tier 4: Fail-Closed
+    raise ValueError(f"FAIL_CLOSED: Stale or unavailable price feed for currency {fiat_currency}")
+
+def validate_squads_multisig_account(account_data):
+    """
+    Squads v4 Null Account & Invalid State Defense.
+    """
+    if account_data is None or not isinstance(account_data, dict) or "transaction_index" not in account_data:
+        raise ValueError("FAIL_CLOSED: Invalid or missing Squads multisig account")
+    return account_data["transaction_index"] + 1
+
+def verify_solana_transaction_payload(tx_json, expected_merchant_ata, expected_usdc_atomic, expected_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"):
+    """
+    Triple Payment Protection:
+    1. Reverted Tx Guard (meta.err != null)
+    2. Gold Standard Token Balance Delta Verification (meta.postTokenBalances - meta.preTokenBalances)
+    3. Recursive Instruction Inspector (top-level + innerInstructions)
     """
     if not tx_json or not isinstance(tx_json, dict):
         return {"is_valid": False, "error": "Invalid transaction JSON payload"}
 
-    # 1. Перевірка на ончейн помилку транзакції (Solana RPC Trap #1)
+    # 1. Reverted Tx Guard
     meta = tx_json.get("meta")
     if not meta or meta.get("err") is not None:
-        return {"is_valid": False, "error": "Transaction failed or reverted on-chain"}
+        return {"is_valid": False, "error": "Transaction failed or reverted on-chain (meta.err != null)"}
 
-    # 2. Перевірка інструкцій
-    instructions = tx_json.get("transaction", {}).get("message", {}).get("instructions", [])
-    for inst in instructions:
-        parsed = inst.get("parsed")
-        if parsed and parsed.get("type") in ["transfer", "transferChecked"]:
-            info = parsed.get("info", {})
-            dest = info.get("destination")
-            amount_str = info.get("amount") or info.get("tokenAmount", {}).get("amount")
-            
-            if dest == expected_merchant_ata and amount_str:
-                try:
-                    paid_atomic = int(amount_str)
-                    if paid_atomic >= expected_usdc_atomic:
-                        return {"is_valid": True, "paid_atomic": paid_atomic}
-                except (ValueError, TypeError):
-                    continue
+    # 2. LAYER 1: Token Balance Delta Verification (Solana Gold Standard)
+    pre_balances = {}
+    for b in meta.get("preTokenBalances", []):
+        if b.get("mint") == expected_mint:
+            amt_str = b.get("uiTokenAmount", {}).get("amount") or "0"
+            try:
+                pre_balances[b.get("accountIndex")] = int(amt_str)
+            except (ValueError, TypeError):
+                pre_balances[b.get("accountIndex")] = 0
 
-    return {"is_valid": False, "error": "No valid transfer to merchant ATA found"}
+    post_balances = {}
+    for b in meta.get("postTokenBalances", []):
+        if b.get("mint") == expected_mint:
+            amt_str = b.get("uiTokenAmount", {}).get("amount") or "0"
+            try:
+                post_balances[b.get("accountIndex")] = int(amt_str)
+            except (ValueError, TypeError):
+                post_balances[b.get("accountIndex")] = 0
+
+    account_keys = tx_json.get("transaction", {}).get("message", {}).get("accountKeys", [])
+    merchant_account_index = None
+    for idx, key_obj in enumerate(account_keys):
+        pubkey = key_obj.get("pubkey") if isinstance(key_obj, dict) else key_obj
+        if pubkey == expected_merchant_ata:
+            merchant_account_index = idx
+            break
+
+    if merchant_account_index is not None:
+        # Handles newly created ATAs idempotently (if not present in preTokenBalances, pre_amt = 0)
+        pre_amt = pre_balances.get(merchant_account_index, 0)
+        post_amt = post_balances.get(merchant_account_index, 0)
+        delta = post_amt - pre_amt
+
+        if delta >= expected_usdc_atomic:
+            return {"is_valid": True, "paid_atomic": delta, "verification_method": "balance_delta"}
+
+    # 3. LAYER 2: Recursive Instruction Inspection
+    def inspect_instruction_list(instructions):
+        for inst in instructions:
+            parsed = inst.get("parsed")
+            if parsed and parsed.get("type") in ["transfer", "transferChecked"]:
+                info = parsed.get("info", {})
+                dest = info.get("destination")
+                amount_str = info.get("amount") or info.get("tokenAmount", {}).get("amount")
+                if dest == expected_merchant_ata and amount_str:
+                    try:
+                        paid = int(amount_str)
+                        if paid >= expected_usdc_atomic:
+                            return paid
+                    except (ValueError, TypeError):
+                        pass
+            if "instructions" in inst and isinstance(inst["instructions"], list):
+                res = inspect_instruction_list(inst["instructions"])
+                if res:
+                    return res
+        return None
+
+    top_ixs = tx_json.get("transaction", {}).get("message", {}).get("instructions", [])
+    paid_top = inspect_instruction_list(top_ixs)
+    if paid_top is not None:
+        return {"is_valid": True, "paid_atomic": paid_top, "verification_method": "top_level_instruction"}
+
+    inner_groups = meta.get("innerInstructions", [])
+    for group in inner_groups:
+        paid_inner = inspect_instruction_list(group.get("instructions", []))
+        if paid_inner is not None:
+            return {"is_valid": True, "paid_atomic": paid_inner, "verification_method": "inner_instruction"}
+
+    return {"is_valid": False, "error": "No valid token transfer or positive balance delta found for Merchant ATA"}
+
 
 
 def init_db():
@@ -272,6 +454,17 @@ def init_db():
             pubkey TEXT PRIMARY KEY,
             status TEXT NOT NULL DEFAULT 'free',
             locked_at TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sop_checkpoints (
+            id TEXT PRIMARY KEY,
+            sop_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            state_data TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     

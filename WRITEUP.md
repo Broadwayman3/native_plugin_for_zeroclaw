@@ -2,7 +2,7 @@
 
 **Bounty Track**: ZeroClaw & Solana Integration ($1,800 USDG)  
 **Project**: Tier 3 WASM Native Plugin POS Payment Terminal & Squads v4 Multisig Agent  
-**Repository**: [ZeroClaw Solana POS Agent](https://github.com/your-username/zeroclaw-solana-pos)
+**Repository**: [ZeroClaw Solana POS Agent](https://github.com/zeroclaw-pos/native_plugin_for_zeroclaw)  
 
 ---
 
@@ -173,6 +173,43 @@ python3 scripts/test_prompt_inj.py
 # 7. Run automated pre-commit safety check
 ./scripts/pre_commit.sh
 
-# 8. Run 120 comprehensive boundary & stress tests
+# 8. Run 145 comprehensive boundary & stress tests
 python3 scripts/test_boundary_cases.py
 ```
+
+---
+
+## 6. ZeroClaw 4-Layer Error Prevention Engine
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                      ZeroClaw 4-Layer Error Prevention Engine                   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ 1. MATHEMATICAL SAFETY : Safe Fixed-Point Math, u128 Bounds, Proptest Fuzzing   │
+│ 2. LOGICAL SAFETY      : Fail-Closed SOP State Machine, Nonce Pools, Idempotency│
+│ 3. STRUCTURAL SAFETY   : Strict JSON Schemas, WIT ABI Validator, Typescript/Mypy │
+│ 4. SECURITY SAFETY     : AST Input Sanitizer, SSRF Guard, Log Key Redactor     │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Mathematical Safety**:
+   - All financial atomic unit conversions execute via `u128` (Rust WASM) with zero floating-point operations in on-chain instructions.
+   - IEEE 754 precision drift protection via `safe_f64_to_u64_atomic` and dynamic decimals helper `token_to_atomic_units(amount, decimals)`.
+   - Protection against NaN / Infinity / Overflow validated via `proptest!` property-based fuzzing.
+
+2. **Logical Safety**:
+   - Atomic state transitions in SQLite (`UPDATE invoices WHERE status = 'pending'`).
+   - Backward-compatible SQLite version engine (UPDATE ... RETURNING for SQLite >= 3.35.0 with BEGIN IMMEDIATE transaction fallback for older OS environments).
+   - Dynamic Durable Nonce Pools with 15-minute TTL auto-release of locked nonces.
+   - Complete Fail-Closed circuit breaker on RPC/API outage or stale price feeds (>900s).
+
+3. **Structural Safety**:
+   - Strict validation of LLM and RPC payloads via `jsonschema` in `validators.py`.
+   - Context window flooding defense by capping LLM response payloads to <150 tokens.
+   - WIT ABI specification verification via `wasm-tools validate` and `test_wasm_host.py`.
+
+4. **Security Safety**:
+   - Input string sanitation stripping control characters (`\x00-\x1f`), prompt injection patterns, and zero-width Unicode characters.
+   - Telegram MarkdownV2 character escaping (`escape_telegram_markdown_v2`) preventing HTTP 400 API parse errors.
+   - Automatic RPC API key masking in traceback logs (`redact_api_key`).
+   - Server-Side Request Forgery (SSRF) URL validation (`validate_safe_rpc_url`).

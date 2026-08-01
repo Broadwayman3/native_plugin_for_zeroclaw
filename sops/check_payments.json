@@ -2,7 +2,7 @@
   "version": "v0",
   "id": "check_payments",
   "name": "check_payments",
-  "description": "Cron SOP that queries active pending invoices and performs Atomic Two-Step Verification (getSignaturesForAddress + getTransaction) with empty pending list guards.",
+  "description": "Cron SOP that queries active pending invoices and performs Atomic Two-Step Verification (getSignaturesForAddress + getTransaction) via Gold Standard Token Balance Delta (meta.postTokenBalances - meta.preTokenBalances) and recursive inner instruction inspection with empty pending list guards.",
   "trigger": {
     "type": "cron",
     "schedule": "*/10 * * * * *"

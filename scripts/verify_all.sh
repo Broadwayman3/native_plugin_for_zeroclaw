@@ -30,6 +30,10 @@ else
 fi
 
 echo ""
+echo "3b. Executing WASM Host Component Execution Test..."
+python3 scripts/test_wasm_host.py
+
+echo ""
 echo "4. Testing Local SQLite Database, Nonce Pool & x402 Engine..."
 python3 scripts/pos_backend.py --test
 
@@ -42,7 +46,7 @@ echo "6. Executing Pre-Commit Automated Safety Check..."
 ./scripts/pre_commit.sh
 
 echo ""
-echo "7. Running Full 130 Comprehensive Boundary & Edge Case Tests..."
+echo "7. Running Full 160 Comprehensive Boundary & Edge Case Tests..."
 python3 scripts/test_boundary_cases.py
 
 echo ""

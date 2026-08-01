@@ -36,6 +36,15 @@ def redact_api_key(error_msg: str) -> str:
         return ""
     return re.sub(r'api-key=[^&\s]+', 'api-key=REDACTED', error_msg)
 
+def escape_telegram_markdown_v2(text: str) -> str:
+    """
+    Екранує спецсимволи для Telegram MarkdownV2, запобігаючи помилкам HTTP 400 Bad Request.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+
 def validate_safe_rpc_url(url: str) -> bool:
     """
     Evaluates Solana RPC URL to prevent SSRF (Server-Side Request Forgery) attacks.

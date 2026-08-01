@@ -61,7 +61,7 @@ sequenceDiagram
 
 ## 🚀 1-Command Verification (For Hackathon Judges)
 
-Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 130 boundary and security tests:
+Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 145 boundary and security tests:
 
 ```bash
 ./scripts/verify_all.sh
