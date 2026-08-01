@@ -89,7 +89,7 @@ jobs:
       - name: Run Security Audit & Prompt Injection Suite
         run: python3 scripts/test_prompt_inj.py
 
-      - name: Run 200 Comprehensive Boundary & Stress Test Cases
+      - name: Run 250 Comprehensive Boundary & Stress Test Cases
         run: python3 scripts/test_boundary_cases.py
 
       - name: Run Complete 1-Command Automated Verification Pipeline

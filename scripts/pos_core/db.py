@@ -83,6 +83,15 @@ def init_db(db_path: str = DB_PATH) -> None:
 
     cursor.execute("CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, reference_pubkey TEXT UNIQUE NOT NULL, fiat_currency TEXT NOT NULL, fiat_amount REAL NOT NULL, usdc_amount REAL NOT NULL, status TEXT NOT NULL DEFAULT 'pending', tx_signature TEXT, customer_address TEXT, pix_id TEXT, pix_payload TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_tx_sig ON invoices(tx_signature) WHERE tx_signature IS NOT NULL;")
+    
+    # Backward-compatible schema migration for POS tax & receipt breakdown metadata
+    cursor.execute("PRAGMA table_info(invoices)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "tax_rate_pct" not in columns:
+        cursor.execute("ALTER TABLE invoices ADD COLUMN tax_rate_pct REAL DEFAULT 0.0")
+    if "items_breakdown" not in columns:
+        cursor.execute("ALTER TABLE invoices ADD COLUMN items_breakdown TEXT")
+
     cursor.execute("CREATE TABLE IF NOT EXISTS squads_proposals (proposal_index INTEGER PRIMARY KEY, invoice_id TEXT NOT NULL, recipient_pubkey TEXT NOT NULL, amount_usdc REAL NOT NULL, status TEXT NOT NULL DEFAULT 'created', tx_base64 TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (invoice_id) REFERENCES invoices(id))")
     cursor.execute("CREATE TABLE IF NOT EXISTS processed_updates (update_id INTEGER PRIMARY KEY, processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     cursor.execute("CREATE TABLE IF NOT EXISTS nonce_accounts (pubkey TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'free', locked_at TIMESTAMP)")

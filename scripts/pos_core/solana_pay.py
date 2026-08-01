@@ -178,3 +178,33 @@ def verify_solana_transaction_payload(tx_json: Any, expected_merchant_ata: str, 
             if paid_inner is not None: return {"is_valid": True, "paid_atomic": paid_inner, "verification_method": "inner_instruction"}
 
     return {"is_valid": False, "error": "No valid token transfer or positive balance delta found for Merchant ATA"}
+
+def generate_solana_pay_qr_image_url(solana_pay_url: str, size: int = 300) -> str:
+    """Generates direct QR code image rendering URL for instant visualization in Telegram/WhatsApp chat."""
+    import urllib.parse
+    encoded_url = urllib.parse.quote(solana_pay_url, safe="")
+    return f"https://api.qrserver.com/v1/create-qr-code/?size={size}x{size}&data={encoded_url}"
+
+def generate_solana_pay_url(
+    merchant_pubkey: str,
+    amount: float,
+    reference_pubkey: str,
+    spl_token_mint: Optional[str] = USDC_MINT,
+    label: str = "ZeroClaw POS",
+    message: str = "POS Payment"
+) -> str:
+    """
+    SIP-0001 compliant Solana Pay URL Generator:
+    - Appends spl-token=<MINT> ONLY if spl_token_mint is specified AND is not Native SOL.
+    - Omits spl-token for Native SOL (SOL_MINT).
+    - Percent-encodes label & message parameters.
+    """
+    import urllib.parse
+    from pos_core.constants import SOL_MINT
+    encoded_label = urllib.parse.quote(label)
+    encoded_message = urllib.parse.quote(message)
+    base_url = f"solana:{merchant_pubkey}?amount={amount:.2f}&reference={reference_pubkey}&label={encoded_label}&message={encoded_message}"
+    
+    if spl_token_mint and spl_token_mint not in (SOL_MINT, "11111111111111111111111111111111"):
+        base_url += f"&spl-token={spl_token_mint}"
+    return base_url

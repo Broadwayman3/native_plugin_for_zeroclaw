@@ -27,7 +27,7 @@ python3 scripts/sanitizer.py
 # 4. Security Audit & Prompt Injection Test
 python3 scripts/test_prompt_inj.py
 
-# 5. Comprehensive Boundary Cases (200 Tests)
+# 5. Comprehensive Boundary Cases (250 Tests)
 python3 scripts/test_boundary_cases.py
 
 echo "✅ All pre-commit checks passed successfully! Commit allowed."

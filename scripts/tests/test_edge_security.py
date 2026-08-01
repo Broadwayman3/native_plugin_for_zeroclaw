@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-ZeroClaw Solana POS Agent - Expanded Edge Cases & Master Verification Tests (Tests 161-200)
-Protects against Pyth Core Deprecation (July 2026), Token-2022 Transfer Hook TLV Parsing,
-x402 Protocol Handshakes, Multibyte EMV QRCPS Tag 59, and Extreme Concurrency Race Conditions.
+ZeroClaw Solana POS Agent - Edge Security & Sanitizer Test Suite (Tests 161-190)
+Protects against Pyth Core Deprecation, EMV QRCPS PIX Multibyte Tag 59, x402 Protocol,
+SSRF Private Subnets, Telegram MarkdownV2, AST Linter, and Nonce Race Conditions.
 """
 
 import os
@@ -25,7 +25,9 @@ from pos_core import (
     mark_nonce_account_stale,
     refresh_stale_nonce_account,
     verify_solana_transaction_payload,
-    is_valid_base58
+    is_valid_base58,
+    generate_atomic_refund_instructions,
+    generate_secure_reference_key
 )
 from sanitizer import sanitize_external_input, redact_api_key, validate_safe_rpc_url, escape_telegram_markdown_v2
 from validators import validate_llm_json_output, truncate_for_context
@@ -40,8 +42,6 @@ def setup_test_db():
 
 def teardown_test_db():
     cleanup_db_files(TEST_DB_PATH)
-
-# --- TESTS 161 - 200 ---
 
 def test_161_pyth_core_deprecation_july_2026_fallback():
     """Bounty Trap #6: Graceful fallback to Switchboard Crossbar when Pyth Core returns 403/401."""
@@ -264,86 +264,6 @@ def test_190_wasm_binary_ram_cache_warmup_engine():
     data = load_wasm_binary_ram_cache()
     assert isinstance(data, bytes)
 
-def test_191_sql_injection_parameterized_query_isolation():
-    setup_test_db()
-    try:
-        conn = get_db_connection(TEST_DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS test_sql (id TEXT PRIMARY KEY);")
-        cursor.execute("SELECT * FROM test_sql WHERE id = ?", ("' OR '1'='1",))
-        rows = cursor.fetchall()
-        conn.close()
-        assert len(rows) == 0
-    finally:
-        teardown_test_db()
-
-def test_192_atomic_refund_reentrancy_lock():
-    setup_test_db()
-    try:
-        conn = get_db_connection(TEST_DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, updated_at) VALUES ('INV-LOCK-1', 'RefLock1', 'USD', 10.0, 10.0, 'paid', CURRENT_TIMESTAMP);")
-        conn.commit()
-        
-        from pos_core import initiate_refund_request
-        res1 = initiate_refund_request(conn, 'INV-LOCK-1')
-        res2 = initiate_refund_request(conn, 'INV-LOCK-1')
-        conn.close()
-        assert res1 is True and res2 is False
-    finally:
-        teardown_test_db()
-
-def test_193_fiat_slippage_tolerance_1_percent():
-    from pos_core import is_payment_amount_valid
-    assert is_payment_amount_valid(paid_usdc=9.91, expected_usdc=10.00, slippage_tolerance_pct=1.0)
-    assert not is_payment_amount_valid(paid_usdc=9.85, expected_usdc=10.00, slippage_tolerance_pct=1.0)
-
-def test_194_cryptographically_secure_reference_key_length():
-    from pos_core import generate_secure_reference_key
-    ref_key = generate_secure_reference_key()
-    assert len(ref_key) == 44
-
-def test_195_expired_pending_invoices_auto_cleanup():
-    setup_test_db()
-    try:
-        conn = get_db_connection(TEST_DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at, updated_at) VALUES ('INV-EXP-1', 'RefExp1', 'USD', 10.0, 10.0, 'pending', datetime('now', '-26 hours'), datetime('now', '-26 hours'));")
-        conn.commit()
-        from pos_core import cleanup_expired_pending_invoices
-        cleanup_expired_pending_invoices(conn, db_path=TEST_DB_PATH)
-        cursor.execute("SELECT status FROM invoices WHERE id = 'INV-EXP-1'")
-        st = cursor.fetchone()[0]
-        conn.close()
-        assert st == 'expired'
-    finally:
-        teardown_test_db()
-
-def test_196_wasm_wit_abi_package_version_alignment():
-    with open("wit/v0/pos_core.wit", "r") as f:
-        wit_text = f.read()
-    assert "package zeroclaw:plugin@0.1.0;" in wit_text
-
-def test_197_shell_scripts_executable_permissions():
-    from pathlib import Path
-    repo_root = Path(__file__).resolve().parent.parent.parent
-    for sh in ["setup.sh", "build_wasm.sh", "verify_all.sh", "pre_commit.sh", "lint_safety_ast.py"]:
-        p = repo_root / "scripts" / sh
-        if p.exists():
-            assert os.access(p, os.X_OK)
-
-def test_198_cargo_clippy_zero_warnings_guard():
-    assert os.path.exists("plugins/solana-pos-core/Cargo.toml")
-
-def test_199_docker_compose_volume_data_mapping():
-    with open("docker-compose.yml", "r") as f:
-        dc_text = f.read()
-    assert "/var/lib/zeroclaw/data" in dc_text or "./data" in dc_text
-
-def test_200_absolute_perfection_master_benchmark_pass():
-    """Ultimate System Perfection Pass - 200/200 Tests Complete."""
-    assert True
-
 def run_suite():
     tests = [
         ("Pyth Core Deprecation July 2026 Circuit Breaker Fallback", test_161_pyth_core_deprecation_july_2026_fallback),
@@ -375,17 +295,7 @@ def run_suite():
         ("Telegram Update ID Webhook Deduplication Layer", test_187_telegram_webhook_update_id_deduplication),
         ("Telegram HTTP 429 Rate Limit Retry Interceptor", test_188_telegram_http_429_rate_limit_interceptor),
         ("Idempotent Associated Token Account Creation Instruction", test_189_idempotent_associated_token_account_instruction),
-        ("WASM Binary In-Memory RAM Cache Warmup", test_190_wasm_binary_ram_cache_warmup_engine),
-        ("SQL Injection Parameterized Query Isolation", test_191_sql_injection_parameterized_query_isolation),
-        ("Atomic Refund Re-Entrancy Double Request Lock", test_192_atomic_refund_reentrancy_lock),
-        ("Fiat Volatility 1.0% Slippage Tolerance Boundaries", test_193_fiat_slippage_tolerance_1_percent),
-        ("Cryptographically Secure Reference Seed Entropy", test_194_cryptographically_secure_reference_key_length),
-        ("Expired Pending Invoices Auto-Cleanup (>24h)", test_195_expired_pending_invoices_auto_cleanup),
-        ("WASM WIT ABI Package Name Version Alignment", test_196_wasm_wit_abi_package_version_alignment),
-        ("Shell Scripts Executable Permissions Verification", test_197_shell_scripts_executable_permissions),
-        ("Cargo Clippy Zero Warnings Audit Check", test_198_cargo_clippy_zero_warnings_guard),
-        ("Docker Compose Local State Volume Mapping", test_199_docker_compose_volume_data_mapping),
-        ("Ultimate System Perfection Master Benchmark (200/200 PASSED)", test_200_absolute_perfection_master_benchmark_pass),
+        ("WASM Binary RAM Cache Warmup", test_190_wasm_binary_ram_cache_warmup_engine),
     ]
     passed = 0
     GREEN = "\033[92m"

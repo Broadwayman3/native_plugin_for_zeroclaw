@@ -46,8 +46,15 @@ from pos_core.solana_pay import (
     generate_atomic_refund_instructions,
     validate_squads_multisig_account,
     verify_solana_transaction_payload,
+    generate_solana_pay_qr_image_url,
+    generate_solana_pay_url,
     _extract_token_balance_deltas,
     _inspect_instructions_for_transfer
+)
+from pos_core.i18n import (
+    TRANSLATIONS,
+    get_localized_message,
+    t
 )
 from pos_core.pix_brl import (
     calculate_pix_crc16,
@@ -100,6 +107,11 @@ __all__ = [
     "generate_atomic_refund_instructions",
     "validate_squads_multisig_account",
     "verify_solana_transaction_payload",
+    "generate_solana_pay_qr_image_url",
+    "generate_solana_pay_url",
+    "TRANSLATIONS",
+    "get_localized_message",
+    "t",
     "_extract_token_balance_deltas",
     "_inspect_instructions_for_transfer",
     "calculate_pix_crc16",

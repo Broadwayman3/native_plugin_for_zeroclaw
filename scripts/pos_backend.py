@@ -63,12 +63,16 @@ def handle_sales_summary(handler, query_params):
         cursor.execute("SELECT COUNT(*) as pending_count FROM invoices WHERE status = 'pending'")
         pending_row = cursor.fetchone()
 
+        cursor.execute("SELECT fiat_currency, COUNT(*) as count, SUM(fiat_amount) as total_fiat, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid' GROUP BY fiat_currency")
+        by_curr = {r["fiat_currency"]: {"count": r["count"], "total_fiat": round(r["total_fiat"] or 0.0, 2), "total_usdc": round(r["total_usdc"] or 0.0, 2)} for r in cursor.fetchall()}
+
         summary = {
             "business_name": "ZeroClaw Coffee POS",
             "currency": "USDC",
             "total_paid_invoices": row["total_invoices"] or 0,
             "total_sales_usdc": round(row["total_usdc"] or 0.0, 2),
             "total_pending_invoices": pending_row["pending_count"] or 0,
+            "sales_by_currency": by_curr,
             "journal_mode": "WAL",
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }
