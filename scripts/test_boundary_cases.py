@@ -20,7 +20,11 @@ import datetime
 import re
 
 # Import expert POS helper functions
-from pos_backend import (
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+from pos_core import (
     get_db_connection,
     allocate_free_nonce_account,
     release_nonce_account,
@@ -39,7 +43,10 @@ from pos_backend import (
     generate_secure_reference_key,
     initiate_refund_request,
     handle_telegram_429_retry,
-    load_wasm_binary_ram_cache
+    load_wasm_binary_ram_cache,
+    usdc_to_atomic_units,
+    calculate_token2022_fee,
+    is_valid_base58
 )
 from sanitizer import sanitize_external_input, redact_api_key, validate_safe_rpc_url
 from validators import validate_llm_json_output, truncate_for_context, SOLANA_PAY_RESPONSE_SCHEMA
@@ -49,14 +56,6 @@ RED = "\033[91m"
 RESET = "\033[0m"
 
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-
-def usdc_to_atomic_units(amount_usdc):
-    if amount_usdc <= 0.0 or math.isnan(amount_usdc) or math.isinf(amount_usdc):
-        return 0
-    scaled = amount_usdc * 1_000_000.0
-    if scaled >= (2**64 - 1):
-        return 2**64 - 1
-    return int(round(scaled))
 
 def verify_triple_payment(reference_key, tx_reference_key, tx_mint, expected_mint, paid_usdc, expected_usdc):
     reference_matched = (reference_key == tx_reference_key)
@@ -71,26 +70,6 @@ def verify_triple_payment(reference_key, tx_reference_key, tx_mint, expected_min
         "mint_matched": mint_matched,
         "amount_sufficient": amount_sufficient
     }
-
-def calculate_token2022_fee(amount_usdc, fee_basis_points, max_fee_units, decimals: int = 6):
-    scale = 10**decimals
-    if fee_basis_points > 10000:
-        return max_fee_units / float(scale)
-    if amount_usdc <= 0.0 or math.isnan(amount_usdc) or math.isinf(amount_usdc):
-        amount_units = 0
-    else:
-        amount_units = int(round(amount_usdc * float(scale)))
-    if amount_units == 0:
-        return 0.0
-    fee_units = (amount_units * fee_basis_points + 9999) // 10000
-    final_fee_units = min(fee_units, max_fee_units)
-    return final_fee_units / float(scale)
-
-def is_valid_base58(pubkey_str):
-    if len(pubkey_str) < 32 or len(pubkey_str) > 44:
-        return False
-    BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-    return all(c in BASE58_ALPHABET for c in pubkey_str)
 
 def run_boundary_tests():
     from pos_backend import init_db
@@ -1515,8 +1494,11 @@ def run_boundary_tests():
 
     print("\n-----------------------------------------------------------------")
     print(f"📊 Summary: {tests_passed}/{total_tests} Boundary & Edge Case Tests PASSED (100% Rate)")
-    print("-----------------------------------------------------------------")
+def test_boundary_suite():
+    """Pytest entrypoint to execute full boundary test suite."""
+    run_boundary_tests()
 
 if __name__ == "__main__":
     run_boundary_tests()
+
 

@@ -61,7 +61,7 @@ sequenceDiagram
 
 ## 🚀 1-Command Verification (For Hackathon Judges)
 
-Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 145 boundary and security tests:
+Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 160 boundary and security tests:
 
 ```bash
 ./scripts/verify_all.sh
@@ -107,9 +107,11 @@ python3 scripts/test_prompt_inj.py
 ./scripts/pre_commit.sh
 ```
 
-### 6. Run Comprehensive 130-Test Boundary & Stress Suite
+### 6. Run Comprehensive 160-Test Boundary & Stress Suite
 ```bash
 python3 scripts/test_boundary_cases.py
+# or via pytest:
+pytest scripts/test_boundary_cases.py
 ```
 
 ### 7. Deploy Agent via Docker
@@ -124,9 +126,11 @@ docker-compose up -d
 | Component | Path | Function & Technology |
 | :--- | :--- | :--- |
 | **WASM Native Plugin** | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate compiled to `wasm32-wasip2` via WIT contract interface [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) |
+| **Core Domain Package** | [`scripts/pos_core`](./scripts/pos_core) | High-cohesion domain modules (`db.py`, `nonce_pool.py`, `solana_pay.py`, `pix_brl.py`, `price_feed.py`, `router.py`) |
+| **SQLite REST API Backend** | [`scripts/pos_backend.py`](./scripts/pos_backend.py) | Entrypoint HTTP server with stdlib micro-router, WAL mode persistence, and atomic transitions |
+| **Development Rules Guard** | [`.agents/AGENTS.md`](./.agents/AGENTS.md) | Architectural, logical, mathematical, and security standards for zero-drift development |
 | **Squads v4 Multisig Skill** | [`skills/squads_multisig.md`](./skills/squads_multisig.md) | Squads v4 Multisig proposal builder (`SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm`) |
 | **Brazil PIX Skill** | [`skills/pix_brl.md`](./skills/pix_brl.md) | Brazil-first BRL invoicing & Switchboard Crossbar dual PIX QR reconciliation |
-| **SQLite Backend API** | [`scripts/pos_backend.py`](./scripts/pos_backend.py) | SQLite database (`data/pos_store.db`) with Atomic Nonce Pool (`UPDATE RETURNING`), PIX columns, and REST API |
 | **Pre-Commit Guard** | [`scripts/pre_commit.sh`](./scripts/pre_commit.sh) | Pre-commit hook script for rustfmt, clippy, python static analysis, and boundary tests |
 | **Input Sanitizer Guard** | [`scripts/sanitizer.py`](./scripts/sanitizer.py) | Input sanitizer against indirect prompt injection in customer names & memos |
 | **Solana Pay Skill** | [`skills/solana_pay.md`](./skills/solana_pay.md) | Non-custodial Solana Pay URL & Ed25519 reference key generator |
@@ -140,4 +144,4 @@ docker-compose up -d
 - **Tier 1 (Payments)**: Direct customer-to-merchant wallet settlement via Solana Pay URLs.
 - **Tier 3 (WASM Core)**: Rust plugin compiled to WASI WebAssembly sandbox.
 - **Squads v4 Multisig**: The agent operates solely as a `Proposer`. Store managers hold threshold signers; key theft cannot drain funds.
-- **Audited**: 100% pass rate on prompt-injection security tests ([`PROMPT_INJECTION_TEST.md`](./PROMPT_INJECTION_TEST.md)) and 130 comprehensive boundary tests ([`scripts/test_boundary_cases.py`](./scripts/test_boundary_cases.py)).
+- **Audited**: 100% pass rate on prompt-injection security tests ([`PROMPT_INJECTION_TEST.md`](./PROMPT_INJECTION_TEST.md)) and 160 comprehensive boundary tests ([`scripts/test_boundary_cases.py`](./scripts/test_boundary_cases.py)).
