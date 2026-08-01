@@ -80,10 +80,16 @@ if __name__ == "__main__":
     assert "SYSTEM OVERRIDE" not in sanitized
     assert "\n" not in sanitized
     
+    # Self-test sensitive info redactor logic
+    assert "api_key=REDACTED" in redact_sensitive_info("error: api_key=secret123")
+    assert "token=REDACTED" in redact_sensitive_info("error: token=abc456")
+    sample_kp = "[" + ", ".join(str(i) for i in range(64)) + "]"
+    assert "[REDACTED_BYTE_KEYPAIR]" in redact_sensitive_info(f"key: {sample_kp}")
+
     # Self-test SSRF protection logic
     assert not validate_safe_rpc_url("http://169.254.169.254/latest/meta-data")
     assert not validate_safe_rpc_url("http://127.0.0.1:8080/rpc")
     assert not validate_safe_rpc_url("http://localhost:8080/rpc")
     assert validate_safe_rpc_url("https://devnet.helius-rpc.com/?api-key=test")
     
-    print(f"✅ Sanitizer & SSRF Guard self-test passed successfully!")
+    print(f"✅ Sanitizer, Secret Redactor & SSRF Guard self-test passed successfully!")
