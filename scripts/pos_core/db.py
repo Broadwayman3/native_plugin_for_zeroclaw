@@ -10,7 +10,10 @@ import datetime
 DB_PATH = "data/pos_store.db"
 
 def get_db_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
-    """Establishes SQLite connection with WAL mode and performance tuning."""
+    """Establishes SQLite connection with WAL mode, auto-creating parent directories."""
+    db_dir = os.path.dirname(db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(db_path, timeout=10.0)
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
@@ -20,6 +23,16 @@ def get_db_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA cache_size=-64000;")
     return conn
+
+def cleanup_db_files(db_path: str):
+    """Completely removes database file and associated WAL/SHM sidecar files."""
+    for ext in ["", "-wal", "-shm"]:
+        target = db_path + ext
+        if os.path.exists(target):
+            try:
+                os.remove(target)
+            except OSError:
+                pass
 
 def cleanup_expired_pending_invoices(conn: sqlite3.Connection = None, db_path: str = DB_PATH):
     """Automatically marks pending invoices older than 24 hours as expired."""
@@ -56,13 +69,7 @@ def check_and_register_telegram_update(conn: sqlite3.Connection = None, update_i
 
 def init_db(db_path: str = DB_PATH):
     """Initializes SQLite tables and default nonce pool / sample data."""
-    db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-
-    conn = sqlite3.connect(db_path, timeout=10.0)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA busy_timeout=5000;")
+    conn = get_db_connection(db_path)
     cursor = conn.cursor()
 
     cursor.execute("CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, reference_pubkey TEXT UNIQUE NOT NULL, fiat_currency TEXT NOT NULL, fiat_amount REAL NOT NULL, usdc_amount REAL NOT NULL, status TEXT NOT NULL DEFAULT 'pending', tx_signature TEXT, customer_address TEXT, pix_id TEXT, pix_payload TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")

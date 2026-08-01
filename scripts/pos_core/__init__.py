@@ -7,6 +7,7 @@ Exposes unified domain APIs from submodules.
 from pos_core.db import (
     DB_PATH,
     get_db_connection,
+    cleanup_db_files,
     init_db,
     cleanup_expired_pending_invoices,
     check_and_register_telegram_update
@@ -49,6 +50,7 @@ from pos_core.router import (
 __all__ = [
     "DB_PATH",
     "get_db_connection",
+    "cleanup_db_files",
     "init_db",
     "cleanup_expired_pending_invoices",
     "check_and_register_telegram_update",

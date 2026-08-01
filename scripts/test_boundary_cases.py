@@ -26,6 +26,7 @@ if SCRIPT_DIR not in sys.path:
 
 from pos_core import (
     get_db_connection,
+    cleanup_db_files,
     allocate_free_nonce_account,
     release_nonce_account,
     cleanup_expired_pending_invoices,
@@ -1488,9 +1489,7 @@ def run_boundary_tests():
     print(f"  ✅ [TEST 160] Ultimate Absolute System Perfection Benchmark (160/160 PASSED) ... {GREEN}PASSED{RESET}")
 
     # Cleanup temp db
-    if os.path.exists(test_db): os.remove(test_db)
-    if os.path.exists(test_db + "-wal"): os.remove(test_db + "-wal")
-    if os.path.exists(test_db + "-shm"): os.remove(test_db + "-shm")
+    cleanup_db_files(test_db)
 
     print("\n-----------------------------------------------------------------")
     print(f"📊 Summary: {tests_passed}/{total_tests} Boundary & Edge Case Tests PASSED (100% Rate)")

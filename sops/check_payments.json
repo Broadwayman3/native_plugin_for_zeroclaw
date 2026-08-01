@@ -34,7 +34,7 @@
           "method": "getSignaturesForAddress",
           "params": [
             "${fetch_pending_invoices.body.0.reference_pubkey}",
-            { "limit": 1, "commitment": "confirmed" }
+            { "limit": 1, "commitment": "${REQUIRED_COMMITMENT}" }
           ],
           "on_error": "retry_with_backoff",
           "retry_policy": {
@@ -51,7 +51,7 @@
           "method": "getTransaction",
           "params": [
             "${fetch_signatures.0.signature}",
-            { "encoding": "jsonParsed", "maxSupportedTransactionVersion": 0, "commitment": "confirmed" }
+            { "encoding": "jsonParsed", "maxSupportedTransactionVersion": 0, "commitment": "${REQUIRED_COMMITMENT}" }
           ],
           "on_error": "retry_with_backoff"
         },
