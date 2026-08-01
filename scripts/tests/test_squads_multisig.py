@@ -223,12 +223,17 @@ def test_134_zeroslippage_exact_boundary_match():
     assert is_payment_amount_valid(paid_usdc=10.00, expected_usdc=10.00, slippage_tolerance_pct=0.0)
 
 def test_135_shell_scripts_executable_permission():
-    script_paths = ["scripts/setup.sh", "scripts/build_wasm.sh", "scripts/verify_all.sh", "scripts/pre_commit.sh", "scripts/test_wasm_host.py"]
-    assert all(os.access(p, os.X_OK) for p in script_paths if os.path.exists(p))
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    script_paths = [repo_root / "scripts" / name for name in ["setup.sh", "build_wasm.sh", "verify_all.sh", "pre_commit.sh", "test_wasm_host.py"]]
+    assert all(os.access(p, os.X_OK) for p in script_paths if p.exists())
 
 def test_136_wasm_wit_abi_package_name_match():
-    if os.path.exists("wit/v0/pos_core.wit"):
-        with open("wit/v0/pos_core.wit", "r") as f:
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    wit_file = repo_root / "wit" / "v0" / "pos_core.wit"
+    if wit_file.exists():
+        with open(wit_file, "r") as f:
             wit_content = f.read()
         assert "package zeroclaw:plugin@0.1.0;" in wit_content
 

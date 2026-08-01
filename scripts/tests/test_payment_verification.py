@@ -86,10 +86,12 @@ def test_014_llm_token_response_compression():
 
 def test_015_relative_path_sanitation_verification():
     import os
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent.parent
     target_abs_str = "/home" + "/ttygfg"
     abs_found = False
-    for code_file in ["scripts/pos_backend.py", "plugins/solana-pos-core/src/lib.rs", "wit/v0/pos_core.wit"]:
-        if os.path.exists(code_file):
+    for code_file in [repo_root / rel for rel in ["scripts/pos_backend.py", "plugins/solana-pos-core/src/lib.rs", "wit/v0/pos_core.wit"]]:
+        if code_file.exists():
             with open(code_file, "r") as fp:
                 if target_abs_str in fp.read():
                     abs_found = True

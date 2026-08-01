@@ -176,7 +176,9 @@ def test_074_fail_closed_policy_missing_env_keys():
     assert check_env_readiness(incomplete_env) == "FAIL_CLOSED_HALT"
 
 def test_075_verification_runner_script_check():
-    assert os.path.exists("./scripts/verify_all.sh")
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    assert (repo_root / "scripts" / "verify_all.sh").exists()
 
 def test_076_token2022_ceiling_rounding_precision():
     # 0.001 USDC (1000 atomic units) at 1 bps -> 1000 * 1 / 10000 = 0.1 -> ceiling rounds to 1 atomic unit (0.000001 USDC)
