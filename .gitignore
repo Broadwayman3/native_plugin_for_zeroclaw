@@ -9,6 +9,8 @@ config.toml
 # ZeroClaw runtime data & SQLite databases
 data/
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 
 # Python caches

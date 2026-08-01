@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================================="
-echo "⚙️ Building ZeroClaw Tier 3 Rust WASM Plugin (solana-pos-core)"
+echo "⚙️  Building ZeroClaw Tier 3 Rust WASM Plugin (solana-pos-core)"
 echo "=========================================================="
 
 PLUGIN_DIR="plugins/solana-pos-core"
@@ -21,37 +21,40 @@ else
     exit 1
 fi
 
-echo ""
-echo "🧪 Running unit tests for WASM plugin logic..."
-python3 -c "
-import json
+if command -v cargo >/dev/null 2>&1; then
+    # Ensuring target wasm32-wasip2 is installed
+    if command -v rustup >/dev/null 2>&1; then
+        rustup target add wasm32-wasip2 2>/dev/null || true
+    fi
 
-# Simulating WASM plugin unit test execution
-def test_solana_pay():
-    url = 'solana:8xAZ...Pubkey?amount=15.50&spl-token=EPjF...&reference=Ref111...&label=Coffee%20Shop%20POS&message=Order%20%23102'
-    assert 'amount=15.50' in url
-    assert 'reference=Ref111' in url
-    print('  ✅ test_solana_pay_url_building ... PASSED')
+    echo ""
+    echo "🦀 Executing Rust unit and property-based tests..."
+    cd "$PLUGIN_DIR"
+    cargo test --release
 
-def test_fee_math():
-    amount = 100.0
-    fee_bp = 10
-    fee = (amount * fee_bp) / 10000.0
-    assert fee == 0.10
-    print('  ✅ test_token2022_transfer_fee_math ... PASSED')
+    echo ""
+    echo "🔨 Compiling WASM module to target wasm32-wasip2..."
+    cargo build --target wasm32-wasip2 --release
+    cd - > /dev/null
 
-def test_squads_v4():
-    prog_id = 'SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm'
-    assert len(prog_id) == 43
-    print('  ✅ test_squads_v4_proposal_building ... PASSED')
-
-test_solana_pay()
-test_fee_math()
-test_squads_v4()
-"
-
-echo ""
-echo "=========================================================="
-echo "🎉 Rust WASM Plugin (solana-pos-core) built and validated!"
-echo "Target: wasm32-wasip2"
-echo "=========================================================="
+    WASM_FILE="$PLUGIN_DIR/target/wasm32-wasip2/release/solana_pos_core.wasm"
+    if [ -f "$WASM_FILE" ]; then
+        SIZE=$(du -h "$WASM_FILE" | cut -f1)
+        echo ""
+        echo "=========================================================="
+        echo "🎉 WASM Plugin successfully built!"
+        echo "📦 Binary: $WASM_FILE ($SIZE)"
+        echo "🎯 Target: wasm32-wasip2 (WASI Component Model)"
+        echo "=========================================================="
+    else
+        echo "❌ WASM build failed: binary not found!"
+        exit 1
+    fi
+else
+    echo ""
+    echo "⚠️  Cargo is not installed in current environment."
+    echo "ℹ️  CI/CD pipeline (.github/workflows/ci.yml) will execute full compilation via dtolnay/rust-toolchain with wasm32-wasip2 target."
+    echo "=========================================================="
+    echo "✅ Cargo manifest & WIT interface verified!"
+    echo "=========================================================="
+fi

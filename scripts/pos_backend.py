@@ -17,13 +17,14 @@ DB_PATH = "data/pos_store.db"
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
 def init_db():
     os.makedirs("data", exist_ok=True)
-    conn = get_db_connection()
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS invoices (

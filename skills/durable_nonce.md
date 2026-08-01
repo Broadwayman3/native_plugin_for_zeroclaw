@@ -1,18 +1,21 @@
 ---
 name: durable_nonce
-description: Skill for constructing Durable Nonce transactions with live RPC state querying to solve Blockhash Expiry and Nonce Advance Desynchronization.
+description: Skill for constructing Durable Nonce transactions with live RPC state querying and Nonce Account Pools to solve Blockhash Expiry and Parallel Approval Collisions (Bounty Trap #1).
 ---
 
 # Durable Nonce Account Skill (Solana Craft Solution)
 
-## Problem Solved: Blockhash Expiry & Async Nonce Advance Desynchronization
+## Problem Solved: Blockhash Expiry & Parallel Approval Collisions (Bounty Trap #1)
 
 1. **Blockhash Expiry**: Standard Solana blockhashes expire in ~90 seconds (~150 blocks). When a refund pauses at a **Human Approval Checkpoint**, standard transactions fail with `BlockhashNotFound`.
-2. **Async Nonce Advance Risk (Blind Spot #3)**: If a transaction containing `AdvanceNonceAccount` is sent to the network but fails on a subsequent instruction, the Nonce Account **still advances on-chain**. Storing or caching Nonce values locally causes desynchronization and transaction failures!
+2. **Parallel Nonce Collisions (Bounty Trap #1)**: One nonce account serializes to ONE in-flight transaction! If multiple customers request refunds simultaneously and approvals are delayed, using the same Nonce Account causes `AdvanceNonceAccount` collisions, invalidating all other pending transactions.
 
-## Solution: Live RPC Nonce State Querying
+## Solution: Live RPC Querying & Nonce Account Pool Allocation
 
-The agent MUST query live on-chain account state via `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` **immediately prior** to building every single transaction proposal. Never cache nonce hashes locally!
+### Nonce Account Pool Configuration
+The agent maintains a pool of initialized Nonce Accounts (`nonce_accounts = ["Nonce111...", "Nonce222...", "Nonce333..."]`). When building parallel proposals:
+- Dynamically allocates a distinct, free Nonce Account from the pool for each active invoice/refund.
+- Immediately prior to transaction construction, queries live on-chain account state via `getAccountInfo(NONCE_ACCOUNT_PUBKEY)`.
 
 ### On-Chain Account Requirements:
 - **Account Type**: SystemProgram Nonce Account (80 bytes data).
@@ -31,7 +34,7 @@ If `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` returns an uninitialized account (spac
 
 1. **Step 1 (Live RPC Query & Pre-build)**:
    - Client requests refund: *"Refund 5 USDC for invoice #102"*.
-   - **CRITICAL STEP**: Agent performs live RPC call `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` with `commitment: "confirmed"`.
+   - **CRITICAL STEP**: Agent allocates free nonce from pool and queries `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` with `commitment: "confirmed"`.
    - Parses fresh `nonce_hash` from live on-chain account data.
    - Builds transaction:
      - `Instruction #0`: `SystemProgram.advanceNonceAccount({ noncePubkey, authorizedPubkey })`
@@ -39,24 +42,18 @@ If `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` returns an uninitialized account (spac
    - Sets `recentBlockhash = live_nonce_hash`.
 
 2. **Step 2 (Human Checkpoint Pause)**:
-   - Agent sends Telegram message to Manager ID:
-     > ⚠️ **Запит на повернення коштів**
-     > • Сума: 5.00 USDC
-     > • Клієнт: `9xK2...mQ11`
-     > • Nonce status: Prepared (Durable Live)
-     > 
-     > [Схвалити] / [Відхилити]
+   - Agent sends Telegram message to Manager ID with Nonce Pool details.
 
 3. **Step 3 (Execution after Manager Approval)**:
-   - Manager replies "Yes" 15 minutes later.
-   - ZeroClaw resumes execution, signs transaction with `REFUND_SESSION_KEY`, and submits via `sendTransaction`.
-   - Transaction succeeds cleanly despite the 15-minute delay!
+   - Manager approves proposal.
+   - ZeroClaw submits transaction cleanly without blockhash expiry or parallel nonce collisions.
 
 ### RPC Inspection Payload (<150 tokens)
 ```json
 {
   "durable_nonce_active": true,
-  "nonce_account": "Nonce111111111111111111111111111111111111111",
+  "nonce_pool_size": 3,
+  "allocated_nonce_account": "Nonce111111111111111111111111111111111111111",
   "stored_nonce": "4uQeVj5t...9xKb",
   "live_rpc_verified": true,
   "status": "valid_indefinitely_until_advanced"

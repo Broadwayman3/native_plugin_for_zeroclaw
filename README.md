@@ -16,7 +16,7 @@ The **Solana POS Payment Terminal Agent** is an autonomous AI cash register oper
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Customer/Cashier
+    actor Customer as "Customer / Cashier"
     participant Telegram as Telegram Bot Channel
     participant Host as ZeroClaw Host Runner
     participant WASM as WASM Plugin (solana-pos-core)
@@ -25,13 +25,13 @@ sequenceDiagram
     participant Squads as Squads v4 Program
     actor Manager as Store Manager (Vault Owner)
 
-    Customer/Cashier->>Telegram: "Bill for Coffee #102, 200 UAH"
+    Customer->>Telegram: "Bill for Coffee #102, 200 UAH"
     Telegram->>Host: Process Intent
     Host->>WASM: build_solana_pay_instruction(InvoiceRequest)
     WASM-->>Host: Solana Pay URL + QR + Token-2022 Fee
     Host->>DB: Save Invoice (status: pending)
     Host-->>Telegram: Solana Pay QR Code (4.82 USDC)
-    Customer/Cashier->>Solana: Scan QR & Sign Transaction
+    Customer->>Solana: Scan QR & Sign Transaction
     
     loop Cron SOP (Every 10s)
         Host->>Solana: getSignaturesForAddress(reference_pubkey)
@@ -41,7 +41,7 @@ sequenceDiagram
     Host-->>Telegram: 🔔 "Payment Confirmed! Receipt #102 issued."
     
     opt Refund Request Workflow (Squads v4 Multisig)
-        Customer/Cashier->>Telegram: "Request refund for #102"
+        Customer->>Telegram: "Request refund for #102"
         Host->>WASM: build_squads_v4_proposal(RefundReq)
         WASM-->>Host: Squads Proposal Tx Base64
         Host->>Squads: Create Proposal #42
@@ -86,7 +86,7 @@ python3 scripts/pos_backend.py 8080
 python3 scripts/test_prompt_inj.py
 ```
 
-### 5. Run Comprehensive 15-Test Boundary & Stress Suite
+### 5. Run Comprehensive 35-Test Boundary & Stress Suite
 ```bash
 python3 scripts/test_boundary_cases.py
 ```
