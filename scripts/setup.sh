@@ -30,8 +30,10 @@ else
     echo "ℹ️ rustup not found in PATH; skipping WASM target check."
 fi
 
-# Create data directory for ZeroClaw runtime state & SQLite DB
+# Create data directory for ZeroClaw runtime state & SQLite DB with 777 permissions (prevents Docker permission denied errors)
+echo "📁 Setting up data directory permissions for Docker & SQLite WAL..."
 mkdir -p data sops skills scripts plugins/solana-pos-core
+chmod -R 777 data
 
 echo ""
 echo "=========================================================="

@@ -1,12 +1,17 @@
 {
+  "version": "v0",
+  "id": "refund_approval",
   "name": "refund_approval",
-  "description": "Standard Operating Procedure for handling customer refund requests with Squads v4 Multisig Proposals and Human Checkpoints.",
+  "description": "Standard Operating Procedure for handling customer refund requests with Squads v4 Multisig Proposals, Human Checkpoints, and SQLite Checkpoint Persistence.",
+  "persistent": true,
+  "checkpoint_storage": "sqlite",
   "trigger": {
     "type": "user_intent",
     "intent": "request_refund"
   },
   "steps": [
     {
+      "id": "validate_refund_limits",
       "step_id": "validate_refund_limits",
       "action": "check_limits",
       "max_amount_usdc": 50.0,
@@ -14,6 +19,7 @@
       "on_exceeded": "abort_with_error"
     },
     {
+      "id": "create_squads_v4_proposal",
       "step_id": "create_squads_v4_proposal",
       "action": "execute_skill",
       "skill": "squads_multisig",
@@ -27,6 +33,7 @@
       }
     },
     {
+      "id": "prepare_durable_nonce_tx",
       "step_id": "prepare_durable_nonce_tx",
       "action": "execute_skill",
       "skill": "durable_nonce",
@@ -37,16 +44,19 @@
       }
     },
     {
+      "id": "human_approval_checkpoint",
       "step_id": "human_approval_checkpoint",
       "action": "checkpoint",
       "checkpoint_type": "human_approval",
       "authorized_roles": ["manager"],
       "allowed_chat_ids": ["${MANAGER_TELEGRAM_ID}"],
+      "persistent": true,
       "prompt": "🏛️ **Squads v4 Multisig Proposal Initiated**\n• Чек: #${INVOICE_ID}\n• Покупець: `${CUSTOMER_SOLANA_ADDRESS}`\n• Сума: **${REFUND_AMOUNT} USDC**\n• Proposal Index: #${create_squads_v4_proposal.proposal_index}\n• Durable Nonce: Prepared\n\nСхвалити створення пропозиції рефанду у Squads v4?",
       "options": ["Підтвердити", "Відхилити"],
       "timeout_seconds": 86400
     },
     {
+      "id": "process_decision",
       "step_id": "process_decision",
       "action": "condition",
       "if": "human_approval_checkpoint.response == 'Підтвердити'",

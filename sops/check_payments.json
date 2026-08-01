@@ -1,4 +1,6 @@
 {
+  "version": "v0",
+  "id": "check_payments",
   "name": "check_payments",
   "description": "Cron SOP that polls Solana RPC for active reference public keys every 10 seconds with HTTP 429 rate limit resilience and notifies cashiers upon payment confirmation.",
   "trigger": {
@@ -7,6 +9,7 @@
   },
   "steps": [
     {
+      "id": "fetch_signatures",
       "step_id": "fetch_signatures",
       "action": "solana_rpc_call",
       "method": "getSignaturesForAddress",
@@ -23,6 +26,7 @@
       }
     },
     {
+      "id": "parse_rpc_response",
       "step_id": "parse_rpc_response",
       "action": "transform_data",
       "processor": "compact_json_parser",
@@ -36,6 +40,7 @@
       }
     },
     {
+      "id": "evaluate_payment",
       "step_id": "evaluate_payment",
       "action": "condition",
       "if": "parse_rpc_response.status == 'confirmed' || parse_rpc_response.status == 'finalized'",
