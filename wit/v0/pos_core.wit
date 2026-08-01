@@ -1,6 +1,8 @@
 package zeroclaw:plugin@0.1.0;
 
+/// ZeroClaw Solana POS Agent - Component Model Interface (WASI 0.2)
 interface pos-core {
+    /// Parameters required to construct a Solana Pay payment link & QR instruction
     record invoice-request {
         merchant-pubkey: string,
         amount-usdc: f64,
@@ -8,6 +10,7 @@ interface pos-core {
         spl-token-mint: string,
     }
 
+    /// Result payload of Solana Pay instruction construction
     record invoice-instruction-result {
         success: bool,
         solana-pay-url: string,
@@ -16,6 +19,7 @@ interface pos-core {
         error: option<string>,
     }
 
+    /// Parameters required to build a Squads v4 Multisig refund proposal
     record squads-proposal-request {
         multisig-pubkey: string,
         vault-pubkey: string,
@@ -26,6 +30,7 @@ interface pos-core {
         memo: string,
     }
 
+    /// Result payload of Squads v4 proposal serialization
     record squads-proposal-result {
         success: bool,
         proposal-tx-base64: string,
@@ -33,8 +38,13 @@ interface pos-core {
         error: option<string>,
     }
 
+    /// Builds a deterministic Solana Pay URL and reference key instruction inside Tier 3 WASM sandbox
     build-solana-pay-instruction: func(req: invoice-request) -> invoice-instruction-result;
+
+    /// Calculates ceiling-rounded Token-2022 transfer fee with u128 integer precision
     calculate-token2022-fee: func(amount: f64, fee-basis-points: u16, max-fee: u64, decimals: u8) -> f64;
+
+    /// Builds Borsh-serialized Squads v4 Multisig refund proposal instruction
     build-squads-v4-proposal: func(req: squads-proposal-request) -> squads-proposal-result;
 }
 

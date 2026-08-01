@@ -6,15 +6,18 @@ ZeroClaw Solana POS Agent - Database Core Module (WAL Mode & Schema Management)
 import os
 import sqlite3
 import datetime
+from contextlib import contextmanager
+from typing import Optional, Generator
+from pos_core.constants import DEFAULT_SOCKET_TIMEOUT
 
-DB_PATH = "data/pos_store.db"
+DB_PATH: str = "data/pos_store.db"
 
 def get_db_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     """Establishes SQLite connection with WAL mode, auto-creating parent directories."""
     db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=10.0)
+    conn = sqlite3.connect(db_path, timeout=DEFAULT_SOCKET_TIMEOUT)
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
     except sqlite3.OperationalError:
@@ -24,7 +27,31 @@ def get_db_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     conn.execute("PRAGMA cache_size=-64000;")
     return conn
 
-def cleanup_db_files(db_path: str):
+@contextmanager
+def get_db_cursor(conn: Optional[sqlite3.Connection] = None, db_path: str = DB_PATH, commit: bool = True) -> Generator[sqlite3.Cursor, None, None]:
+    """
+    Context manager for database cursor and transaction lifecycle management.
+    - If conn is provided: reuses existing connection without closing it upon exit.
+    - If conn is None: opens a new connection, executes transaction, and guarantees closing it upon exit.
+    """
+    should_close = False
+    if conn is None:
+        conn = get_db_connection(db_path)
+        should_close = True
+    try:
+        cursor = conn.cursor()
+        yield cursor
+        if commit:
+            conn.commit()
+    except Exception:
+        if should_close:
+            conn.rollback()
+        raise
+    finally:
+        if should_close:
+            conn.close()
+
+def cleanup_db_files(db_path: str) -> None:
     """Completely removes database file and associated WAL/SHM sidecar files."""
     for ext in ["", "-wal", "-shm"]:
         target = db_path + ext
@@ -34,40 +61,22 @@ def cleanup_db_files(db_path: str):
             except OSError:
                 pass
 
-def cleanup_expired_pending_invoices(conn: sqlite3.Connection = None, db_path: str = DB_PATH):
+def cleanup_expired_pending_invoices(conn: Optional[sqlite3.Connection] = None, db_path: str = DB_PATH) -> None:
     """Automatically marks pending invoices older than 24 hours as expired."""
-    close_conn = False
-    if conn is None:
-        conn = get_db_connection(db_path)
-        close_conn = True
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor(conn, db_path) as cursor:
         cursor.execute("UPDATE invoices SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE status = 'pending' AND created_at < datetime('now', '-24 hours')")
-        conn.commit()
-    finally:
-        if close_conn:
-            conn.close()
 
-def check_and_register_telegram_update(conn: sqlite3.Connection = None, update_id: int = None, db_path: str = DB_PATH) -> bool:
+def check_and_register_telegram_update(conn: Optional[sqlite3.Connection] = None, update_id: Optional[int] = None, db_path: str = DB_PATH) -> bool:
     """Deduplicates Telegram webhook update IDs with 24h TTL cleanup."""
-    close_conn = False
-    if conn is None:
-        conn = get_db_connection(db_path)
-        close_conn = True
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor(conn, db_path) as cursor:
         cursor.execute("DELETE FROM processed_updates WHERE processed_at < datetime('now', '-1 day')")
         try:
             cursor.execute("INSERT INTO processed_updates (update_id) VALUES (?)", (update_id,))
-            conn.commit()
             return True
         except sqlite3.IntegrityError:
             return False
-    finally:
-        if close_conn:
-            conn.close()
 
-def init_db(db_path: str = DB_PATH):
+def init_db(db_path: str = DB_PATH) -> None:
     """Initializes SQLite tables and default nonce pool / sample data."""
     conn = get_db_connection(db_path)
     cursor = conn.cursor()

@@ -8,6 +8,7 @@ and redacts API keys from log stack traces.
 import re
 import urllib.parse
 import ipaddress
+import unicodedata
 
 def sanitize_external_input(user_string: str, max_length: int = 100) -> str:
     """
@@ -15,6 +16,9 @@ def sanitize_external_input(user_string: str, max_length: int = 100) -> str:
     """
     if not user_string or not isinstance(user_string, str):
         return ""
+    
+    # 0. Unicode NFKC Normalization (converts combining characters & compatibility homoglyphs)
+    user_string = unicodedata.normalize('NFKC', user_string)
     
     # 1. Remove control characters, system tags, and line breaks (\r, \n, \t, \x00-\x1f)
     cleaned = re.sub(r'[\r\n\t\x00-\x1f\x7f-\x9f]', ' ', user_string)
@@ -80,6 +84,10 @@ if __name__ == "__main__":
     assert "SYSTEM OVERRIDE" not in sanitized
     assert "\n" not in sanitized
     
+    # Self-test Unicode NFKC normalization
+    sample_decomposed = "e\u0301" # e + combining acute accent
+    assert sanitize_external_input(sample_decomposed) == "é"
+    
     # Self-test sensitive info redactor logic
     assert "api_key=REDACTED" in redact_sensitive_info("error: api_key=secret123")
     assert "token=REDACTED" in redact_sensitive_info("error: token=abc456")
@@ -92,4 +100,4 @@ if __name__ == "__main__":
     assert not validate_safe_rpc_url("http://localhost:8080/rpc")
     assert validate_safe_rpc_url("https://devnet.helius-rpc.com/?api-key=test")
     
-    print(f"✅ Sanitizer, Secret Redactor & SSRF Guard self-test passed successfully!")
+    print(f"✅ Sanitizer (with NFKC Normalization), Secret Redactor & SSRF Guard self-test passed successfully!")

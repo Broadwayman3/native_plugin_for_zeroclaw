@@ -54,6 +54,19 @@ sequenceDiagram
 ```
 
 ### 🧠 Why WASM Tier 3 Native Plugin? (Correct Layering Rubric)
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                        ZeroClaw Host Runtime                           │
+│  ┌─────────────────────────┐            ┌───────────────────────────┐  │
+│  │ Python POS Backend      │  (WIT ABI) │ Tier 3 Rust WASM Sandbox  │  │
+│  │ - WAL SQLite DB         │ <────────> │ - u128 Token2022 Math     │  │
+│  │ - REST Micro-Router     │  WASI p2   │ - Squads v4 Anchor Borsh  │  │
+│  │ - Telegram / SOP Engine │            │ - Zero Private Keys Scope │  │
+│  └─────────────────────────┘            └───────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
 - **Token-2022 Deterministic Fee Math**: Token-2022 transfer fee calculations require ceiling-based `u128` integer operations. High-level dynamic languages (Python/JS) introduce IEEE 754 float precision drift.
 - **Keyless Sandbox Isolation**: Forming Anchor instruction discriminators (`sha256("global:create_proposal")[..8]`) and Borsh serialization happen inside a memory-isolated `wasm32-wasip2` sandbox without access to store private keys.
 

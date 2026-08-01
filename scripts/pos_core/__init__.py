@@ -4,9 +4,23 @@ ZeroClaw Solana POS Agent - Core Package Init
 Exposes unified domain APIs from submodules.
 """
 
+from pos_core.constants import (
+    USDC_DECIMALS,
+    SOL_DECIMALS,
+    MAX_U64,
+    USDC_MINT_MAINNET,
+    USDC_MINT_DEVNET,
+    USDC_MINT,
+    BASE58_ALPHABET,
+    DEFAULT_SLIPPAGE_TOLERANCE_PCT,
+    DEFAULT_COMMITMENT_THRESHOLD_USDC,
+    NONCE_TTL_MINUTES,
+    DEFAULT_SOCKET_TIMEOUT
+)
 from pos_core.db import (
     DB_PATH,
     get_db_connection,
+    get_db_cursor,
     cleanup_db_files,
     init_db,
     cleanup_expired_pending_invoices,
@@ -31,13 +45,16 @@ from pos_core.solana_pay import (
     get_required_commitment_level,
     generate_atomic_refund_instructions,
     validate_squads_multisig_account,
-    verify_solana_transaction_payload
+    verify_solana_transaction_payload,
+    _extract_token_balance_deltas,
+    _inspect_instructions_for_transfer
 )
 from pos_core.pix_brl import (
     calculate_pix_crc16,
     generate_pix_emv_payload
 )
 from pos_core.price_feed import (
+    DEFAULT_STATIC_FIAT_RATES,
     get_multitier_fiat_rate
 )
 from pos_core.router import (
@@ -48,8 +65,20 @@ from pos_core.router import (
 )
 
 __all__ = [
+    "USDC_DECIMALS",
+    "SOL_DECIMALS",
+    "MAX_U64",
+    "USDC_MINT_MAINNET",
+    "USDC_MINT_DEVNET",
+    "USDC_MINT",
+    "BASE58_ALPHABET",
+    "DEFAULT_SLIPPAGE_TOLERANCE_PCT",
+    "DEFAULT_COMMITMENT_THRESHOLD_USDC",
+    "NONCE_TTL_MINUTES",
+    "DEFAULT_SOCKET_TIMEOUT",
     "DB_PATH",
     "get_db_connection",
+    "get_db_cursor",
     "cleanup_db_files",
     "init_db",
     "cleanup_expired_pending_invoices",
@@ -71,8 +100,11 @@ __all__ = [
     "generate_atomic_refund_instructions",
     "validate_squads_multisig_account",
     "verify_solana_transaction_payload",
+    "_extract_token_balance_deltas",
+    "_inspect_instructions_for_transfer",
     "calculate_pix_crc16",
     "generate_pix_emv_payload",
+    "DEFAULT_STATIC_FIAT_RATES",
     "get_multitier_fiat_rate",
     "route_get",
     "route_post",

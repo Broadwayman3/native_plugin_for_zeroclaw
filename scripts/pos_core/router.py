@@ -5,25 +5,26 @@ Parses clean URL paths with urllib.parse to strip Query Parameters and prevent 4
 """
 
 import json
+from typing import Dict, Callable, Optional, Any, Tuple
 from urllib.parse import urlparse, parse_qs
 from sanitizer import redact_api_key
 
-ROUTES_GET = {}
-ROUTES_POST = {}
+ROUTES_GET: Dict[str, Callable[..., Any]] = {}
+ROUTES_POST: Dict[str, Callable[..., Any]] = {}
 
-def route_get(path: str):
-    def decorator(func):
+def route_get(path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         ROUTES_GET[path] = func
         return func
     return decorator
 
-def route_post(path: str):
-    def decorator(func):
+def route_post(path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         ROUTES_POST[path] = func
         return func
     return decorator
 
-def send_json_response(handler, status_code: int, body, extra_headers: dict = None):
+def send_json_response(handler: Any, status_code: int, body: Any, extra_headers: Optional[Dict[str, str]] = None) -> None:
     """Sends standardized JSON HTTP responses with CORS and custom headers."""
     handler.send_response(status_code)
     handler.send_header('Content-Type', 'application/json')
@@ -34,7 +35,7 @@ def send_json_response(handler, status_code: int, body, extra_headers: dict = No
     handler.end_headers()
     handler.wfile.write(json.dumps(body, indent=2).encode('utf-8'))
 
-def dispatch_request(handler, method: str, post_data: dict = None):
+def dispatch_request(handler: Any, method: str, post_data: Optional[Dict[str, Any]] = None) -> None:
     """Dispatches HTTP GET and POST requests by matching clean path (without query params)."""
     routes = ROUTES_GET if method == 'GET' else ROUTES_POST
     parsed_url = urlparse(handler.path)

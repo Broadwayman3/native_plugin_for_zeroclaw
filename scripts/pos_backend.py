@@ -10,7 +10,7 @@ import json
 import sqlite3
 import datetime
 import socket
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 # Ensure scripts directory is in sys.path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,6 +19,7 @@ if SCRIPT_DIR not in sys.path:
 
 from sanitizer import redact_api_key, escape_telegram_markdown_v2
 from pos_core import (
+    DEFAULT_SOCKET_TIMEOUT,
     DB_PATH,
     get_db_connection,
     init_db,
@@ -48,8 +49,7 @@ from pos_core import (
     send_json_response
 )
 
-# Set global socket timeout to prevent hung RPC HTTP connection sockets
-socket.setdefaulttimeout(10.0)
+MAX_PAYLOAD_BYTES = 1_048_576  # 1 MB DoS Cap Limit
 
 # Register REST API GET routes
 @route_get('/api/v1/sales/summary')
@@ -181,7 +181,15 @@ class POSApiHandler(BaseHTTPRequestHandler):
         dispatch_request(self, 'GET')
 
     def do_POST(self):
-        content_length = int(self.headers.get('Content-Length', 0))
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+        except (ValueError, TypeError):
+            content_length = 0
+
+        if content_length > MAX_PAYLOAD_BYTES:
+            send_json_response(self, 413, {"error": "Payload Too Large: Maximum allowed size is 1MB"})
+            return
+
         post_data_raw = self.rfile.read(content_length)
         
         try:
@@ -195,7 +203,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
 def run_server(port=8080):
     init_db()
     server_address = ('127.0.0.1', port)
-    httpd = HTTPServer(server_address, POSApiHandler)
+    httpd = ThreadingHTTPServer(server_address, POSApiHandler)
     print(f"🚀 POS REST Backend API (WAL Mode & Micro-Router) listening on http://127.0.0.1:{port}")
     try:
         httpd.serve_forever()
