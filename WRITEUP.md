@@ -126,6 +126,22 @@ ZeroClaw host instantiates WASM plugins via `wasmtime` / `cranelift` under stric
 ### G. AdvanceNonceAccount Revert Recovery Engine (`stale_needs_refresh`)
 - Solves the Solana AdvanceNonceAccount revert trap: if a transaction fails on-chain, the nonce still advances. The engine marks the account as `stale_needs_refresh` and forces a live RPC `getAccountInfo` re-fetch before re-signing.
 
+### H. ZeroClaw 4-Layer Error Prevention Engine
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                      ZeroClaw 4-Layer Error Prevention Engine                   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ 1. MATHEMATICAL SAFETY : Safe Fixed-Point Math, u128 Bounds, Proptest Fuzzing   │
+│ 2. LOGICAL SAFETY      : Fail-Closed SOP State Machine, Nonce Pools, Idempotency│
+│ 3. STRUCTURAL SAFETY   : Strict JSON Schemas, WIT ABI Validator, Typescript/Mypy │
+│ 4. SECURITY SAFETY     : AST Input Sanitizer, SSRF Guard, Log Key Redactor     │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+- **Mathematical Safety**: Fixed-point arithmetic, safe float-to-int conversion (`safe_f64_to_u64_atomic`), `proptest!` property-based fuzzing.
+- **Logical Safety**: Atomic SQLite state transitions (`UPDATE ... WHERE status = 'pending'`), Durable Nonce Pools (`UPDATE RETURNING`), Fail-closed SOPs (`abort_with_error`).
+- **Structural Safety**: JSON schemas (`validators.py`), WASI Component Spec validation (`wasm-tools validate`), LLM context truncation (`<150 tokens`).
+- **Security Safety**: AST Input Sanitizer (`sanitizer.py`), SSRF guard (`validate_safe_rpc_url`), API Key Redactor (`redact_api_key`).
+
 ---
 
 ## 5. Reproducibility & Validation (15%)

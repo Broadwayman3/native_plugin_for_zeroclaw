@@ -12,6 +12,7 @@ The **Solana POS Payment Terminal Agent** is an autonomous AI cash register oper
 1. **`plugins/solana-pos-core`**: High-performance Rust WASM plugin for Solana Pay URLs, Token-2022 transfer fee math, and Squads v4 instruction building.
 2. **Squads v4 Multisig Governance**: Refunds construct Squads v4 Multisig proposals where the agent acts as a restricted `Proposer`, requiring store owner `Vault Authority` threshold signatures.
 3. **SQLite Local Storage & REST API**: Persistence for invoices, transaction receipts, durable nonces, and sales reporting (`GET /api/v1/sales/summary`).
+4. **x402 Protocol Agent-to-Agent Machine Commerce**: Autonomous HTTP 402 Payment Required negotiation for machine-to-machine micro-transactions.
 
 ```mermaid
 sequenceDiagram

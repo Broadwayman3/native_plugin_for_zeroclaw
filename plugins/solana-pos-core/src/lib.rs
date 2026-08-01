@@ -82,12 +82,14 @@ impl exports::zeroclaw::plugin::pos_core::Guest for PosCorePlugin {
         };
         let proposal_index = req.proposal_index;
 
-        // Anchor discriminator for Squads v4 `create_proposal`: sha256("global:create_proposal")[..8]
+        // Anchor discriminator & raw Borsh instruction byte packing for Squads v4 `create_proposal`
+        let raw_instruction_bytes = build_raw_squads_v4_instruction_data(proposal_index, 1);
         let anchor_discriminator: [u8; 8] = [132, 116, 68, 174, 216, 160, 198, 22];
 
         let instruction_payload = serde_json::json!({
             "program_id": "SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm",
             "anchor_discriminator_hex": hex_encode(&anchor_discriminator),
+            "raw_instruction_bytes_hex": hex_encode(&raw_instruction_bytes),
             "action": "create_proposal",
             "multisig": req.multisig_pubkey,
             "vault": req.vault_pubkey,
@@ -181,6 +183,23 @@ fn calculate_token2022_fee_internal(
     (final_fee_units as f64) / scale
 }
 
+/// Забезпечує Anchor-сумісне бінарне кодування для Squads v4 create_proposal
+pub fn build_raw_squads_v4_instruction_data(proposal_index: u64, execution_type: u8) -> Vec<u8> {
+    // Anchor discriminator: sha256("global:create_proposal")[..8]
+    let mut data = vec![132, 116, 68, 174, 216, 160, 198, 22];
+
+    // Borsh encoding: proposal_index (u64 little-endian)
+    data.extend_from_slice(&proposal_index.to_le_bytes());
+
+    // Borsh encoding: execution_type (u8)
+    data.push(execution_type);
+
+    // Borsh encoding: draft (bool = false)
+    data.push(0);
+
+    data
+}
+
 fn url_encode(s: &str) -> String {
     s.replace(' ', "%20")
 }
@@ -235,6 +254,13 @@ mod tests {
         assert_eq!(usdc_to_atomic_units(f64::INFINITY), 0);
         assert_eq!(usdc_to_atomic_units(-10.0), 0);
         assert_eq!(usdc_to_atomic_units(1e25), 0);
+    }
+
+    #[test]
+    fn test_build_raw_squads_v4_instruction_data() {
+        let data = build_raw_squads_v4_instruction_data(42, 1);
+        assert_eq!(data.len(), 18);
+        assert_eq!(&data[0..8], &[132, 116, 68, 174, 216, 160, 198, 22]);
     }
 
     #[test]
