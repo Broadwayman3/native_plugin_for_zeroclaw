@@ -127,6 +127,7 @@ docker-compose up -d
 | :--- | :--- | :--- |
 | **WASM Native Plugin** | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate compiled to `wasm32-wasip2` via WIT contract interface [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) |
 | **Core Domain Package** | [`scripts/pos_core`](./scripts/pos_core) | High-cohesion domain modules (`db.py`, `nonce_pool.py`, `solana_pay.py`, `pix_brl.py`, `price_feed.py`, `router.py`) |
+| **Domain Test Package** | [`scripts/tests`](./scripts/tests) | Modular domain test suite (`test_payment_verification.py`, `test_database_concurrency.py`, `test_nonce_pools.py`, `test_token2022_math.py`, `test_fiat_pix.py`, `test_squads_multisig.py`) |
 | **SQLite REST API Backend** | [`scripts/pos_backend.py`](./scripts/pos_backend.py) | Entrypoint HTTP server with stdlib micro-router, WAL mode persistence, and atomic transitions |
 | **Development Rules Guard** | [`.agents/AGENTS.md`](./.agents/AGENTS.md) | Architectural, logical, mathematical, and security standards for zero-drift development |
 | **Squads v4 Multisig Skill** | [`skills/squads_multisig.md`](./skills/squads_multisig.md) | Squads v4 Multisig proposal builder (`SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm`) |

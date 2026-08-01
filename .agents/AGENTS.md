@@ -33,8 +33,9 @@ These rules enforce strict architectural, logical, mathematical, and security st
 ---
 
 ## 🧪 4. Single Source of Truth & Test Rigor
-- **No Test Logic Duplication**: Test scripts (e.g. `scripts/test_boundary_cases.py`) MUST NOT re-define production calculation functions. They must import directly from `pos_core`.
-- **Pytest & CLI Dual Compatibility**: All test modules must support standard `pytest` discovery while preserving direct script execution (`python3 scripts/<test_script>.py`).
+- **Modular Test Architecture**: Tests are organized in high-cohesion domain modules inside `scripts/tests/` (`test_payment_verification.py`, `test_database_concurrency.py`, `test_nonce_pools.py`, `test_token2022_math.py`, `test_fiat_pix.py`, `test_squads_multisig.py`).
+- **No Test Logic Duplication**: Test scripts MUST NOT re-define production calculation functions. They must import directly from `pos_core`.
+- **Pytest & CLI Dual Compatibility**: All test modules must support standard `pytest` discovery (`pytest scripts/tests/`) while preserving direct entrypoint execution (`python3 scripts/test_boundary_cases.py`).
 - **1-Command Full Verification**: All changes must pass `./scripts/verify_all.sh` before merging.
 
 ---
