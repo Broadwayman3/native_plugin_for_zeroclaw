@@ -1,0 +1,19 @@
+# Rust WASM build target & compiled WebAssembly modules
+target/
+*.wasm
+
+# Environment and runtime configs
+.env
+config.toml
+
+# ZeroClaw runtime data & SQLite databases
+data/
+*.db
+*.sqlite
+
+# Python caches
+__pycache__/
+*.pyc
+
+# OS metadata
+.DS_Store

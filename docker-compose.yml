@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  zeroclaw-agent:
+    image: ghcr.io/zeroclaw/zeroclaw:latest
+    container_name: zeroclaw_solana_pos
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config.toml:/etc/zeroclaw/config.toml:ro
+      - ./skills:/etc/zeroclaw/skills:ro
+      - ./sops:/etc/zeroclaw/sops:ro
+      - ./data:/var/lib/zeroclaw/data
+    environment:
+      - ZEROCLAW_CONFIG=/etc/zeroclaw/config.toml
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

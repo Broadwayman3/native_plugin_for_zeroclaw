@@ -1,0 +1,34 @@
+# ZeroClaw Configuration File for Solana Payment Terminal Agent
+
+[agent]
+name = "SolanaPOSAgent"
+version = "1.0.0"
+description = "Autonomous POS Payment Terminal & Invoicing Agent for Local Businesses on Solana"
+log_level = "info"
+
+[channels.telegram]
+enabled = true
+bot_token = "${TELEGRAM_BOT_TOKEN}"
+allowed_chat_ids = [] # Leave empty for public customer bot, or specify manager chat ID for admin commands
+manager_chat_id = "${MANAGER_TELEGRAM_ID}"
+
+[solana]
+rpc_url = "${SOLANA_RPC_URL}"
+commitment = "confirmed"
+merchant_wallet = "${MERCHANT_WALLET_PUBKEY}"
+refund_session_wallet = "${REFUND_SESSION_KEY}"
+nonce_account = "${NONCE_ACCOUNT_PUBKEY}"
+
+[security]
+max_single_refund_usdc = 50.0
+daily_refund_limit_usdc = 200.0
+require_human_approval_for_refunds = true
+strict_prompt_isolation = true
+
+[skills]
+directory = "./skills"
+auto_load = true
+
+[sops]
+directory = "./sops"
+auto_load = true

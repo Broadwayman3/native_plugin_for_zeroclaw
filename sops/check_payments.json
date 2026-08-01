@@ -1,0 +1,56 @@
+{
+  "name": "check_payments",
+  "description": "Cron SOP that polls Solana RPC for active reference public keys every 10 seconds and notifies cashiers upon payment confirmation.",
+  "trigger": {
+    "type": "cron",
+    "schedule": "*/10 * * * * *"
+  },
+  "steps": [
+    {
+      "step_id": "fetch_signatures",
+      "action": "solana_rpc_call",
+      "method": "getSignaturesForAddress",
+      "params": [
+        "${ACTIVE_REFERENCE_PUBKEY}",
+        { "limit": 1, "commitment": "confirmed" }
+      ],
+      "on_error": "continue"
+    },
+    {
+      "step_id": "parse_rpc_response",
+      "action": "transform_data",
+      "processor": "compact_json_parser",
+      "max_tokens": 150,
+      "extract": {
+        "signature": "0.signature",
+        "slot": "0.slot",
+        "err": "0.err",
+        "blockTime": "0.blockTime",
+        "status": "0.confirmationStatus"
+      }
+    },
+    {
+      "step_id": "evaluate_payment",
+      "action": "condition",
+      "if": "parse_rpc_response.status == 'confirmed' || parse_rpc_response.status == 'finalized'",
+      "then": [
+        {
+          "action": "send_channel_message",
+          "channel": "telegram",
+          "recipient": "${MANAGER_TELEGRAM_ID}",
+          "message": "✅ **Оплату підтверджено!**\n• Чек: #${INVOICE_ID}\n• Сума: ${AMOUNT_USDC} USDC\n• Сигнатура: `${parse_rpc_response.signature}`\n• Explorer: https://solscan.io/tx/${parse_rpc_response.signature}"
+        },
+        {
+          "action": "mark_invoice_paid",
+          "invoice_id": "${INVOICE_ID}"
+        }
+      ],
+      "else": [
+        {
+          "action": "log",
+          "message": "Waiting for payment on reference key ${ACTIVE_REFERENCE_PUBKEY}..."
+        }
+      ]
+    }
+  ]
+}

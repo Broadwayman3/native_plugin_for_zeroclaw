@@ -1,0 +1,80 @@
+{
+  "name": "refund_approval",
+  "description": "Standard Operating Procedure for handling customer refund requests with Squads v4 Multisig Proposals and Human Checkpoints.",
+  "trigger": {
+    "type": "user_intent",
+    "intent": "request_refund"
+  },
+  "steps": [
+    {
+      "step_id": "validate_refund_limits",
+      "action": "check_limits",
+      "max_amount_usdc": 50.0,
+      "amount": "${REFUND_AMOUNT}",
+      "on_exceeded": "abort_with_error"
+    },
+    {
+      "step_id": "create_squads_v4_proposal",
+      "action": "execute_skill",
+      "skill": "squads_multisig",
+      "params": {
+        "multisig_pubkey": "${SQUADS_MULTISIG_PUBKEY}",
+        "vault_pubkey": "${SQUADS_VAULT_PUBKEY}",
+        "proposer": "${AGENT_PROPOSER_PUBKEY}",
+        "recipient": "${CUSTOMER_SOLANA_ADDRESS}",
+        "amount_usdc": "${REFUND_AMOUNT}",
+        "memo": "Refund invoice #${INVOICE_ID}"
+      }
+    },
+    {
+      "step_id": "prepare_durable_nonce_tx",
+      "action": "execute_skill",
+      "skill": "durable_nonce",
+      "params": {
+        "destination": "${CUSTOMER_SOLANA_ADDRESS}",
+        "amount_usdc": "${REFUND_AMOUNT}",
+        "nonce_account": "${NONCE_ACCOUNT_PUBKEY}"
+      }
+    },
+    {
+      "step_id": "human_approval_checkpoint",
+      "action": "checkpoint",
+      "checkpoint_type": "human_approval",
+      "authorized_roles": ["manager"],
+      "allowed_chat_ids": ["${MANAGER_TELEGRAM_ID}"],
+      "prompt": "🏛️ **Squads v4 Multisig Proposal Initiated**\n• Чек: #${INVOICE_ID}\n• Покупець: `${CUSTOMER_SOLANA_ADDRESS}`\n• Сума: **${REFUND_AMOUNT} USDC**\n• Proposal Index: #${create_squads_v4_proposal.proposal_index}\n• Durable Nonce: Prepared\n\nСхвалити створення пропозиції рефанду у Squads v4?",
+      "options": ["Підтвердити", "Відхилити"],
+      "timeout_seconds": 86400
+    },
+    {
+      "step_id": "process_decision",
+      "action": "condition",
+      "if": "human_approval_checkpoint.response == 'Підтвердити'",
+      "then": [
+        {
+          "action": "send_solana_transaction",
+          "signed_tx": "${create_squads_v4_proposal.proposal_tx_base64}"
+        },
+        {
+          "action": "record_pos_transaction",
+          "invoice_id": "${INVOICE_ID}",
+          "status": "refund_proposed_squads_v4"
+        },
+        {
+          "action": "send_channel_message",
+          "channel": "telegram",
+          "recipient": "${CUSTOMER_CHAT_ID}",
+          "message": "✅ **Пропозицію повернення коштів створено у Squads v4**\n• Сума: ${REFUND_AMOUNT} USDC\n• Передано на підпис менеджеру бізнесу."
+        }
+      ],
+      "else": [
+        {
+          "action": "send_channel_message",
+          "channel": "telegram",
+          "recipient": "${CUSTOMER_CHAT_ID}",
+          "message": "❌ **У поверненні коштів відхилено**\nЗапит не схвалено адміністратором магазину."
+        }
+      ]
+    }
+  ]
+}

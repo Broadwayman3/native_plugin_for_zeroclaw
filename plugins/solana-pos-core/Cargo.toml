@@ -1,0 +1,22 @@
+[package]
+name = "solana-pos-core"
+version = "0.1.0"
+edition = "2021"
+description = "ZeroClaw WASM Tier 3 Native Plugin for Solana POS Invoicing & Squads v4 Multisig Proposals"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.21"
+
+[dev-dependencies]
+# Host-run unit testing dependencies
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
