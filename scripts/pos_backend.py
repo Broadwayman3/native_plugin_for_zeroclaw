@@ -296,8 +296,8 @@ class POSApiHandler(BaseHTTPRequestHandler):
 
         dispatch_request(self, 'POST', post_data=data)
 
-def run_server(port=8080):
-    init_db()
+def run_server(port=8080, seed_sample_data=True):
+    init_db(seed_sample_data=seed_sample_data)
     server_address = ('127.0.0.1', port)
     httpd = ThreadingHTTPServer(server_address, POSApiHandler)
     banner = (
@@ -308,8 +308,9 @@ def run_server(port=8080):
         f"• Listening    : http://127.0.0.1:{port}\n"
         f"• Database     : {DB_PATH}\n"
         "• x402 Spec    : Active on /api/v1/sales/premium_analytics\n"
-        "• Endpoints    : /sales/summary, /invoices, /invoices/create,\n"
-        "                 /invoices/cancel, /nonce/allocate, /nonce/release\n"
+        "• Endpoints    : /actions.json, /api/v1/actions/pay_invoice, /sales/summary,\n"
+        "                 /invoices, /invoices/create, /invoices/cancel,\n"
+        "                 /nonce/allocate, /nonce/release\n"
         "================================================================="
     )
     print(banner)
@@ -320,7 +321,7 @@ def run_server(port=8080):
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        init_db()
+        init_db(seed_sample_data=True)
         print("Database WAL mode test initialization passed.")
     else:
         env_port = os.getenv("PORT") or os.getenv("POS_PORT")
@@ -330,4 +331,5 @@ if __name__ == '__main__':
             port = int(sys.argv[1])
         else:
             port = 8080
-        run_server(port)
+        run_server(port, seed_sample_data=True)
+

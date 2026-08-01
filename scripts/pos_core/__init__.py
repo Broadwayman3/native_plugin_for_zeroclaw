@@ -48,6 +48,8 @@ from pos_core.solana_pay import (
     verify_solana_transaction_payload,
     generate_solana_pay_qr_image_url,
     generate_solana_pay_url,
+    generate_phantom_universal_link,
+    get_active_rpc_url,
     format_pubkey_short,
     get_solscan_tx_url,
     _extract_token_balance_deltas,
@@ -57,8 +59,10 @@ from pos_core.i18n import (
     TRANSLATIONS,
     get_localized_message,
     t,
-    format_itemized_receipt
+    format_itemized_receipt,
+    get_refund_checkpoint_inline_keyboard
 )
+
 from pos_core.pix_brl import (
     calculate_pix_crc16,
     generate_pix_emv_payload
@@ -112,12 +116,16 @@ __all__ = [
     "verify_solana_transaction_payload",
     "generate_solana_pay_qr_image_url",
     "generate_solana_pay_url",
+    "generate_phantom_universal_link",
+    "get_active_rpc_url",
     "format_pubkey_short",
     "get_solscan_tx_url",
     "TRANSLATIONS",
     "get_localized_message",
     "t",
     "format_itemized_receipt",
+    "get_refund_checkpoint_inline_keyboard",
+
     "_extract_token_balance_deltas",
     "_inspect_instructions_for_transfer",
     "calculate_pix_crc16",

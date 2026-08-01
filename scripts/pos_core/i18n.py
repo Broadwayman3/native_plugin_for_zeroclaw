@@ -213,7 +213,18 @@ def format_itemized_receipt(
         f"• *{total_escaped}*"
     )
 
+def get_refund_checkpoint_inline_keyboard(proposal_idx: int) -> Dict[str, Any]:
+    """Generates Telegram Inline Keyboard payload for human approval checkpoints."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Approve Squads v4", "callback_data": f"approve_refund_{proposal_idx}"},
+                {"text": "❌ Reject", "callback_data": f"reject_refund_{proposal_idx}"}
+            ]
+        ]
+    }
 
 # Alias for backward compatibility
 get_localized_message = t
+
 

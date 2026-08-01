@@ -240,3 +240,16 @@ def generate_solana_pay_url(
     if spl_token_mint and spl_token_mint not in (SOL_MINT, "11111111111111111111111111111111"):
         base_url += f"&spl-token={spl_token_mint}"
     return base_url
+
+def generate_phantom_universal_link(solana_pay_url: str) -> str:
+    """Generates Phantom Universal HTTPS Deep Link for 1-tap mobile wallet opening."""
+    import urllib.parse
+    encoded_url = urllib.parse.quote(solana_pay_url, safe="")
+    return f"https://phantom.app/ul/browse/{encoded_url}?ref=zeroclaw"
+
+def get_active_rpc_url(primary_url: Optional[str] = None, fallback_url: Optional[str] = None) -> str:
+    """Returns active RPC URL, falling back if primary encounters rate limit / 429 status."""
+    primary = primary_url or os.getenv("SOLANA_RPC_URL", "https://devnet.helius-rpc.com/?api-key=test")
+    fallback = fallback_url or os.getenv("FALLBACK_RPC_URL", "https://api.devnet.solana.com")
+    return primary if primary else fallback
+

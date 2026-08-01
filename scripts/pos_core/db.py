@@ -76,8 +76,8 @@ def check_and_register_telegram_update(conn: Optional[sqlite3.Connection] = None
         except sqlite3.IntegrityError:
             return False
 
-def init_db(db_path: str = DB_PATH) -> None:
-    """Initializes SQLite tables and default nonce pool / sample data."""
+def init_db(db_path: str = DB_PATH, seed_sample_data: bool = True) -> None:
+    """Initializes SQLite tables and default nonce pool / optional sample data."""
     conn = get_db_connection(db_path)
     cursor = conn.cursor()
 
@@ -105,16 +105,18 @@ def init_db(db_path: str = DB_PATH) -> None:
             ("Nonce333333333333333333333333333333333333333",)
         ])
 
-    cursor.execute("SELECT COUNT(*) FROM invoices")
-    if cursor.fetchone()[0] == 0:
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        sample_data = [
-            ("INV-101", "7xRefKey11111111111111111111111111111111111", "UAH", 200.0, 4.82, "paid", "5k9X...Signature1", "9xK2...Customer1", None, None, now, now),
-            ("INV-102", "8xRefKey22222222222222222222222222222222222", "UAH", 150.0, 3.61, "paid", "5k9X...Signature2", "9xK2...Customer2", None, None, now, now),
-            ("INV-103", "9xRefKey33333333333333333333333333333333333", "USD", 10.0, 10.00, "pending", None, None, None, None, now, now),
-        ]
-        cursor.executemany("INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, tx_signature, customer_address, pix_id, pix_payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", sample_data)
+    if seed_sample_data:
+        cursor.execute("SELECT COUNT(*) FROM invoices")
+        if cursor.fetchone()[0] == 0:
+            now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            sample_data = [
+                ("INV-101", "7xRefKey11111111111111111111111111111111111", "UAH", 200.0, 4.82, "paid", "5k9X...Signature1", "9xK2...Customer1", None, None, now, now),
+                ("INV-102", "8xRefKey22222222222222222222222222222222222", "UAH", 150.0, 3.61, "paid", "5k9X...Signature2", "9xK2...Customer2", None, None, now, now),
+                ("INV-103", "9xRefKey33333333333333333333333333333333333", "USD", 10.0, 10.00, "pending", None, None, None, None, now, now),
+            ]
+            cursor.executemany("INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, tx_signature, customer_address, pix_id, pix_payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", sample_data)
 
     conn.commit()
     cleanup_expired_pending_invoices(conn)
     conn.close()
+
