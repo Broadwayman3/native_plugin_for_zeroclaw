@@ -5,10 +5,14 @@ import os, math, secrets, base64, sqlite3
 WASM_RAM_CACHE = None
 
 def token_to_atomic_units(amount: float, decimals: int = 6) -> int:
-    """Converts float amount to atomic units with dynamic decimals (USDC=6, SOL=9)."""
-    if amount <= 0.0 or math.isnan(amount) or math.isinf(amount): return 0
+    """Converts float/string amount to atomic units with dynamic decimals (USDC=6, SOL=9)."""
+    try:
+        val = float(amount)
+    except (ValueError, TypeError):
+        return 0
+    if val <= 0.0 or math.isnan(val) or math.isinf(val): return 0
     scale = 10**decimals
-    scaled = amount * float(scale)
+    scaled = val * float(scale)
     return (2**64 - 1) if scaled >= (2**64 - 1) else int(round(scaled))
 
 def usdc_to_atomic_units(amount: float) -> int:

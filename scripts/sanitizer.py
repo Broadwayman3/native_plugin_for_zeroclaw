@@ -30,11 +30,15 @@ def sanitize_external_input(user_string: str, max_length: int = 100) -> str:
 
 def redact_api_key(error_msg: str) -> str:
     """
-    Автоматично маскує RPC API-ключі у логах помилок та stack traces.
+    Automatically redacts RPC API keys, tokens, secrets, and Solana byte array keypairs in error tracebacks.
     """
     if not error_msg or not isinstance(error_msg, str):
         return ""
-    return re.sub(r'api-key=[^&\s]+', 'api-key=REDACTED', error_msg)
+    masked = re.sub(r'(?i)(api[_-]?key|token|secret)=[^&\s]+', r'\1=REDACTED', error_msg)
+    masked = re.sub(r'\[\s*\d{1,3}\s*(?:,\s*\d{1,3}\s*){31,}\]', '[REDACTED_BYTE_KEYPAIR]', masked)
+    return masked
+
+redact_sensitive_info = redact_api_key
 
 def escape_telegram_markdown_v2(text: str) -> str:
     """
