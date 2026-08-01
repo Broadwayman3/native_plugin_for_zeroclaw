@@ -61,7 +61,7 @@ sequenceDiagram
 
 ## 🚀 1-Command Verification (For Hackathon Judges)
 
-Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 120 boundary and security tests:
+Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 130 boundary and security tests:
 
 ```bash
 ./scripts/verify_all.sh
@@ -107,7 +107,7 @@ python3 scripts/test_prompt_inj.py
 ./scripts/pre_commit.sh
 ```
 
-### 6. Run Comprehensive 120-Test Boundary & Stress Suite
+### 6. Run Comprehensive 130-Test Boundary & Stress Suite
 ```bash
 python3 scripts/test_boundary_cases.py
 ```
@@ -140,4 +140,4 @@ docker-compose up -d
 - **Tier 1 (Payments)**: Direct customer-to-merchant wallet settlement via Solana Pay URLs.
 - **Tier 3 (WASM Core)**: Rust plugin compiled to WASI WebAssembly sandbox.
 - **Squads v4 Multisig**: The agent operates solely as a `Proposer`. Store managers hold threshold signers; key theft cannot drain funds.
-- **Audited**: 100% pass rate on prompt-injection security tests ([`PROMPT_INJECTION_TEST.md`](./PROMPT_INJECTION_TEST.md)) and 120 comprehensive boundary tests ([`scripts/test_boundary_cases.py`](./scripts/test_boundary_cases.py)).
+- **Audited**: 100% pass rate on prompt-injection security tests ([`PROMPT_INJECTION_TEST.md`](./PROMPT_INJECTION_TEST.md)) and 130 comprehensive boundary tests ([`scripts/test_boundary_cases.py`](./scripts/test_boundary_cases.py)).

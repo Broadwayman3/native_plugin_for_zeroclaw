@@ -19,10 +19,13 @@ def sanitize_external_input(user_string: str, max_length: int = 100) -> str:
     # 1. Remove control characters, system tags, and line breaks (\r, \n, \t, \x00-\x1f)
     cleaned = re.sub(r'[\r\n\t\x00-\x1f\x7f-\x9f]', ' ', user_string)
     
-    # 2. Case-insensitive removal of prompt injection keywords
+    # 2. Strip Invisible Zero-Width & Directional Unicode Characters (\u200B-\u200D, \uFEFF, \u202E, \u00AD, \u200E, \u200F, \u2060)
+    cleaned = re.sub(r'[\u200B-\u200D\uFEFF\u202E\u00AD\u200E\u200F\u2060]', '', cleaned)
+    
+    # 3. Case-insensitive removal of prompt injection keywords
     cleaned = re.sub(r'(?i)(system\s*:|override|ignore\s+previous|approve_refund|developer\s+mode)', '', cleaned)
     
-    # 3. Strip leading/trailing whitespace and limit length
+    # 4. Strip leading/trailing whitespace and limit length
     return cleaned.strip()[:max_length]
 
 def redact_api_key(error_msg: str) -> str:

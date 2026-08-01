@@ -19,11 +19,35 @@ DB_PATH = "data/pos_store.db"
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.execute("PRAGMA journal_mode=WAL;")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+    except sqlite3.OperationalError:
+        conn.execute("PRAGMA journal_mode=DELETE;")  # Fallback for NFS/Docker network mounts
     conn.execute("PRAGMA busy_timeout=5000;")
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA cache_size=-64000;")
     return conn
+
+def release_nonce_account(conn, pubkey):
+    """
+    Звільняє заблокований Nonce-аккаунт.
+    """
+    cursor = conn.cursor()
+    cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE pubkey = ?", (pubkey,))
+    conn.commit()
+
+def cleanup_expired_pending_invoices(conn):
+    """
+    Автоматично маркує pending-інвойси старіші 24 годин як expired,
+    запобігаючи перевантаженню RPC-запитів у Cron SOP.
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE invoices 
+        SET status = 'expired', updated_at = CURRENT_TIMESTAMP 
+        WHERE status = 'pending' AND created_at < datetime('now', '-24 hours')
+    """)
+    conn.commit()
 
 def allocate_free_nonce_account(conn):
     """
@@ -275,6 +299,7 @@ def init_db():
         """, sample_data)
         
     conn.commit()
+    cleanup_expired_pending_invoices(conn)
     conn.close()
     print(f"✅ SQLite Database (WAL Mode & Nonce Pool & PIX Support) initialized at {DB_PATH}")
 
@@ -326,6 +351,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(summary, indent=2).encode('utf-8'))
 
             elif self.path == '/api/v1/invoices':
+                cleanup_expired_pending_invoices(conn)
                 cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
                 rows = [dict(r) for r in cursor.fetchall()]
                 self._set_headers(200)

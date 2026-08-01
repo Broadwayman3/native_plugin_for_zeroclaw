@@ -42,7 +42,7 @@ echo "6. Executing Pre-Commit Automated Safety Check..."
 ./scripts/pre_commit.sh
 
 echo ""
-echo "7. Running Full 120 Comprehensive Boundary & Edge Case Tests..."
+echo "7. Running Full 130 Comprehensive Boundary & Edge Case Tests..."
 python3 scripts/test_boundary_cases.py
 
 echo ""
