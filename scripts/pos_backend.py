@@ -92,6 +92,8 @@ def handle_get_invoices(handler, query_params):
 # Register REST API POST routes
 @route_post('/api/v1/invoices/create')
 def handle_create_invoice(handler, data, query_params):
+    if not isinstance(data, dict) or 'id' not in data or 'reference_pubkey' not in data or 'usdc_amount' not in data:
+        return 400, {"error": "Bad Request: Missing required invoice fields (id, reference_pubkey, usdc_amount)"}
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -103,7 +105,7 @@ def handle_create_invoice(handler, data, query_params):
         conn.commit()
         return 201, {"success": True, "invoice_id": data['id']}
     except Exception as e:
-        return 500, {"error": str(e)}
+        return 500, {"error": redact_api_key(str(e))}
     finally:
         conn.close()
 

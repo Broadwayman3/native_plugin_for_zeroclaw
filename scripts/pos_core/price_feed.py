@@ -34,22 +34,28 @@ def get_multitier_fiat_rate(
     # Tier 1: Primary Switchboard
     if primary_data and isinstance(primary_data, dict):
         ts = primary_data.get("timestamp", 0)
+        if ts > 10**11:
+            ts = ts // 1000
         rate = primary_data.get("rate")
-        if rate and (current_ts - ts) <= 300:
+        if rate and -5 <= (current_ts - ts) <= 300:
             return {"rate": float(rate), "tier": "primary_switchboard", "status": "OK"}
 
     # Tier 2: Secondary Pyth / REST Fiat API
     if secondary_data and isinstance(secondary_data, dict):
         ts = secondary_data.get("timestamp", 0)
+        if ts > 10**11:
+            ts = ts // 1000
         rate = secondary_data.get("rate")
-        if rate and (current_ts - ts) <= 300:
+        if rate and -5 <= (current_ts - ts) <= 300:
             return {"rate": float(rate), "tier": "secondary_pyth_hermes", "status": "OK"}
 
     # Tier 3: Tertiary Cached Fallback
     if cached_data and isinstance(cached_data, dict):
         ts = cached_data.get("timestamp", 0)
+        if ts > 10**11:
+            ts = ts // 1000
         rate = cached_data.get("rate")
-        if rate and (current_ts - ts) <= 900:
+        if rate and -5 <= (current_ts - ts) <= 900:
             return {"rate": float(rate), "tier": "tertiary_cache", "status": "WARNING_USING_CACHE"}
 
     # Tier 4: Quaternary Static Offline Fallback

@@ -22,7 +22,7 @@ def allocate_free_nonce_account(conn: Optional[sqlite3.Connection] = None, db_pa
             )
         """)
         # 1. Auto-release locks hanging for >15 minutes
-        cursor.execute(f"UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE status = 'locked' AND locked_at < datetime('now', '-{NONCE_TTL_MINUTES} minutes')")
+        cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE status = 'locked' AND locked_at < datetime('now', '-' || ? || ' minutes')", (str(NONCE_TTL_MINUTES),))
 
         # 2. Check for RETURNING support (SQLite >= 3.35.0)
         sqlite_version = sqlite3.sqlite_version_info

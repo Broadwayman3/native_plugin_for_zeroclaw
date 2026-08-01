@@ -225,7 +225,7 @@ def test_134_zeroslippage_exact_boundary_match():
 def test_135_shell_scripts_executable_permission():
     from pathlib import Path
     repo_root = Path(__file__).resolve().parent.parent.parent
-    script_paths = [repo_root / "scripts" / name for name in ["setup.sh", "build_wasm.sh", "verify_all.sh", "pre_commit.sh", "test_wasm_host.py"]]
+    script_paths = [repo_root / "scripts" / name for name in ["setup.sh", "build_wasm.sh", "verify_all.sh", "pre_commit.sh", "test_wasm_host.py", "lint_safety_ast.py"]]
     assert all(os.access(p, os.X_OK) for p in script_paths if p.exists())
 
 def test_136_wasm_wit_abi_package_name_match():

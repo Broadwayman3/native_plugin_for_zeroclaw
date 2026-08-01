@@ -14,6 +14,10 @@ echo "1. Initializing Environment..."
 ./scripts/setup.sh
 
 echo ""
+echo "1b. Running AST Static Security & Safety Linter..."
+python3 scripts/lint_safety_ast.py
+
+echo ""
 echo "2. Validating Fail-Closed JSON Schema & Context Truncation Engine..."
 python3 scripts/validators.py
 
@@ -46,7 +50,7 @@ echo "6. Executing Pre-Commit Automated Safety Check..."
 ./scripts/pre_commit.sh
 
 echo ""
-echo "7. Running Full 160 Comprehensive Boundary & Edge Case Tests..."
+echo "7. Running Full 200 Comprehensive Boundary & Edge Case Tests..."
 python3 scripts/test_boundary_cases.py
 
 echo ""

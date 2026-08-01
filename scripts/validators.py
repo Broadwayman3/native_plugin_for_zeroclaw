@@ -6,7 +6,11 @@ Prevents context window flooding by trimming payloads to ~150 tokens.
 """
 
 import json
-import jsonschema
+
+try:
+    import jsonschema
+except ImportError:
+    jsonschema = None
 
 SOLANA_PAY_RESPONSE_SCHEMA = {
     "type": "object",
@@ -43,12 +47,41 @@ def validate_llm_json_output(raw_output: str, schema: dict = SOLANA_PAY_RESPONSE
     """
     Evaluates raw LLM or API string against a strict JSON Schema.
     Raises ValueError on schema violation for Fail-Closed halting.
+    Includes zero-dependency fallback when jsonschema library is absent.
     """
     try:
         data = json.loads(raw_output)
-        jsonschema.validate(instance=data, schema=schema)
+        if jsonschema is not None:
+            jsonschema.validate(instance=data, schema=schema)
+        else:
+            if not isinstance(data, dict):
+                raise ValueError("Output must be a JSON object")
+            for req in schema.get("required", []):
+                if req not in data:
+                    raise ValueError(f"Missing required field: {req}")
+            props = schema.get("properties", {})
+            for k, val in data.items():
+                if k in props:
+                    p = props[k]
+                    ptype = p.get("type")
+                    if ptype == "number" or ptype == "integer":
+                        if not isinstance(val, (int, float)) or isinstance(val, bool):
+                            raise ValueError(f"Invalid type for {k}: expected number")
+                        if "minimum" in p and val < p["minimum"]:
+                            raise ValueError(f"{k} must be >= {p['minimum']}")
+                        if "maximum" in p and val > p["maximum"]:
+                            raise ValueError(f"{k} must be <= {p['maximum']}")
+                    elif ptype == "string":
+                        if not isinstance(val, str):
+                            raise ValueError(f"Invalid type for {k}: expected string")
+                        if "minLength" in p and len(val) < p["minLength"]:
+                            raise ValueError(f"{k} length must be >= {p['minLength']}")
+                        if "maxLength" in p and len(val) > p["maxLength"]:
+                            raise ValueError(f"{k} length must be <= {p['maxLength']}")
+                        if "enum" in p and val not in p["enum"]:
+                            raise ValueError(f"Invalid enum value for {k}: {val}")
         return data
-    except (json.JSONDecodeError, jsonschema.ValidationError) as e:
+    except Exception as e:
         raise ValueError(f"🚨 FAIL-CLOSED: Output violated structural schema constraints: {e}")
 
 def truncate_for_context(data_dict: dict, max_tokens: int = 150) -> dict:
