@@ -20,6 +20,37 @@ def get_db_connection():
     conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
+def check_and_register_telegram_update(conn, update_id):
+    cursor = conn.cursor()
+    # Auto TTL cleanup for updates older than 24 hours (1 day)
+    cursor.execute("DELETE FROM processed_updates WHERE processed_at < datetime('now', '-1 day')")
+    try:
+        cursor.execute("INSERT INTO processed_updates (update_id) VALUES (?)", (update_id,))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+def get_required_commitment_level(amount_usdc, threshold_usdc=50.0):
+    return "finalized" if amount_usdc >= threshold_usdc else "confirmed"
+
+def generate_atomic_refund_instructions(payer_pubkey="REFUND_SESSION_KEY", recipient_pubkey="9xK2...Customer1", amount_usdc=10.0):
+    return [
+        {
+            "instruction": "createAssociatedTokenAccountIdempotent",
+            "payer": payer_pubkey,
+            "owner": recipient_pubkey,
+            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+            "instruction": "splTokenTransfer",
+            "from": payer_pubkey,
+            "to": recipient_pubkey,
+            "amount_usdc": amount_usdc
+        }
+    ]
+
+
 def init_db():
     os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
@@ -50,6 +81,12 @@ def init_db():
             tx_base64 TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS processed_updates (
+            update_id INTEGER PRIMARY KEY,
+            processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
