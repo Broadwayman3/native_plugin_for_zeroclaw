@@ -29,6 +29,7 @@ vault = "${SQUADS_VAULT_PUBKEY}"
 [security]
 max_single_refund_usdc = 50.0
 daily_refund_limit_usdc = 200.0
+fiat_slippage_tolerance_pct = 1.0 # 1.0% tolerance for fiat exchange rate fluctuations during checkout
 require_human_approval_for_refunds = true
 strict_prompt_isolation = true
 

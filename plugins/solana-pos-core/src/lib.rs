@@ -64,7 +64,17 @@ impl exports::zeroclaw::plugin::pos_core::Guest for PosCorePlugin {
             };
         }
 
-        let atomic_amount = usdc_to_atomic_units(req.amount_usdc);
+        let atomic_amount = match safe_f64_to_u64_atomic(req.amount_usdc, 6) {
+            Ok(val) => val,
+            Err(e) => {
+                return exports::zeroclaw::plugin::pos_core::SquadsProposalResult {
+                    success: false,
+                    proposal_tx_base64: String::new(),
+                    proposal_index: 0,
+                    error: Some(format!("Atomic unit conversion error: {}", e)),
+                };
+            }
+        };
         let proposal_index = req.proposal_index;
 
         // Anchor discriminator for Squads v4 `create_proposal`: sha256("global:create_proposal")[..8]
@@ -88,7 +98,17 @@ impl exports::zeroclaw::plugin::pos_core::Guest for PosCorePlugin {
             }
         });
 
-        let payload_bytes = serde_json::to_vec(&instruction_payload).unwrap_or_default();
+        let payload_bytes = match serde_json::to_vec(&instruction_payload) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return exports::zeroclaw::plugin::pos_core::SquadsProposalResult {
+                    success: false,
+                    proposal_tx_base64: String::new(),
+                    proposal_index: 0,
+                    error: Some(format!("Payload serialization error: {}", e)),
+                };
+            }
+        };
         let proposal_tx_base64 = base64_encode(&payload_bytes);
 
         exports::zeroclaw::plugin::pos_core::SquadsProposalResult {
@@ -104,15 +124,25 @@ export!(PosCorePlugin);
 
 pub const USDC_SCALE: f64 = 1_000_000.0;
 
-pub fn usdc_to_atomic_units(amount_usdc: f64) -> u64 {
-    if amount_usdc <= 0.0 || amount_usdc.is_nan() || amount_usdc.is_infinite() {
-        return 0;
+/// Prevents floating point precision drift (IEEE 754 precision drift) and overflow in u64.
+/// Guarantees zero panics inside the WASM sandbox environment.
+#[inline(always)]
+pub fn safe_f64_to_u64_atomic(amount: f64, decimals: u8) -> Result<u64, &'static str> {
+    if amount <= 0.0 || amount.is_nan() || amount.is_infinite() {
+        return Err("Invalid float input: must be positive and finite");
     }
-    let scaled = amount_usdc * USDC_SCALE;
+    let multiplier = 10f64.powi(decimals as i32);
+    let scaled = amount * multiplier;
+
     if scaled >= (u64::MAX as f64) {
-        return u64::MAX;
+        return Err("Integer overflow: amount exceeds maximum u64 bounds");
     }
-    scaled.round() as u64
+
+    Ok(scaled.round() as u64)
+}
+
+pub fn usdc_to_atomic_units(amount_usdc: f64) -> u64 {
+    safe_f64_to_u64_atomic(amount_usdc, 6).unwrap_or(0)
 }
 
 fn calculate_token2022_fee_internal(
@@ -181,11 +211,20 @@ mod tests {
     use proptest::prelude::*;
 
     #[test]
+    fn test_safe_f64_to_u64_atomic() {
+        assert_eq!(safe_f64_to_u64_atomic(10.5, 6).unwrap(), 10_500_000);
+        assert!(safe_f64_to_u64_atomic(-1.0, 6).is_err());
+        assert!(safe_f64_to_u64_atomic(f64::NAN, 6).is_err());
+        assert!(safe_f64_to_u64_atomic(f64::INFINITY, 6).is_err());
+        assert!(safe_f64_to_u64_atomic(1e25, 6).is_err());
+    }
+
+    #[test]
     fn test_nan_infinity_boundary() {
         assert_eq!(usdc_to_atomic_units(f64::NAN), 0);
         assert_eq!(usdc_to_atomic_units(f64::INFINITY), 0);
         assert_eq!(usdc_to_atomic_units(-10.0), 0);
-        assert_eq!(usdc_to_atomic_units(1e25), u64::MAX);
+        assert_eq!(usdc_to_atomic_units(1e25), 0);
     }
 
     #[test]
@@ -199,6 +238,11 @@ mod tests {
         #[test]
         fn prop_usdc_conversion_never_panics(val in proptest::num::f64::ANY) {
             let _ = usdc_to_atomic_units(val);
+        }
+
+        #[test]
+        fn prop_safe_atomic_never_panics(val in proptest::num::f64::ANY, dec in 0u8..18u8) {
+            let _ = safe_f64_to_u64_atomic(val, dec);
         }
 
         #[test]

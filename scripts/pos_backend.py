@@ -37,6 +37,82 @@ def allocate_free_nonce_account(conn):
         return nonce_pubkey
     return None
 
+def calculate_pix_crc16(payload_without_crc: str) -> str:
+    """
+    Calculates EMV QRCPS CRC16 (CCITT-FALSE, polynomial 0x1021, init 0xFFFF).
+    Appends '6304' before computing checksum as per EMV Co / BR Code specification.
+    Returns 4-character uppercase hexadecimal string (e.g. '1D2C').
+    """
+    data_to_hash = (payload_without_crc + "6304").encode('utf-8')
+    crc = 0xFFFF
+    for byte in data_to_hash:
+        crc ^= (byte << 8)
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = ((crc << 1) ^ 0x1021) & 0xFFFF
+            else:
+                crc = (crc << 1) & 0xFFFF
+    return f"{crc:04X}"
+
+def generate_pix_emv_payload(pix_key: str, amount_brl: float, merchant_name: str = "ZeroClaw POS") -> str:
+    """
+    Generates Brazil-first EMV QRCPS PIX payload with valid CRC16 CCITT-FALSE checksum.
+    Compatible with Brazilian banking apps (br.gov.bcb.pix).
+    Uses byte-length calculation for multi-byte UTF-8 character support in Tag 59.
+    """
+    amount_str = f"{amount_brl:.2f}"
+    merchant_bytes = merchant_name.encode('utf-8')
+    merchant_len = len(merchant_bytes)
+    pix_key_bytes = pix_key.encode('utf-8')
+    pix_key_len = len(pix_key_bytes)
+    payload_base = (
+        "00020126580014br.gov.bcb.pix"
+        f"01{pix_key_len:02d}{pix_key}"
+        "520400005303986"
+        f"54{len(amount_str):02d}{amount_str}"
+        "5802BR"
+        f"59{merchant_len:02d}{merchant_name}"
+        "6009SAO PAULO"
+        "62070503***"
+    )
+    crc_hex = calculate_pix_crc16(payload_base)
+    return f"{payload_base}6304{crc_hex}"
+
+def mark_nonce_account_stale(conn, pubkey: str):
+    """
+    Solana AdvanceNonceAccount Revert Recovery Engine.
+    When a transaction fails on-chain, AdvanceNonceAccount still advances the nonce state.
+    Marks the nonce as 'stale_needs_refresh' to force RPC getAccountInfo re-fetch before reuse.
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE nonce_accounts 
+        SET status = 'stale_needs_refresh', locked_at = CURRENT_TIMESTAMP 
+        WHERE pubkey = ?
+    """, (pubkey,))
+    conn.commit()
+
+def refresh_stale_nonce_account(conn, pubkey: str, new_nonce_hash: str):
+    """
+    Refreshes a stale nonce account after on-chain RPC getAccountInfo state fetch.
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE nonce_accounts 
+        SET status = 'free', locked_at = NULL 
+        WHERE pubkey = ?
+    """, (pubkey,))
+    conn.commit()
+
+def is_payment_amount_valid(paid_usdc: float, expected_usdc: float, slippage_tolerance_pct: float = 1.0) -> bool:
+    """
+    Fiat Volatility & Slippage Tolerance Guard.
+    Prevents POS payment rejection when exchange rate (BRL/USD/UAH) moves slightly during checkout.
+    Accepts payment if paid_usdc >= expected_usdc * (1.0 - slippage_tolerance_pct / 100.0).
+    """
+    min_required = expected_usdc * (1.0 - (slippage_tolerance_pct / 100.0))
+    return paid_usdc >= min_required
+
 def release_nonce_account(conn, nonce_pubkey):
     cursor = conn.cursor()
     cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE pubkey = ?", (nonce_pubkey,))

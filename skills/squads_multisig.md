@@ -21,12 +21,13 @@ Instead of signing and executing transfers directly from a hot wallet, the agent
                                                                  [Approve & Execute Tx]
 ```
 
-## Squads v4 Parameters
+## Squads v4 Parameters & Non-Custodial Key Roles
 
 - **Program ID**: `SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm`
 - **Multisig Account**: `${SQUADS_MULTISIG_PUBKEY}`
 - **Vault Account**: `${SQUADS_VAULT_PUBKEY}`
-- **Agent Proposer Role**: Authorized to invoke `multisig_create_proposal` & `multisig_add_instruction`.
+- **REFUND_SESSION_KEY Role**: `Payer & Proposer` (schedules proposal on-chain & pays ~0.002 SOL rent, but holds **zero Execution Authority**).
+- **Store Manager Role**: `Threshold Signer & Execution Authority` (holds final authorization keys).
 
 ## Blind Spot #4 Countermeasure: Live On-Chain Proposal Index Synchronization
 

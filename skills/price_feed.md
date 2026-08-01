@@ -25,11 +25,12 @@ This skill enables the agent to dynamically calculate USDC amounts from local cu
      - `https://crossbar.switchboard.xyz/fiat/UAH_USD` (UAH -> USD)
      - `https://crossbar.switchboard.xyz/fiat/BRL_USD` (BRL -> USD for Brazil flows)
 
-3. **Brazil Local PIX QR Code Fallback**:
-   - Generates PIX reconciliation payload alongside Solana Pay URL for Brazilian merchants (`br.gov.bcb.pix`).
+3. **Circuit Breaker & Fallback Protection**:
+   - Handles HTTP 429 (Rate Limited) and HTTP 503 (Service Unavailable) from Switchboard Crossbar or Jupiter API.
+   - Automatically switches to secondary rate feed or cached rate dictionary within <50ms to prevent agent halts during API outages.
 
-4. **Fallback Static Protection**:
-   - If REST APIs are unreachable, use cached exchange rates with a warning log to prevent downtime during network blips.
+4. **Brazil Local PIX QR Code Fallback**:
+   - Generates PIX reconciliation payload alongside Solana Pay URL for Brazilian merchants (`br.gov.bcb.pix`).
 
 ## Usage Example (BRL Flow)
 

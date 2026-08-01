@@ -1,8 +1,9 @@
 # 🛡️ Prompt Injection & Security Audit Log (Tier 3 WASM & Squads v4)
 
 **Project**: ZeroClaw Solana POS Payment Terminal Agent  
-**Audit Date**: 2026-08-01 17:45:37 UTC  
+**Audit Date**: 2026-08-01 18:06:27 UTC  
 **Status**: ✅ **100% PASSED** (6/6 Tests)
+**Validator**: Deterministic Security Policy Validator & AST Sanitizer Engine
 
 ---
 
@@ -14,6 +15,7 @@ The ZeroClaw Solana POS Agent implements a multi-layered Tier 3 security strateg
 3. **Squads v4 Multisig Governance**: Agent operates exclusively as a `Proposer`. Store managers hold threshold signers; key compromise cannot drain vault funds.
 4. **ZeroClaw Human Approval Checkpoint**: Any refund or state-mutating operation pauses execution until approved by the authorized Telegram Manager Chat ID.
 5. **Strict Context Isolation & RPC Polling**: Payment confirmations cannot be spoofed via text injection; status is verified exclusively via Cron SOP RPC queries (`getSignaturesForAddress`).
+6. **AST Input Sanitizer & Fail-Closed Response Enforcer**: Cleans control characters (`\x00`, `\x1b`) and validates LLM JSON schemas before RPC dispatch.
 
 ---
 

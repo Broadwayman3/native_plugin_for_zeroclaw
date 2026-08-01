@@ -14,7 +14,11 @@ echo "1. Initializing Environment..."
 ./scripts/setup.sh
 
 echo ""
-echo "2. Building & Validating Rust WASM Plugin (solana-pos-core)..."
+echo "2. Validating Fail-Closed JSON Schema & Context Truncation Engine..."
+python3 scripts/validators.py
+
+echo ""
+echo "3. Building & Validating Rust WASM Plugin (solana-pos-core)..."
 ./scripts/build_wasm.sh
 
 if command -v wasm-tools >/dev/null 2>&1; then
@@ -26,15 +30,15 @@ else
 fi
 
 echo ""
-echo "3. Testing Local SQLite Database, Nonce Pool & x402 Engine..."
+echo "4. Testing Local SQLite Database, Nonce Pool & x402 Engine..."
 python3 scripts/pos_backend.py --test
 
 echo ""
-echo "4. Running Prompt Injection & Security Audit Suite..."
+echo "5. Running Prompt Injection & Security Audit Suite..."
 python3 scripts/test_prompt_inj.py
 
 echo ""
-echo "5. Running 75 Comprehensive Boundary & Edge Case Tests..."
+echo "6. Running Full 103 Comprehensive Boundary & Edge Case Tests..."
 python3 scripts/test_boundary_cases.py
 
 echo ""
