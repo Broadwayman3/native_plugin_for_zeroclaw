@@ -7,6 +7,13 @@ description: Skill for generating Solana Pay URLs, QR codes, and Blinks with uni
 
 This skill allows the agent to parse customer/cashier invoice requests, generate valid non-custodial Solana Pay URLs, and enforce **Triple Payment Verification**.
 
+## Hard System Constraints (LLM Non-Determinism Defense)
+
+> **CRITICAL INSTRUCTION FOR ALL LLMs (Claude, GPT-4o, Llama 3)**:
+> 1. Output strictly valid formatted markdown or raw JSON.
+> 2. Do NOT include preambles (e.g. "Sure, here is your invoice"), introductory filler, or code block syntax wrappers outside of specified templates.
+> 3. Preserve exact base58 Solana Public Keys and reference parameters without truncating characters.
+
 ## Key Rules & Workflow
 
 1. **Unique Reference Pubkey Generation**:
@@ -28,7 +35,7 @@ solana:<MERCHANT_PUBKEY>?amount=<AMOUNT>&spl-token=<USDC_MINT>&reference=<UNIQUE
 
 3. **Triple Payment Verification Engine (Prevents Forgery & Dusting)**:
    - **Condition 1 (Reference Matching)**: Transaction must include the invoice's unique `reference` Ed25519 public key.
-   - **Condition 2 (Token Mint Enforcement)**: Token transfer mint must EXACTLY match USDC Mint (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`). Rejects fake/custom SPL tokens.
+   - **Condition 2 (Token Mint Enforcement)**: Token transfer mint must EXACTLY match USDC Mint (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` or Devnet `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`). Rejects fake/custom SPL tokens.
    - **Condition 3 (Amount Sufficiency)**: `paid_amount_atomic_units` >= `expected_amount_atomic_units`. Rejects 1-lamport micro-dusting attacks!
 
 4. **Output Formatting for LLM (Token-Optimized)**:

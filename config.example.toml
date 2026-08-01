@@ -14,10 +14,17 @@ manager_chat_id = "${MANAGER_TELEGRAM_ID}"
 
 [solana]
 rpc_url = "${SOLANA_RPC_URL}"
-commitment = "confirmed"
+fallback_rpc_url = "${SOLANA_FALLBACK_RPC_URL}"
+commitment = "confirmed" # Strictly enforced: "confirmed" or "finalized" (prevents block reorg vulnerabilities)
 merchant_wallet = "${MERCHANT_WALLET_PUBKEY}"
 refund_session_wallet = "${REFUND_SESSION_KEY}"
 nonce_account = "${NONCE_ACCOUNT_PUBKEY}"
+usdc_mint = "${USDC_MINT_ADDRESS}"
+
+[squads_v4]
+program_id = "SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm"
+multisig = "${SQUADS_MULTISIG_PUBKEY}"
+vault = "${SQUADS_VAULT_PUBKEY}"
 
 [security]
 max_single_refund_usdc = 50.0

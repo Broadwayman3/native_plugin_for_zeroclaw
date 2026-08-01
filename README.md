@@ -54,6 +54,15 @@ sequenceDiagram
 
 ---
 
+## 🎁 Judges Testing & Faucet Instructions (Solana Devnet)
+
+To test the agent on Solana Devnet:
+1. **Request Test SOL**: Obtain Devnet SOL at the official [Solana Devnet Faucet](https://faucet.solana.com/).
+2. **Devnet USDC Mint**: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+3. **Recommended RPC Node**: Helius Devnet (`https://devnet.helius-rpc.com/?api-key=YOUR_KEY`) for 100% reference key indexing speed (2-5 sec confirmation).
+
+---
+
 ## ⚡ Quickstart in 60 Seconds
 
 ### 1. Initialize Environment
@@ -77,7 +86,12 @@ python3 scripts/pos_backend.py 8080
 python3 scripts/test_prompt_inj.py
 ```
 
-### 5. Deploy Agent via Docker
+### 5. Run Comprehensive 15-Test Boundary & Stress Suite
+```bash
+python3 scripts/test_boundary_cases.py
+```
+
+### 6. Deploy Agent via Docker
 ```bash
 docker-compose up -d
 ```

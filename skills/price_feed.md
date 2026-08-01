@@ -7,6 +7,13 @@ description: Skill for converting local fiat currencies (UAH, EUR, USD, BRL) to 
 
 This skill enables the agent to dynamically calculate USDC amounts from local currency prices specified by cashiers or customers.
 
+## Hard System Constraints (LLM Non-Determinism Defense)
+
+> **CRITICAL INSTRUCTION FOR ALL LLMs (Claude, GPT-4o, Llama 3)**:
+> 1. Output strictly valid JSON or the exact markdown template specified.
+> 2. Do NOT add conversational preambles, introductory text, or concluding notes.
+> 3. Never alter numeric precision or currency symbol definitions.
+
 ## Supported Endpoints & Fallbacks
 
 1. **Primary Feed - Jupiter Price API**:
@@ -18,7 +25,7 @@ This skill enables the agent to dynamically calculate USDC amounts from local cu
    - Returns current exchange rate (e.g. 1 USD = 41.50 UAH, 1 USD = 5.45 BRL).
 
 3. **Fallback Static Protection**:
-   - If REST APIs are unreachable, use cached exchange rates with a warning log to prevent downtime during network blips (Trap #4 prevention).
+   - If REST APIs are unreachable, use cached exchange rates with a warning log to prevent downtime during network blips.
 
 ## Usage Example
 

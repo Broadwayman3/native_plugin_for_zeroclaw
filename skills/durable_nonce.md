@@ -1,19 +1,18 @@
 ---
 name: durable_nonce
-description: Skill for constructing Durable Nonce transactions to solve Blockhash Expiry during Human Approval Checkpoints.
+description: Skill for constructing Durable Nonce transactions with live RPC state querying to solve Blockhash Expiry and Nonce Advance Desynchronization.
 ---
 
 # Durable Nonce Account Skill (Solana Craft Solution)
 
-## Problem Solved: Blockhash Expiry in Human Approval Workflows
+## Problem Solved: Blockhash Expiry & Async Nonce Advance Desynchronization
 
-In standard Solana transactions, blockhashes expire in ~90 seconds (~150 blocks). 
-When an agent initiates a **Refund Request**, it pauses execution at a **Human Approval Checkpoint** waiting for the store manager to review and reply "Yes" in Telegram.
-If the manager takes 5 minutes to respond, a standard transaction fails with `BlockhashNotFound`.
+1. **Blockhash Expiry**: Standard Solana blockhashes expire in ~90 seconds (~150 blocks). When a refund pauses at a **Human Approval Checkpoint**, standard transactions fail with `BlockhashNotFound`.
+2. **Async Nonce Advance Risk (Blind Spot #3)**: If a transaction containing `AdvanceNonceAccount` is sent to the network but fails on a subsequent instruction, the Nonce Account **still advances on-chain**. Storing or caching Nonce values locally causes desynchronization and transaction failures!
 
-## Solution: Durable Nonce Accounts
+## Solution: Live RPC Nonce State Querying
 
-Durable Nonces replace the recent blockhash with a stored nonce value from an on-chain Nonce Account. As long as `AdvanceNonceAccount` is the **first instruction** (Instruction #0) in the transaction, the transaction never expires regardless of how long the human approval takes.
+The agent MUST query live on-chain account state via `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` **immediately prior** to building every single transaction proposal. Never cache nonce hashes locally!
 
 ### On-Chain Account Requirements:
 - **Account Type**: SystemProgram Nonce Account (80 bytes data).
@@ -22,30 +21,29 @@ Durable Nonces replace the recent blockhash with a stored nonce value from an on
 
 ### Uninitialized Nonce Account Edge Case Handling:
 
-If the agent queries RPC `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` and finds an empty or uninitialized account (data length == 0):
+If `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` returns an uninitialized account (space == 0):
 
-1. **Auto-Initialization Instruction**:
+1. **Auto-Initialization Instructions**:
    - Instruction #0: `SystemProgram.createAccount({ fromPubkey: REFUND_SESSION_KEY, newAccountPubkey: NONCE_ACCOUNT_PUBKEY, lamports: 1447200, space: 80, programId: SYSTEM_PROGRAM_ID })`
    - Instruction #1: `SystemProgram.initializeNonceAccount({ noncePubkey: NONCE_ACCOUNT_PUBKEY, authorizedPubkey: REFUND_SESSION_KEY })`
-2. Once initialized, the Nonce Account retains stored blockhashes permanently for all subsequent durable transaction proposals.
 
-### Workflow for Refunds:
+### Execution Workflow for Refunds:
 
-1. **Step 1 (Agent Pre-build)**:
+1. **Step 1 (Live RPC Query & Pre-build)**:
    - Client requests refund: *"Refund 5 USDC for invoice #102"*.
-   - Agent queries the pre-created Nonce Account address (`${NONCE_ACCOUNT_PUBKEY}`).
-   - Fetches stored `nonce_hash` from RPC (`getAccountInfo`).
+   - **CRITICAL STEP**: Agent performs live RPC call `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` with `commitment: "confirmed"`.
+   - Parses fresh `nonce_hash` from live on-chain account data.
    - Builds transaction:
      - `Instruction #0`: `SystemProgram.advanceNonceAccount({ noncePubkey, authorizedPubkey })`
      - `Instruction #1`: `TokenProgram.transfer({ source: REFUND_SESSION_WALLET, destination: CLIENT_WALLET, amount: 5_000_000 })`
-   - Sets `recentBlockhash = nonce_hash`.
+   - Sets `recentBlockhash = live_nonce_hash`.
 
 2. **Step 2 (Human Checkpoint Pause)**:
    - Agent sends Telegram message to Manager ID:
      > ⚠️ **Запит на повернення коштів**
      > • Сума: 5.00 USDC
      > • Клієнт: `9xK2...mQ11`
-     > • Nonce status: Prepared (Durable)
+     > • Nonce status: Prepared (Durable Live)
      > 
      > [Схвалити] / [Відхилити]
 
@@ -60,6 +58,7 @@ If the agent queries RPC `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` and finds an emp
   "durable_nonce_active": true,
   "nonce_account": "Nonce111111111111111111111111111111111111111",
   "stored_nonce": "4uQeVj5t...9xKb",
+  "live_rpc_verified": true,
   "status": "valid_indefinitely_until_advanced"
 }
 ```
