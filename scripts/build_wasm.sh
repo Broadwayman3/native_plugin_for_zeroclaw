@@ -39,6 +39,10 @@ if command -v cargo >/dev/null 2>&1; then
 
     WASM_FILE="$PLUGIN_DIR/target/wasm32-wasip2/release/solana_pos_core.wasm"
     if [ -f "$WASM_FILE" ]; then
+        if command -v wasm-opt >/dev/null 2>&1; then
+            echo "⚡ Optimizing WASM binary size with wasm-opt -Oz..."
+            wasm-opt -Oz "$WASM_FILE" -o "$WASM_FILE" || true
+        fi
         SIZE=$(du -h "$WASM_FILE" | cut -f1)
         echo ""
         echo "=========================================================="

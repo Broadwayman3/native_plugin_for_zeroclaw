@@ -13,11 +13,16 @@ import sqlite3
 import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+from sanitizer import redact_api_key
+
 DB_PATH = "data/pos_store.db"
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA busy_timeout=5000;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA cache_size=-64000;")
     return conn
 
 def allocate_free_nonce_account(conn):
@@ -353,7 +358,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
                 cursor.execute("""
                     UPDATE invoices 
                     SET status = ?, tx_signature = ?, updated_at = ? 
-                    WHERE id = ? AND (status = 'pending' OR status = ?)
+                    WHERE id = ? AND (status = 'pending' OR status = 'partially_paid' OR status = ?)
                 """, (data['status'], data.get('tx_signature'), now, data['invoice_id'], data['status']))
                 conn.commit()
                 updated_count = cursor.rowcount
@@ -365,7 +370,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps({"success": True, "updated": updated_count}).encode('utf-8'))
             except Exception as e:
                 self._set_headers(500)
-                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                self.wfile.write(json.dumps({"error": redact_api_key(str(e))}).encode('utf-8'))
 
         else:
             self._set_headers(404)
