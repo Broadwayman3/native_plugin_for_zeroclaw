@@ -28,18 +28,31 @@ def get_db_connection():
 def allocate_free_nonce_account(conn):
     """
     Атомарно виділяє вільний Nonce-аккаунт із пулу з 15-хвилинним TTL авто-звільненням завислих локів.
+    Використовує єдиний SQL UPDATE ... RETURNING для усунення Race Conditions при паралельних запитах.
     """
     cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS nonce_accounts (
+            pubkey TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'free',
+            locked_at TIMESTAMP
+        )
+    """)
     # 1. Автоматично звільняємо локи, що висять понад 15 хвилин (TTL auto-release)
     cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE status = 'locked' AND locked_at < datetime('now', '-15 minutes')")
-    # 2. Беремо вільний nonce
-    cursor.execute("SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1")
+    # 2. Атомарно обираємо та блокуємо вільний nonce за один SQL-запит
+    cursor.execute("""
+        UPDATE nonce_accounts 
+        SET status = 'locked', locked_at = CURRENT_TIMESTAMP 
+        WHERE pubkey = (
+            SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1
+        )
+        RETURNING pubkey;
+    """)
     row = cursor.fetchone()
+    conn.commit()
     if row:
-        nonce_pubkey = row[0]
-        cursor.execute("UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP WHERE pubkey = ?", (nonce_pubkey,))
-        conn.commit()
-        return nonce_pubkey
+        return row[0]
     return None
 
 def calculate_pix_crc16(payload_without_crc: str) -> str:
@@ -293,35 +306,36 @@ class POSApiHandler(BaseHTTPRequestHandler):
             conn.close()
             return
 
-        if self.path == '/api/v1/sales/summary':
-            cursor.execute("SELECT COUNT(*) as total_invoices, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid'")
-            row = cursor.fetchone()
-            cursor.execute("SELECT COUNT(*) as pending_count FROM invoices WHERE status = 'pending'")
-            pending_row = cursor.fetchone()
-            
-            summary = {
-                "business_name": "ZeroClaw Coffee POS",
-                "currency": "USDC",
-                "total_paid_invoices": row["total_invoices"] or 0,
-                "total_sales_usdc": round(row["total_usdc"] or 0.0, 2),
-                "total_pending_invoices": pending_row["pending_count"] or 0,
-                "journal_mode": "WAL",
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-            }
-            self._set_headers(200)
-            self.wfile.write(json.dumps(summary, indent=2).encode('utf-8'))
+        try:
+            if self.path == '/api/v1/sales/summary':
+                cursor.execute("SELECT COUNT(*) as total_invoices, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid'")
+                row = cursor.fetchone()
+                cursor.execute("SELECT COUNT(*) as pending_count FROM invoices WHERE status = 'pending'")
+                pending_row = cursor.fetchone()
+                
+                summary = {
+                    "business_name": "ZeroClaw Coffee POS",
+                    "currency": "USDC",
+                    "total_paid_invoices": row["total_invoices"] or 0,
+                    "total_sales_usdc": round(row["total_usdc"] or 0.0, 2),
+                    "total_pending_invoices": pending_row["pending_count"] or 0,
+                    "journal_mode": "WAL",
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                }
+                self._set_headers(200)
+                self.wfile.write(json.dumps(summary, indent=2).encode('utf-8'))
 
-        elif self.path == '/api/v1/invoices':
-            cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
-            rows = [dict(r) for r in cursor.fetchall()]
-            self._set_headers(200)
-            self.wfile.write(json.dumps(rows, indent=2).encode('utf-8'))
+            elif self.path == '/api/v1/invoices':
+                cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
+                rows = [dict(r) for r in cursor.fetchall()]
+                self._set_headers(200)
+                self.wfile.write(json.dumps(rows, indent=2).encode('utf-8'))
 
-        else:
-            self._set_headers(404)
-            self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
-
-        conn.close()
+            else:
+                self._set_headers(404)
+                self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
+        finally:
+            conn.close()
 
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
@@ -337,46 +351,74 @@ class POSApiHandler(BaseHTTPRequestHandler):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        if self.path == '/api/v1/invoices/create':
-            try:
-                now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                cursor.execute("""
-                    INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-                """, (data['id'], data['reference_pubkey'], data.get('fiat_currency', 'USD'), data.get('fiat_amount', data['usdc_amount']), data['usdc_amount'], now, now))
-                conn.commit()
-                self._set_headers(201)
-                self.wfile.write(json.dumps({"success": True, "invoice_id": data['id']}).encode('utf-8'))
-            except Exception as e:
-                self._set_headers(500)
-                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        try:
+            if self.path == '/api/v1/invoices/create':
+                try:
+                    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    cursor.execute("""
+                        INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+                    """, (data['id'], data['reference_pubkey'], data.get('fiat_currency', 'USD'), data.get('fiat_amount', data['usdc_amount']), data['usdc_amount'], now, now))
+                    conn.commit()
+                    self._set_headers(201)
+                    self.wfile.write(json.dumps({"success": True, "invoice_id": data['id']}).encode('utf-8'))
+                except Exception as e:
+                    self._set_headers(500)
+                    self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
 
-        elif self.path == '/api/v1/invoices/update_status':
-            try:
-                now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                # Atomic state transition: UPDATE ... WHERE status = 'pending' (prevents double fulfillment)
-                cursor.execute("""
-                    UPDATE invoices 
-                    SET status = ?, tx_signature = ?, updated_at = ? 
-                    WHERE id = ? AND (status = 'pending' OR status = 'partially_paid' OR status = ?)
-                """, (data['status'], data.get('tx_signature'), now, data['invoice_id'], data['status']))
-                conn.commit()
-                updated_count = cursor.rowcount
-                if updated_count == 0:
-                    self._set_headers(409)
-                    self.wfile.write(json.dumps({"success": False, "error": "Conflict: Invoice state already finalized or invalid transition", "updated": 0}).encode('utf-8'))
-                else:
-                    self._set_headers(200)
-                    self.wfile.write(json.dumps({"success": True, "updated": updated_count}).encode('utf-8'))
-            except Exception as e:
-                self._set_headers(500)
-                self.wfile.write(json.dumps({"error": redact_api_key(str(e))}).encode('utf-8'))
+            elif self.path == '/api/v1/invoices/update_status':
+                try:
+                    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    # Atomic state transition: UPDATE ... WHERE status = 'pending' (prevents double fulfillment)
+                    cursor.execute("""
+                        UPDATE invoices 
+                        SET status = ?, tx_signature = ?, updated_at = ? 
+                        WHERE id = ? AND (status = 'pending' OR status = 'partially_paid' OR status = ?)
+                    """, (data['status'], data.get('tx_signature'), now, data['invoice_id'], data['status']))
+                    conn.commit()
+                    updated_count = cursor.rowcount
+                    if updated_count == 0:
+                        self._set_headers(409)
+                        self.wfile.write(json.dumps({"success": False, "error": "Conflict: Invoice state already finalized or invalid transition", "updated": 0}).encode('utf-8'))
+                    else:
+                        self._set_headers(200)
+                        self.wfile.write(json.dumps({"success": True, "updated": updated_count}).encode('utf-8'))
+                except Exception as e:
+                    self._set_headers(500)
+                    self.wfile.write(json.dumps({"error": redact_api_key(str(e))}).encode('utf-8'))
 
-        else:
-            self._set_headers(404)
-            self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
+            elif self.path == '/api/v1/nonce/allocate':
+                try:
+                    allocated = allocate_free_nonce_account(conn)
+                    if allocated:
+                        self._set_headers(200)
+                        self.wfile.write(json.dumps({"success": True, "nonce_pubkey": allocated}).encode('utf-8'))
+                    else:
+                        self._set_headers(503)
+                        self.wfile.write(json.dumps({"success": False, "error": "No free durable nonce account available in pool"}).encode('utf-8'))
+                except Exception as e:
+                    self._set_headers(500)
+                    self.wfile.write(json.dumps({"error": redact_api_key(str(e))}).encode('utf-8'))
 
-        conn.close()
+            elif self.path == '/api/v1/nonce/release':
+                try:
+                    pubkey = data.get('nonce_pubkey') if data else None
+                    if pubkey:
+                        release_nonce_account(conn, pubkey)
+                        self._set_headers(200)
+                        self.wfile.write(json.dumps({"success": True, "released": pubkey}).encode('utf-8'))
+                    else:
+                        self._set_headers(400)
+                        self.wfile.write(json.dumps({"error": "Missing nonce_pubkey"}).encode('utf-8'))
+                except Exception as e:
+                    self._set_headers(500)
+                    self.wfile.write(json.dumps({"error": redact_api_key(str(e))}).encode('utf-8'))
+
+            else:
+                self._set_headers(404)
+                self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
+        finally:
+            conn.close()
 
 def run_server(port=8080):
     init_db()

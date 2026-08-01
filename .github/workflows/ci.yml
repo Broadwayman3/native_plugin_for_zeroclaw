@@ -28,16 +28,21 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Python Validation Dependencies
+      - name: Install Python Validation & Static Analysis Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install jsonschema
+          pip install jsonschema mypy flake8
 
       - name: Make Scripts Executable
         run: chmod +x scripts/*.sh
 
       - name: Initialize Environment
         run: ./scripts/setup.sh
+
+      - name: Python Type Safety & Static Analysis (mypy & flake8)
+        run: |
+          flake8 scripts/validators.py scripts/sanitizer.py scripts/pos_backend.py --max-line-length=120 --ignore=E501,W503
+          mypy scripts/validators.py scripts/sanitizer.py --ignore-missing-imports
 
       - name: Check Rust Code Formatting
         run: |
@@ -73,7 +78,7 @@ jobs:
       - name: Run Security Audit & Prompt Injection Suite
         run: python3 scripts/test_prompt_inj.py
 
-      - name: Run 110 Comprehensive Boundary & Stress Test Cases
+      - name: Run 120 Comprehensive Boundary & Stress Test Cases
         run: python3 scripts/test_boundary_cases.py
 
       - name: Run Complete 1-Command Automated Verification Pipeline

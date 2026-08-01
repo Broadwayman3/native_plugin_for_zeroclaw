@@ -34,7 +34,7 @@ interface pos-core {
     }
 
     build-solana-pay-instruction: func(req: invoice-request) -> invoice-instruction-result;
-    calculate-token2022-fee: func(amount: f64, fee-basis-points: u16, max-fee: u64) -> f64;
+    calculate-token2022-fee: func(amount: f64, fee-basis-points: u16, max-fee: u64, decimals: u8) -> f64;
     build-squads-v4-proposal: func(req: squads-proposal-request) -> squads-proposal-result;
 }
 

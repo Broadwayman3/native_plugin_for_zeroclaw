@@ -38,7 +38,11 @@ echo "5. Running Prompt Injection & Security Audit Suite..."
 python3 scripts/test_prompt_inj.py
 
 echo ""
-echo "6. Running Full 110 Comprehensive Boundary & Edge Case Tests..."
+echo "6. Executing Pre-Commit Automated Safety Check..."
+./scripts/pre_commit.sh
+
+echo ""
+echo "7. Running Full 120 Comprehensive Boundary & Edge Case Tests..."
 python3 scripts/test_boundary_cases.py
 
 echo ""

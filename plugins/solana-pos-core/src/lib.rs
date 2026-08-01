@@ -37,7 +37,7 @@ impl exports::zeroclaw::plugin::pos_core::Guest for PosCorePlugin {
             url_encode(message)
         );
 
-        let fee_usdc = calculate_token2022_fee_internal(req.amount_usdc, 10, 1_000_000);
+        let fee_usdc = calculate_token2022_fee_internal(req.amount_usdc, 10, 1_000_000, 6);
 
         exports::zeroclaw::plugin::pos_core::InvoiceInstructionResult {
             success: true,
@@ -48,8 +48,13 @@ impl exports::zeroclaw::plugin::pos_core::Guest for PosCorePlugin {
         }
     }
 
-    fn calculate_token2022_fee(amount: f64, fee_basis_points: u16, max_fee: u64) -> f64 {
-        calculate_token2022_fee_internal(amount, fee_basis_points, max_fee)
+    fn calculate_token2022_fee(
+        amount: f64,
+        fee_basis_points: u16,
+        max_fee: u64,
+        decimals: u8,
+    ) -> f64 {
+        calculate_token2022_fee_internal(amount, fee_basis_points, max_fee, decimals)
     }
 
     fn build_squads_v4_proposal(
@@ -149,12 +154,17 @@ fn calculate_token2022_fee_internal(
     amount_usdc: f64,
     fee_basis_points: u16,
     max_fee_units: u64,
+    decimals: u8,
 ) -> f64 {
+    if decimals > 18 {
+        return 0.0;
+    }
+    let scale = 10f64.powi(decimals as i32);
     if fee_basis_points > 10000 {
-        return (max_fee_units as f64) / USDC_SCALE;
+        return (max_fee_units as f64) / scale;
     }
 
-    let amount_units = usdc_to_atomic_units(amount_usdc) as u128;
+    let amount_units = safe_f64_to_u64_atomic(amount_usdc, decimals).unwrap_or(0) as u128;
     if amount_units == 0 {
         return 0.0;
     }
@@ -168,7 +178,7 @@ fn calculate_token2022_fee_internal(
 
     let max_fee_u128 = max_fee_units as u128;
     let final_fee_units = fee_units.min(max_fee_u128) as u64;
-    (final_fee_units as f64) / USDC_SCALE
+    (final_fee_units as f64) / scale
 }
 
 fn url_encode(s: &str) -> String {
@@ -229,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_fee_bp_exceeding_max() {
-        let fee = calculate_token2022_fee_internal(100.0, 20000, 500_000);
+        let fee = calculate_token2022_fee_internal(100.0, 20000, 500_000, 6);
         assert_eq!(fee, 0.50);
     }
 
@@ -246,8 +256,8 @@ mod tests {
         }
 
         #[test]
-        fn prop_fee_calc_never_panics(amount in 0.0..1_000_000_000.0f64, bp in 0u16..65535u16) {
-            let fee = calculate_token2022_fee_internal(amount, bp, 500_000);
+        fn prop_fee_calc_never_panics(amount in 0.0..1_000_000_000.0f64, bp in 0u16..65535u16, dec in 0u8..18u8) {
+            let fee = calculate_token2022_fee_internal(amount, bp, 500_000, dec);
             prop_assert!(fee >= 0.0);
         }
     }

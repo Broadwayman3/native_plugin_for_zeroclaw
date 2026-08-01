@@ -2,75 +2,96 @@
   "version": "v0",
   "id": "check_payments",
   "name": "check_payments",
-  "description": "Cron SOP that performs Atomic Two-Step Verification (getSignaturesForAddress + getTransaction) to prevent fake reference injection attacks and verify SPL Token destination ATA & Mint.",
+  "description": "Cron SOP that queries active pending invoices and performs Atomic Two-Step Verification (getSignaturesForAddress + getTransaction) with empty pending list guards.",
   "trigger": {
     "type": "cron",
     "schedule": "*/10 * * * * *"
   },
   "steps": [
     {
-      "id": "fetch_signatures",
-      "step_id": "fetch_signatures",
-      "action": "solana_rpc_call",
-      "method": "getSignaturesForAddress",
-      "params": [
-        "${ACTIVE_REFERENCE_PUBKEY}",
-        { "limit": 1, "commitment": "confirmed" }
-      ],
-      "on_error": "retry_with_backoff",
-      "retry_policy": {
-        "max_retries": 3,
-        "initial_delay_ms": 1000,
-        "backoff_factor": 2.0,
-        "handle_status_codes": [429, 502, 503, 504]
-      }
+      "id": "fetch_pending_invoices",
+      "step_id": "fetch_pending_invoices",
+      "action": "http_request",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/v1/invoices?status=pending"
     },
     {
-      "id": "fetch_transaction_detail",
-      "step_id": "fetch_transaction_detail",
-      "action": "solana_rpc_call",
-      "method": "getTransaction",
-      "params": [
-        "${fetch_signatures.0.signature}",
-        { "encoding": "jsonParsed", "maxSupportedTransactionVersion": 0, "commitment": "confirmed" }
-      ],
-      "on_error": "retry_with_backoff"
-    },
-    {
-      "id": "parse_rpc_response",
-      "step_id": "parse_rpc_response",
-      "action": "transform_data",
-      "processor": "compact_json_parser",
-      "max_tokens": 150,
-      "extract": {
-        "signature": "fetch_signatures.0.signature",
-        "status": "fetch_signatures.0.confirmationStatus",
-        "destination": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.destination",
-        "mint": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.mint",
-        "paid_amount": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.amount"
-      }
-    },
-    {
-      "id": "evaluate_payment",
-      "step_id": "evaluate_payment",
+      "id": "guard_empty_pending",
+      "step_id": "guard_empty_pending",
       "action": "condition",
-      "if": "(parse_rpc_response.status == 'confirmed' || parse_rpc_response.status == 'finalized') && parse_rpc_response.destination == '${MERCHANT_USDC_ATA}'",
+      "if": "fetch_pending_invoices.body.length == 0",
       "then": [
         {
-          "action": "send_channel_message",
-          "channel": "telegram",
-          "recipient": "${MANAGER_TELEGRAM_ID}",
-          "message": "✅ **Оплату підтверджено!**\n• Чек: #${INVOICE_ID}\n• Сума: ${AMOUNT_USDC} USDC\n• Сигнатура: `${parse_rpc_response.signature}`\n• Explorer: https://solscan.io/tx/${parse_rpc_response.signature}"
-        },
-        {
-          "action": "mark_invoice_paid",
-          "invoice_id": "${INVOICE_ID}"
+          "action": "log",
+          "message": "No pending invoices found. Sleeping until next cron iteration."
         }
       ],
       "else": [
         {
-          "action": "log",
-          "message": "Waiting for valid SPL token payment transfer to Merchant ATA on reference key ${ACTIVE_REFERENCE_PUBKEY}..."
+          "id": "fetch_signatures",
+          "step_id": "fetch_signatures",
+          "action": "solana_rpc_call",
+          "method": "getSignaturesForAddress",
+          "params": [
+            "${fetch_pending_invoices.body.0.reference_pubkey}",
+            { "limit": 1, "commitment": "confirmed" }
+          ],
+          "on_error": "retry_with_backoff",
+          "retry_policy": {
+            "max_retries": 3,
+            "initial_delay_ms": 1000,
+            "backoff_factor": 2.0,
+            "handle_status_codes": [429, 502, 503, 504]
+          }
+        },
+        {
+          "id": "fetch_transaction_detail",
+          "step_id": "fetch_transaction_detail",
+          "action": "solana_rpc_call",
+          "method": "getTransaction",
+          "params": [
+            "${fetch_signatures.0.signature}",
+            { "encoding": "jsonParsed", "maxSupportedTransactionVersion": 0, "commitment": "confirmed" }
+          ],
+          "on_error": "retry_with_backoff"
+        },
+        {
+          "id": "parse_rpc_response",
+          "step_id": "parse_rpc_response",
+          "action": "transform_data",
+          "processor": "compact_json_parser",
+          "max_tokens": 150,
+          "extract": {
+            "signature": "fetch_signatures.0.signature",
+            "status": "fetch_signatures.0.confirmationStatus",
+            "destination": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.destination",
+            "mint": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.mint",
+            "paid_amount": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.amount"
+          }
+        },
+        {
+          "id": "evaluate_payment",
+          "step_id": "evaluate_payment",
+          "action": "condition",
+          "if": "(parse_rpc_response.status == 'confirmed' || parse_rpc_response.status == 'finalized') && parse_rpc_response.destination == '${MERCHANT_USDC_ATA}'",
+          "then": [
+            {
+              "action": "send_channel_message",
+              "channel": "telegram",
+              "recipient": "${MANAGER_TELEGRAM_ID}",
+              "message": "✅ **Оплату підтверджено!**\n• Чек: #${INVOICE_ID}\n• Сума: ${AMOUNT_USDC} USDC\n• Сигнатура: `${parse_rpc_response.signature}`\n• Explorer: https://solscan.io/tx/${parse_rpc_response.signature}"
+            },
+            {
+              "action": "mark_invoice_paid",
+              "invoice_id": "${INVOICE_ID}"
+            }
+          ],
+          "else": [
+            {
+              "action": "log",
+              "message": "Waiting for valid SPL token payment transfer to Merchant ATA on reference key..."
+            }
+          ]
         }
       ]
     }

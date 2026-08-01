@@ -21,6 +21,10 @@ else
     exit 1
 fi
 
+if [ -f "$HOME/.cargo/bin/cargo" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
 if command -v cargo >/dev/null 2>&1; then
     # Ensuring target wasm32-wasip2 is installed
     if command -v rustup >/dev/null 2>&1; then

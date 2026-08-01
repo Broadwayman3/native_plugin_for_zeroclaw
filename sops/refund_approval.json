@@ -2,7 +2,7 @@
   "version": "v0",
   "id": "refund_approval",
   "name": "refund_approval",
-  "description": "Standard Operating Procedure for handling customer refund requests with Squads v4 Multisig Proposals, Human Checkpoints, and SQLite Checkpoint Persistence.",
+  "description": "Standard Operating Procedure for handling customer refund requests with Squads v4 Multisig Proposals, Dynamic Durable Nonce Pool allocation, Fail-Closed Error Guards, Human Checkpoints, and SQLite Persistence.",
   "persistent": true,
   "checkpoint_storage": "sqlite",
   "trigger": {
@@ -33,6 +33,31 @@
       }
     },
     {
+      "id": "allocate_nonce",
+      "step_id": "allocate_nonce",
+      "action": "http_request",
+      "method": "POST",
+      "url": "http://127.0.0.1:8080/api/v1/nonce/allocate"
+    },
+    {
+      "id": "guard_nonce_allocated",
+      "step_id": "guard_nonce_allocated",
+      "action": "condition",
+      "if": "allocate_nonce.status != 200 || allocate_nonce.body.nonce_pubkey == null",
+      "then": [
+        {
+          "action": "send_channel_message",
+          "channel": "telegram",
+          "recipient": "${CUSTOMER_CHAT_ID}",
+          "message": "⚠️ **Помилка створення рефанду**: Пул Nonce тимчасово вичерпано. Спробуйте пізніше."
+        },
+        {
+          "action": "abort_with_error",
+          "message": "🚨 FAIL-CLOSED: Nonce pool exhausted or allocation failed. Halting refund SOP execution."
+        }
+      ]
+    },
+    {
       "id": "prepare_durable_nonce_tx",
       "step_id": "prepare_durable_nonce_tx",
       "action": "execute_skill",
@@ -40,7 +65,7 @@
       "params": {
         "destination": "${CUSTOMER_SOLANA_ADDRESS}",
         "amount_usdc": "${REFUND_AMOUNT}",
-        "nonce_account": "${NONCE_ACCOUNT_PUBKEY}"
+        "nonce_account": "${allocate_nonce.body.nonce_pubkey}"
       }
     },
     {
@@ -51,7 +76,7 @@
       "authorized_roles": ["manager"],
       "allowed_chat_ids": ["${MANAGER_TELEGRAM_ID}"],
       "persistent": true,
-      "prompt": "🏛️ **Squads v4 Multisig Proposal Initiated**\n• Чек: #${INVOICE_ID}\n• Покупець: `${CUSTOMER_SOLANA_ADDRESS}`\n• Сума: **${REFUND_AMOUNT} USDC**\n• Proposal Index: #${create_squads_v4_proposal.proposal_index}\n• Durable Nonce: Prepared\n\nСхвалити створення пропозиції рефанду у Squads v4?",
+      "prompt": "🏛️ **Squads v4 Multisig Proposal Initiated**\n• Чек: #${INVOICE_ID}\n• Покупець: `${CUSTOMER_SOLANA_ADDRESS}`\n• Сума: **${REFUND_AMOUNT} USDC**\n• Proposal Index: #${create_squads_v4_proposal.proposal_index}\n• Nonce Account: `${allocate_nonce.body.nonce_pubkey}`\n\nСхвалити створення пропозиції рефанду у Squads v4?",
       "options": ["Підтвердити", "Відхилити"],
       "timeout_seconds": 86400
     },
@@ -66,6 +91,14 @@
           "signed_tx": "${create_squads_v4_proposal.proposal_tx_base64}"
         },
         {
+          "action": "http_request",
+          "method": "POST",
+          "url": "http://127.0.0.1:8080/api/v1/nonce/release",
+          "body": {
+            "nonce_pubkey": "${allocate_nonce.body.nonce_pubkey}"
+          }
+        },
+        {
           "action": "record_pos_transaction",
           "invoice_id": "${INVOICE_ID}",
           "status": "refund_proposed_squads_v4"
@@ -78,6 +111,14 @@
         }
       ],
       "else": [
+        {
+          "action": "http_request",
+          "method": "POST",
+          "url": "http://127.0.0.1:8080/api/v1/nonce/release",
+          "body": {
+            "nonce_pubkey": "${allocate_nonce.body.nonce_pubkey}"
+          }
+        },
         {
           "action": "send_channel_message",
           "channel": "telegram",
