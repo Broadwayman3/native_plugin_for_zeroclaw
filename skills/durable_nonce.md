@@ -17,8 +17,17 @@ Durable Nonces replace the recent blockhash with a stored nonce value from an on
 
 ### On-Chain Account Requirements:
 - **Account Type**: SystemProgram Nonce Account (80 bytes data).
-- **Rent Exemption**: ~0.0014472 SOL (pre-funded and rent-exempt).
+- **Rent Exemption**: ~0.0014472 SOL (1,447,200 lamports rent-exempt).
 - **Authority**: Controlled by `REFUND_SESSION_KEY`.
+
+### Uninitialized Nonce Account Edge Case Handling:
+
+If the agent queries RPC `getAccountInfo(NONCE_ACCOUNT_PUBKEY)` and finds an empty or uninitialized account (data length == 0):
+
+1. **Auto-Initialization Instruction**:
+   - Instruction #0: `SystemProgram.createAccount({ fromPubkey: REFUND_SESSION_KEY, newAccountPubkey: NONCE_ACCOUNT_PUBKEY, lamports: 1447200, space: 80, programId: SYSTEM_PROGRAM_ID })`
+   - Instruction #1: `SystemProgram.initializeNonceAccount({ noncePubkey: NONCE_ACCOUNT_PUBKEY, authorizedPubkey: REFUND_SESSION_KEY })`
+2. Once initialized, the Nonce Account retains stored blockhashes permanently for all subsequent durable transaction proposals.
 
 ### Workflow for Refunds:
 

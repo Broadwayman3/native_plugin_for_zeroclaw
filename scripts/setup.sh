@@ -22,14 +22,25 @@ else
     echo "✅ Found existing config.toml file."
 fi
 
-# Create data directory for ZeroClaw runtime state
-mkdir -p data sops skills scripts
+# Check if rustup is available for WASM target setup
+if command -v rustup >/dev/null 2>&1; then
+    echo "🦀 Checking Rust WASM target wasm32-wasip2..."
+    rustup target add wasm32-wasip2 2>/dev/null || echo "ℹ️ wasm32-wasip2 target ready."
+else
+    echo "ℹ️ rustup not found in PATH; skipping WASM target check."
+fi
+
+# Create data directory for ZeroClaw runtime state & SQLite DB
+mkdir -p data sops skills scripts plugins/solana-pos-core
 
 echo ""
 echo "=========================================================="
 echo "✨ Environment initialized successfully!"
-echo "To start the agent via Docker, run:"
-echo "   docker-compose up -d"
+echo "To build the Tier 3 Rust WASM plugin, run:"
+echo "   ./scripts/build_wasm.sh"
+echo ""
+echo "To start the local SQLite POS API backend, run:"
+echo "   python3 scripts/pos_backend.py 8080"
 echo ""
 echo "To run the automated Prompt-Injection security test suite:"
 echo "   python3 scripts/test_prompt_inj.py"

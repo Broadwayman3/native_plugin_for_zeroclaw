@@ -54,7 +54,7 @@ sequenceDiagram
 
 ---
 
-## ⚡ Quickstart (Deploy in 1 Minute)
+## ⚡ Quickstart in 60 Seconds
 
 ### 1. Initialize Environment
 ```bash
@@ -88,12 +88,12 @@ docker-compose up -d
 
 | Component | Path | Function & Technology |
 | :--- | :--- | :--- |
-| **WASM Native Plugin** | [`plugins/solana-pos-core`](file:///home/ttygfg/native_plugin_for_zeroclaw/plugins/solana-pos-core) | Rust crate compiled to `wasm32-wasip2` via WIT contract interface [`wit/v0/pos_core.wit`](file:///home/ttygfg/native_plugin_for_zeroclaw/wit/v0/pos_core.wit) |
-| **Squads v4 Multisig Skill** | [`skills/squads_multisig.md`](file:///home/ttygfg/native_plugin_for_zeroclaw/skills/squads_multisig.md) | Squads v4 Multisig proposal builder (`SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm`) |
-| **SQLite Backend API** | [`scripts/pos_backend.py`](file:///home/ttygfg/native_plugin_for_zeroclaw/scripts/pos_backend.py) | SQLite database (`data/pos_store.db`) + REST API (`GET /api/v1/sales/summary`) |
-| **Solana Pay Skill** | [`skills/solana_pay.md`](file:///home/ttygfg/native_plugin_for_zeroclaw/skills/solana_pay.md) | Non-custodial Solana Pay URL & Ed25519 reference key generator |
-| **Cron Payment SOP** | [`sops/check_payments.json`](file:///home/ttygfg/native_plugin_for_zeroclaw/sops/check_payments.json) | Cron SOP polling Helius RPC with token-compact output (<150 tokens) |
-| **Refund SOP** | [`sops/refund_approval.json`](file:///home/ttygfg/native_plugin_for_zeroclaw/sops/refund_approval.json) | **Human Approval Checkpoint** + Squads v4 proposal creation |
+| **WASM Native Plugin** | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate compiled to `wasm32-wasip2` via WIT contract interface [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) |
+| **Squads v4 Multisig Skill** | [`skills/squads_multisig.md`](./skills/squads_multisig.md) | Squads v4 Multisig proposal builder (`SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm`) |
+| **SQLite Backend API** | [`scripts/pos_backend.py`](./scripts/pos_backend.py) | SQLite database (`data/pos_store.db`) + REST API (`GET /api/v1/sales/summary`) |
+| **Solana Pay Skill** | [`skills/solana_pay.md`](./skills/solana_pay.md) | Non-custodial Solana Pay URL & Ed25519 reference key generator |
+| **Cron Payment SOP** | [`sops/check_payments.json`](./sops/check_payments.json) | Cron SOP polling Helius RPC with token-compact output (<150 tokens) and HTTP 429 resilience |
+| **Refund SOP** | [`sops/refund_approval.json`](./sops/refund_approval.json) | **Human Approval Checkpoint** + Squads v4 proposal creation |
 
 ---
 

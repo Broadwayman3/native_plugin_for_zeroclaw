@@ -1,6 +1,6 @@
 {
   "name": "check_payments",
-  "description": "Cron SOP that polls Solana RPC for active reference public keys every 10 seconds and notifies cashiers upon payment confirmation.",
+  "description": "Cron SOP that polls Solana RPC for active reference public keys every 10 seconds with HTTP 429 rate limit resilience and notifies cashiers upon payment confirmation.",
   "trigger": {
     "type": "cron",
     "schedule": "*/10 * * * * *"
@@ -14,7 +14,13 @@
         "${ACTIVE_REFERENCE_PUBKEY}",
         { "limit": 1, "commitment": "confirmed" }
       ],
-      "on_error": "continue"
+      "on_error": "retry_with_backoff",
+      "retry_policy": {
+        "max_retries": 3,
+        "initial_delay_ms": 1000,
+        "backoff_factor": 2.0,
+        "handle_status_codes": [429, 502, 503, 504]
+      }
     },
     {
       "step_id": "parse_rpc_response",

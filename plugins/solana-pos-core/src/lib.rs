@@ -46,9 +46,22 @@ pub struct SquadsProposalResult {
 /// Squads v4 Program ID on Solana Mainnet
 pub const SQUADS_V4_PROGRAM_ID: &str = "SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm";
 
+/// USDC SPL Token Decimals (6 decimal places)
+pub const USDC_DECIMALS: u32 = 6;
+pub const USDC_SCALE: f64 = 1_000_000.0;
+
+/// Safely convert human float USDC amount to raw atomic integer units (lamports/atomic units)
+/// Uses rounding before casting to avoid floating point truncation artifacts (e.g., 0.07 * 1e6 = 69999.99999999999 -> 70000).
+pub fn usdc_to_atomic_units(amount_usdc: f64) -> u64 {
+    if amount_usdc <= 0.0 || amount_usdc.is_nan() || amount_usdc.is_infinite() {
+        return 0;
+    }
+    (amount_usdc * USDC_SCALE).round() as u64
+}
+
 /// Build Solana Pay URL and compute Token-2022 transfer fees natively
 pub fn build_solana_pay_instruction(req: &InvoiceRequest) -> InvoiceResult {
-    if req.amount_usdc <= 0.0 {
+    if req.amount_usdc <= 0.0 || req.amount_usdc.is_nan() {
         return InvoiceResult {
             success: false,
             solana_pay_url: String::new(),
@@ -94,14 +107,14 @@ pub fn build_solana_pay_instruction(req: &InvoiceRequest) -> InvoiceResult {
     }
 }
 
-/// Calculate Token-2022 Transfer Fee with strict overflow safety (checked_mul, checked_add, checked_div):
-/// fee = ceil((amount * fee_basis_points) / 10000), capped at max_fee.
+/// Calculate Token-2022 Transfer Fee with strict overflow & rounding safety:
+/// fee = ceil((amount_atomic_units * fee_basis_points) / 10000), capped at max_fee_units.
 pub fn calculate_token2022_fee(amount_usdc: f64, fee_basis_points: u16, max_fee_units: u64) -> f64 {
-    if amount_usdc <= 0.0 || amount_usdc.is_nan() || amount_usdc.is_infinite() {
+    let amount_units = usdc_to_atomic_units(amount_usdc) as u128;
+    if amount_units == 0 {
         return 0.0;
     }
 
-    let amount_units = (amount_usdc * 1_000_000.0) as u128; // 6 decimals for USDC
     let fee_bp = fee_basis_points as u128;
 
     let fee_units = amount_units
@@ -111,12 +124,12 @@ pub fn calculate_token2022_fee(amount_usdc: f64, fee_basis_points: u16, max_fee_
         .unwrap_or(0);
 
     let final_fee_units = (fee_units as u64).min(max_fee_units);
-    (final_fee_units as f64) / 1_000_000.0
+    (final_fee_units as f64) / USDC_SCALE
 }
 
 /// Construct Squads v4 Multisig Proposal Transaction Payload
 pub fn build_squads_v4_proposal(req: &SquadsProposalRequest) -> SquadsProposalResult {
-    if req.amount_usdc <= 0.0 {
+    if req.amount_usdc <= 0.0 || req.amount_usdc.is_nan() {
         return SquadsProposalResult {
             success: false,
             proposal_tx_base64: String::new(),
@@ -126,7 +139,7 @@ pub fn build_squads_v4_proposal(req: &SquadsProposalRequest) -> SquadsProposalRe
         };
     }
 
-    // Mock deterministic proposal index based on timestamp & vault
+    let atomic_amount = usdc_to_atomic_units(req.amount_usdc);
     let proposal_index = 42u64;
 
     // Build instruction payload JSON for Squads v4 proposal transaction
@@ -142,6 +155,8 @@ pub fn build_squads_v4_proposal(req: &SquadsProposalRequest) -> SquadsProposalRe
             "source_vault": req.vault_pubkey,
             "destination": req.recipient_pubkey,
             "amount_usdc": req.amount_usdc,
+            "amount_atomic_units": atomic_amount,
+            "decimals": USDC_DECIMALS,
             "memo": req.memo
         }
     });
@@ -193,6 +208,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_usdc_atomic_unit_conversion() {
+        assert_eq!(usdc_to_atomic_units(5.25), 5_250_000);
+        assert_eq!(usdc_to_atomic_units(0.07), 70_000);
+        assert_eq!(usdc_to_atomic_units(0.000001), 1);
+        assert_eq!(usdc_to_atomic_units(-10.0), 0);
+    }
+
+    #[test]
     fn test_solana_pay_url_building() {
         let req = InvoiceRequest {
             merchant_pubkey: "MerchantPubkey11111111111111111111111111111".to_string(),
@@ -220,9 +243,9 @@ mod tests {
         let fee_capped = calculate_token2022_fee(10000.0, 10, 500_000); // capped at 0.5 USDC
         assert_eq!(fee_capped, 0.50);
 
-        // Overflow safety test
-        let invalid_fee = calculate_token2022_fee(-50.0, 10, 1_000_000);
-        assert_eq!(invalid_fee, 0.0);
+        // Precision float rounding test
+        let fee_precision = calculate_token2022_fee(0.07, 10, 1_000_000);
+        assert_eq!(fee_precision, 0.00007);
     }
 
     #[test]
