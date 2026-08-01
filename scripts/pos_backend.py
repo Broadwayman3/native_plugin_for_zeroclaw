@@ -52,8 +52,40 @@ from pos_core import (
 MAX_PAYLOAD_BYTES = 1_048_576  # 1 MB DoS Cap Limit
 
 # Register REST API GET routes
+@route_get('/actions.json')
+def handle_actions_spec_json(handler, query_params):
+    return 200, {
+        "rules": [
+            {"pathPattern": "/api/v1/actions/**", "apiPath": "/api/v1/actions/**"}
+        ]
+    }
+
+@route_get('/api/v1/actions/pay_invoice')
+def handle_action_get_invoice(handler, query_params):
+    raw_id = query_params.get('invoice_id', ['INV-101'])[0] if query_params else 'INV-101'
+    action_payload = {
+        "icon": "https://raw.githubusercontent.com/solana-developers/branding/main/assets/solana-pay-logo.png",
+        "label": f"Pay Invoice #{raw_id}",
+        "title": f"ZeroClaw POS - Invoice #{raw_id}",
+        "description": f"Scan & Complete payment for POS Invoice #{raw_id} in USDC",
+        "links": {
+            "actions": [
+                {
+                    "label": "Pay Now",
+                    "href": f"/api/v1/actions/pay_invoice?invoice_id={raw_id}"
+                }
+            ]
+        }
+    }
+    extra_headers = {
+        'X-Action-Version': '2.1.3',
+        'X-Blockchain-Ids': 'solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ'
+    }
+    return 200, action_payload, extra_headers
+
 @route_get('/api/v1/sales/summary')
 def handle_sales_summary(handler, query_params):
+
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     try:
@@ -102,8 +134,26 @@ def handle_get_invoices(handler, query_params, db_path: str = DB_PATH):
         conn.close()
 
 # Register REST API POST routes
+@route_post('/api/v1/actions/pay_invoice')
+def handle_action_post_invoice(handler, data, query_params):
+    account = data.get('account') if isinstance(data, dict) else None
+    if not account or not is_valid_base58(account):
+        return 400, {"error": "Invalid or missing 'account' Base58 public key field in Blink POST request"}
+
+    
+    response_payload = {
+        "transaction": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+        "message": "ZeroClaw POS Invoice Payment Transaction"
+    }
+    extra_headers = {
+        'X-Action-Version': '2.1.3',
+        'X-Blockchain-Ids': 'solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ'
+    }
+    return 200, response_payload, extra_headers
+
 @route_post('/api/v1/invoices/create')
 def handle_create_invoice(handler, data, query_params):
+
     if not isinstance(data, dict) or 'id' not in data or 'reference_pubkey' not in data or 'usdc_amount' not in data:
         return 400, {"error": "Bad Request: Missing required invoice fields (id, reference_pubkey, usdc_amount)"}
     conn = get_db_connection()
@@ -204,7 +254,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-ACCEPT-PAYMENT, X-Telegram-Bot-Api-Secret-Token, Authorization')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-ACCEPT-PAYMENT, X-Telegram-Bot-Api-Secret-Token, Authorization, Content-Encoding, Accept-Encoding')
         self.send_header('Access-Control-Max-Age', '86400')
         self.end_headers()
 

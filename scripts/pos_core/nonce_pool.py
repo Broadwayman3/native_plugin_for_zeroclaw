@@ -39,18 +39,18 @@ def allocate_free_nonce_account(conn: Optional[sqlite3.Connection] = None, db_pa
             cursor.connection.commit()
             return row[0] if row else None
         else:
-            # Fallback for older SQLite versions: ensure clean transaction state before BEGIN IMMEDIATE
-            cursor.connection.commit()
-            cursor.execute("BEGIN IMMEDIATE;")
+            # Fallback for older SQLite versions: execute atomic update and fetch without nested BEGIN IMMEDIATE
             cursor.execute("SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1;")
             row = cursor.fetchone()
             if row:
                 pubkey = row[0]
-                cursor.execute("UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP WHERE pubkey = ?;", (pubkey,))
-                cursor.connection.commit()
-                return pubkey
+                cursor.execute("UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP WHERE pubkey = ? AND status = 'free';", (pubkey,))
+                if cursor.rowcount > 0:
+                    cursor.connection.commit()
+                    return pubkey
             cursor.connection.commit()
             return None
+
 
 def release_nonce_account(conn: Optional[sqlite3.Connection] = None, pubkey: Optional[str] = None, db_path: str = DB_PATH) -> None:
     """

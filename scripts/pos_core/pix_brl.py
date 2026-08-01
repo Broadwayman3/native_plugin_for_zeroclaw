@@ -24,10 +24,18 @@ def generate_pix_emv_payload(pix_key: str, amount_brl: float, merchant_name: str
     """
     Generates Brazil-first EMV QRCPS PIX payload with valid CRC16 CCITT-FALSE checksum.
     Compatible with Brazilian banking apps (br.gov.bcb.pix).
-    Uses byte-length calculation for multi-byte UTF-8 character support in Tag 59.
+    Guarantees Tag 59 byte length <= 99 bytes to prevent EMV parsing failures.
     """
     amount_str = f"{amount_brl:.2f}"
+    merchant_name = merchant_name or "ZeroClaw POS"
+    pix_key = pix_key or ""
     merchant_bytes = merchant_name.encode('utf-8')
+
+    if len(merchant_bytes) > 99:
+        merchant_bytes = merchant_bytes[:99]
+        merchant_name = merchant_bytes.decode('utf-8', errors='ignore')
+        merchant_bytes = merchant_name.encode('utf-8')
+        
     merchant_len = len(merchant_bytes)
     pix_key_bytes = pix_key.encode('utf-8')
     pix_key_len = len(pix_key_bytes)
@@ -43,3 +51,4 @@ def generate_pix_emv_payload(pix_key: str, amount_brl: float, merchant_name: str
     )
     crc_hex = calculate_pix_crc16(payload_base)
     return f"{payload_base}6304{crc_hex}"
+

@@ -171,7 +171,7 @@ def t(key: str, lang: Optional[str] = "en", escape_markdown: bool = True, **kwar
     """
     Retrieves localized message template and formats dynamic variables safely.
     Normalizes regional language codes (e.g. 'pt-BR' -> 'pt', 'es-MX' -> 'es', 'zh-CN' -> 'zh').
-    Passes full formatted text through escape_telegram_markdown_v2 when escape_markdown=True.
+    Passes formatted text through escape_telegram_markdown_v2 when escape_markdown=True.
     """
     clean_lang = (lang or "en").lower().split("-")[0].split("_")[0]
     lang_dict = TRANSLATIONS.get(clean_lang, TRANSLATIONS["en"])
@@ -189,26 +189,31 @@ def format_itemized_receipt(
     amount_usdc: float,
     lang: str = "en"
 ) -> str:
-    """Formats an itemized POS receipt with multi-language support (13 languages)."""
+    """Formats an itemized POS receipt while safely preserving Telegram MarkdownV2 bold/italic syntax."""
     tax_amount = round(amount_usdc * (tax_rate_pct / 100.0), 2)
     default_item = t("default_item", lang=lang, escape_markdown=False)
-    items_formatted = (items.replace(";", "\n• ") if items else default_item)
+    
+    title_escaped = t("receipt_title", lang=lang, escape_markdown=True, invoice_id=invoice_id)
+    tax_escaped = t("receipt_tax", lang=lang, escape_markdown=True, tax_rate_pct=f"{tax_rate_pct:.0f}", tax_amount=f"{tax_amount:.2f}")
+    total_escaped = t("receipt_total", lang=lang, escape_markdown=True, amount_usdc=f"{amount_usdc:.2f}")
+    
+    raw_items = items if items else default_item
+    items_escaped = escape_telegram_markdown_v2(raw_items)
+    items_formatted = items_escaped.replace("; ", "\n• ").replace(";", "\n• ")
     if not items_formatted.startswith("• "):
         items_formatted = f"• {items_formatted}"
-    
-    title = t("receipt_title", lang=lang, escape_markdown=False, invoice_id=invoice_id)
-    tax_line = t("receipt_tax", lang=lang, escape_markdown=False, tax_rate_pct=f"{tax_rate_pct:.0f}", tax_amount=f"{tax_amount:.2f}")
-    total_line = t("receipt_total", lang=lang, escape_markdown=False, amount_usdc=f"{amount_usdc:.2f}")
-    
-    receipt_raw = (
-        f"*{title}*\n"
+
+        
+    return (
+        f"*{title_escaped}*\n"
         f"───────────────────────────\n"
         f"{items_formatted}\n"
         f"───────────────────────────\n"
-        f"• {tax_line}\n"
-        f"• *{total_line}*"
+        f"• {tax_escaped}\n"
+        f"• *{total_escaped}*"
     )
-    return escape_telegram_markdown_v2(receipt_raw)
+
 
 # Alias for backward compatibility
 get_localized_message = t
+

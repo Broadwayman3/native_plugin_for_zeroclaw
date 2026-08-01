@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """ZeroClaw Solana POS Agent - Solana Pay Verification & Settlement Core Module"""
 import os, sys, math, secrets, base64, sqlite3
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import Dict, List, Optional, Any, Union
 from pos_core.constants import (
     USDC_DECIMALS,
@@ -13,29 +14,46 @@ from pos_core.constants import (
 
 WASM_RAM_CACHE: Optional[bytes] = None
 
-def token_to_atomic_units(amount: Union[float, str], decimals: int = USDC_DECIMALS) -> int:
-    """Converts float/string amount to atomic units with dynamic decimals (USDC=6, SOL=9)."""
+def token_to_atomic_units(amount: Union[float, str, Decimal], decimals: int = USDC_DECIMALS) -> int:
+    """Converts float/string/Decimal amount to atomic units using Decimal precision (zero float drift)."""
     try:
-        val = float(amount)
-    except (ValueError, TypeError):
+        if isinstance(amount, float):
+            d_amount = Decimal(str(amount))
+        else:
+            d_amount = Decimal(amount)
+    except (InvalidOperation, TypeError, ValueError):
         return 0
-    if val <= 0.0 or math.isnan(val) or math.isinf(val): return 0
-    scale = 10**decimals
-    scaled = val * float(scale)
-    return MAX_U64 if scaled >= MAX_U64 else int(round(scaled))
 
-def usdc_to_atomic_units(amount: Union[float, str]) -> int:
+    if d_amount.is_nan() or d_amount.is_infinite() or d_amount <= Decimal('0'):
+        return 0
+
+    scale = Decimal(10 ** decimals)
+    scaled_raw = d_amount * scale
+    max_u64_dec = Decimal(MAX_U64)
+    if scaled_raw >= max_u64_dec:
+        return MAX_U64
+
+    try:
+        scaled = scaled_raw.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        if scaled >= max_u64_dec:
+            return MAX_U64
+        return int(scaled)
+    except (InvalidOperation, TypeError, ValueError):
+        return MAX_U64 if scaled_raw >= max_u64_dec else 0
+
+def usdc_to_atomic_units(amount: Union[float, str, Decimal]) -> int:
     """Backward-compatible alias for 6-decimal USDC atomic conversion."""
     return token_to_atomic_units(amount, USDC_DECIMALS)
 
-def calculate_token2022_fee(amount_usdc: float, fee_basis_points: int, max_fee_units: int, decimals: int = USDC_DECIMALS) -> float:
-    """Calculates Token-2022 transfer fee with ceiling rounding and max fee cap."""
+def calculate_token2022_fee(amount_usdc: Union[float, str, Decimal], fee_basis_points: int, max_fee_units: int, decimals: int = USDC_DECIMALS) -> float:
+    """Calculates Token-2022 transfer fee using Decimal-backed atomic conversion."""
     scale = 10**decimals
     if fee_basis_points > 10000: return max_fee_units / float(scale)
-    amount_units = 0 if (amount_usdc <= 0.0 or math.isnan(amount_usdc) or math.isinf(amount_usdc)) else int(round(amount_usdc * float(scale)))
+    amount_units = token_to_atomic_units(amount_usdc, decimals=decimals)
     if amount_units == 0: return 0.0
     fee_units = (amount_units * fee_basis_points + 9999) // 10000
     return min(fee_units, max_fee_units) / float(scale)
+
 
 def format_pubkey_short(pubkey: str) -> str:
     """Truncates long Base58 pubkeys/signatures for clean chat display (e.g. 8xAZ...mQ11)."""

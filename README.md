@@ -4,7 +4,7 @@
 > **Category**: Tier 3 WASM Plugin, Real-World Business POS & Squads v4 Multisig Governance  
 > **Custody Architecture**: Non-custodial Tier 1 Invoicing + Tier 3 WASM Native Plugin + Squads v4 Multisig Proposals
 
-![Tests](https://img.shields.io/badge/Tests-250%2F250%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
+![Tests](https://img.shields.io/badge/Tests-255%2F255%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
 ![WASM Sandbox](https://img.shields.io/badge/Sandbox-Tier%203%20WASM%20wasip2-orange?style=for-the-badge&logo=webassembly)
 ![Custody](https://img.shields.io/badge/Custody-T1%20Invoicing%20%2B%20Squads%20v4-blue?style=for-the-badge&logo=solana)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
@@ -16,8 +16,9 @@
 Judges can verify 100% system functionality in seconds without configuring `.env`, Telegram tokens, or RPC keys:
 
 ```bash
-# Complete automated verification (250/250 boundary tests, WASM build, security audit)
+# Complete automated verification (255/255 boundary tests, WASM build, security audit)
 ./scripts/verify_all.sh
+
 
 # Instant SQLite WAL database & REST API backend dry-run test
 python3 scripts/pos_backend.py --test
@@ -126,7 +127,8 @@ sequenceDiagram
 
 ## 🚀 1-Command Verification (For Hackathon Judges)
 
-Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 250 boundary and security tests:
+Run the single automated verification script to setup environment, compile WASM, validate WASI component spec, and run all 255 boundary and security tests:
+
 
 ```bash
 ./scripts/verify_all.sh
@@ -172,7 +174,7 @@ python3 scripts/test_prompt_inj.py
 ./scripts/pre_commit.sh
 ```
 
-### 6. Run Comprehensive 250-Test Boundary & Stress Suite
+### 6. Run Comprehensive 255-Test Boundary & Stress Suite
 ```bash
 python3 scripts/test_boundary_cases.py
 # or via pytest:
@@ -210,4 +212,5 @@ docker-compose up -d
 - **Tier 1 (Payments)**: Direct customer-to-merchant wallet settlement via Solana Pay URLs.
 - **Tier 3 (WASM Core)**: Rust plugin compiled to WASI WebAssembly sandbox.
 - **Squads v4 Multisig**: The agent operates solely as a `Proposer`. Store managers hold threshold signers; key theft cannot drain funds.
-- **Audited**: 100% pass rate on prompt-injection security tests ([`PROMPT_INJECTION_TEST.md`](./PROMPT_INJECTION_TEST.md)) and 250 comprehensive boundary tests ([`scripts/test_boundary_cases.py`](./scripts/test_boundary_cases.py))
+- **Audited**: 100% pass rate on prompt-injection security tests ([`PROMPT_INJECTION_TEST.md`](./PROMPT_INJECTION_TEST.md)) and 255 comprehensive boundary tests ([`scripts/test_boundary_cases.py`](./scripts/test_boundary_cases.py))
+

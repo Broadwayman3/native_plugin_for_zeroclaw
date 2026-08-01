@@ -20,7 +20,8 @@ from tests import (
     test_squads_multisig,
     test_edge_security,
     test_edge_solana,
-    test_edge_storage
+    test_edge_storage,
+    test_edge_math_and_blinks
 )
 from pos_core import init_db, cleanup_db_files, DB_PATH
 
@@ -40,8 +41,9 @@ def run_boundary_tests():
     tests_passed += test_edge_security.run_suite()
     tests_passed += test_edge_solana.run_suite()
     tests_passed += test_edge_storage.run_suite()
+    tests_passed += test_edge_math_and_blinks.run_suite()
 
-    total_tests = 250
+    total_tests = 255
     cleanup_db_files("data/test_boundary.db")
 
     print("\n-----------------------------------------------------------------")
@@ -51,7 +53,8 @@ def run_boundary_tests():
 def test_boundary_suite():
     """Pytest entrypoint to execute full boundary test suite."""
     passed = run_boundary_tests()
-    assert passed == 250
+    assert passed == 255
+
 
 if __name__ == "__main__":
     run_boundary_tests()
