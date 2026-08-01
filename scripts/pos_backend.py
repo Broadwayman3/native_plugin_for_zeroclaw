@@ -81,13 +81,21 @@ def handle_sales_summary(handler, query_params):
         conn.close()
 
 @route_get('/api/v1/invoices')
-def handle_get_invoices(handler, query_params):
-    conn = get_db_connection()
+def handle_get_invoices(handler, query_params, db_path: str = DB_PATH):
+    conn = get_db_connection(db_path)
     conn.row_factory = sqlite3.Row
     try:
         cleanup_expired_pending_invoices(conn)
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
+
+        raw_id = query_params.get('id') if query_params else None
+        inv_id = raw_id[0] if (isinstance(raw_id, list) and len(raw_id) > 0) else (raw_id if isinstance(raw_id, str) else None)
+
+        if inv_id:
+            cursor.execute("SELECT * FROM invoices WHERE id = ? ORDER BY created_at DESC", (inv_id,))
+        else:
+            cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
+
         rows = [dict(r) for r in cursor.fetchall()]
         return 200, rows
     finally:
@@ -161,11 +169,43 @@ def handle_nonce_release(handler, data, query_params):
     finally:
         conn.close()
 
+@route_post('/api/v1/invoices/cancel')
+def handle_cancel_invoice(handler, data, query_params, db_path: str = DB_PATH):
+    """Allows cashiers to void/cancel a pending invoice atomically."""
+    if not isinstance(data, dict) or 'invoice_id' not in data:
+        return 400, {"error": "Bad Request: Missing invoice_id"}
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor.execute("""
+            UPDATE invoices 
+            SET status = 'cancelled', updated_at = ? 
+            WHERE id = ? AND status = 'pending'
+        """, (now, data['invoice_id']))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return 409, {"success": False, "error": "Conflict: Invoice not found or already finalized"}
+        return 200, {"success": True, "cancelled_id": data['invoice_id'], "status": "cancelled"}
+    except Exception as e:
+        return 500, {"error": redact_api_key(str(e))}
+    finally:
+        conn.close()
+
 class POSApiHandler(BaseHTTPRequestHandler):
     def _set_headers(self, status=200):
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+    def do_OPTIONS(self):
+        """Full CORS Preflight Options Request Interceptor."""
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-ACCEPT-PAYMENT, X-Telegram-Bot-Api-Secret-Token, Authorization')
+        self.send_header('Access-Control-Max-Age', '86400')
         self.end_headers()
 
     def do_GET(self):
@@ -210,7 +250,19 @@ def run_server(port=8080):
     init_db()
     server_address = ('127.0.0.1', port)
     httpd = ThreadingHTTPServer(server_address, POSApiHandler)
-    print(f"🚀 POS REST Backend API (WAL Mode & Micro-Router) listening on http://127.0.0.1:{port}")
+    banner = (
+        "=================================================================\n"
+        "🚀 ZeroClaw Solana POS REST API Backend Server\n"
+        "=================================================================\n"
+        "• Status       : OPERATIONAL (WAL Mode)\n"
+        f"• Listening    : http://127.0.0.1:{port}\n"
+        f"• Database     : {DB_PATH}\n"
+        "• x402 Spec    : Active on /api/v1/sales/premium_analytics\n"
+        "• Endpoints    : /sales/summary, /invoices, /invoices/create,\n"
+        "                 /invoices/cancel, /nonce/allocate, /nonce/release\n"
+        "================================================================="
+    )
+    print(banner)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -221,5 +273,11 @@ if __name__ == '__main__':
         init_db()
         print("Database WAL mode test initialization passed.")
     else:
-        port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 8080
+        env_port = os.getenv("PORT") or os.getenv("POS_PORT")
+        if env_port and env_port.isdigit():
+            port = int(env_port)
+        elif len(sys.argv) > 1 and sys.argv[1].isdigit():
+            port = int(sys.argv[1])
+        else:
+            port = 8080
         run_server(port)

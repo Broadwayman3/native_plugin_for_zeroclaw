@@ -49,8 +49,8 @@ jobs:
         run: |
           python3 scripts/lint_safety_ast.py
           bandit -r scripts/ -x scripts/test_* --severity-level medium || true
-          flake8 scripts/validators.py scripts/sanitizer.py scripts/pos_backend.py --max-line-length=120 --ignore=E501,W503
-          mypy scripts/validators.py scripts/sanitizer.py --ignore-missing-imports
+          flake8 scripts/validators.py scripts/sanitizer.py scripts/pos_backend.py scripts/pos_core/*.py scripts/qa_red_team_audit.py --max-line-length=120 --ignore=E501,W503
+          mypy scripts/validators.py scripts/sanitizer.py scripts/pos_core/*.py scripts/qa_red_team_audit.py --ignore-missing-imports
 
       - name: Check Rust Code Formatting
         run: |
@@ -88,6 +88,9 @@ jobs:
 
       - name: Run Security Audit & Prompt Injection Suite
         run: python3 scripts/test_prompt_inj.py
+
+      - name: Run Senior Lead QA & Red Team Security Audit Suite
+        run: python3 scripts/qa_red_team_audit.py
 
       - name: Run 250 Comprehensive Boundary & Stress Test Cases
         run: python3 scripts/test_boundary_cases.py

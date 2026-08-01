@@ -46,6 +46,10 @@ echo "5. Running Prompt Injection & Security Audit Suite..."
 python3 scripts/test_prompt_inj.py
 
 echo ""
+echo "5b. Executing Senior Lead QA & Red Team Security Audit Suite..."
+python3 scripts/qa_red_team_audit.py
+
+echo ""
 echo "6. Executing Pre-Commit Automated Safety Check..."
 ./scripts/pre_commit.sh
 

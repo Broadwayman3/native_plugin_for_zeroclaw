@@ -260,9 +260,51 @@ def test_189_idempotent_associated_token_account_instruction():
     assert ixs[0]["instruction"] == "createAssociatedTokenAccountIdempotent"
 
 def test_190_wasm_binary_ram_cache_warmup_engine():
-    from pos_core import load_wasm_binary_ram_cache
+    from pos_core import (
+        load_wasm_binary_ram_cache,
+        format_pubkey_short,
+        get_solscan_tx_url,
+        format_itemized_receipt,
+        get_db_connection,
+        init_db
+    )
+    from pos_backend import handle_cancel_invoice
     data = load_wasm_binary_ram_cache()
     assert isinstance(data, bytes)
+    
+    # Test short pubkey formatting (e.g. 8xAZ...1111)
+    assert format_pubkey_short("8xAZmQ1111111111111111111111111111111111111") == "8xAZ...1111"
+    assert format_pubkey_short("short") == "short"
+    assert format_pubkey_short("") == ""
+    
+    # Test Solscan explorer URL generation
+    assert get_solscan_tx_url("5k9XSignature", "devnet") == "https://solscan.io/tx/5k9XSignature?cluster=devnet"
+    assert get_solscan_tx_url("5k9XSignature", "mainnet") == "https://solscan.io/tx/5k9XSignature"
+    
+    # Test multi-language itemized receipt
+    receipt_en = format_itemized_receipt("102", "2x Cappuccino ($8.00);1x Croissant ($2.00)", 0.0, 10.0, lang="en")
+    assert "102" in receipt_en
+    receipt_uk = format_itemized_receipt("102", "2x Капучино ($8.00)", 0.0, 8.0, lang="uk")
+    assert "102" in receipt_uk
+
+    # Test atomic invoice cancel endpoint handler
+    setup_test_db()
+    conn = get_db_connection(TEST_DB_PATH)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status) VALUES ('inv_cancel_test', 'Ref111', 'USD', 10.0, 10.0, 'pending')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Cancel existing pending invoice (returns 200)
+    status_code, resp = handle_cancel_invoice(None, {"invoice_id": "inv_cancel_test"}, {}, db_path=TEST_DB_PATH)
+    assert status_code == 200 and resp["status"] == "cancelled"
+
+    # Repeated cancel or missing invoice (returns 409 Conflict)
+    status_code_retry, resp_retry = handle_cancel_invoice(None, {"invoice_id": "inv_cancel_test"}, {}, db_path=TEST_DB_PATH)
+    assert status_code_retry == 409
+    teardown_test_db()
 
 def run_suite():
     tests = [

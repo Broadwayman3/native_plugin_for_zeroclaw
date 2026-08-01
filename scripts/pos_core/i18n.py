@@ -11,94 +11,159 @@ from sanitizer import escape_telegram_markdown_v2
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "en": {
         "payment_success": "✅ Payment Confirmed!\nInvoice #{invoice_id}\nAmount: {amount} {currency}\nTx: {tx_sig}",
-        "payment_pending": "⏳ Awaiting Payment...\nInvoice #{invoice_id}\nAmount: {amount} {currency}\nPay URL: {pay_url}",
+        "payment_pending": "⏳ Awaiting Payment...\nInvoice #{invoice_id}\nAmount: {amount} {currency}\nPay URL: {pay_url}\n📱 Scan with Phantom, Solflare or any Solana Wallet",
         "refund_initiated": "🔄 Refund Requested!\nInvoice #{invoice_id}\nProposal Index: {proposal_idx}",
         "refund_error": "⚠️ Refund Error: {error_msg}",
-        "unsupported_currency": "❌ Error: Unsupported fiat currency '{currency}'"
+        "unsupported_currency": "❌ Error: Unsupported fiat currency '{currency}'",
+        "receipt_title": "☕ ZeroClaw POS Receipt #{invoice_id}",
+        "receipt_tax": "Tax ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "TOTAL: ${amount_usdc} USDC",
+        "default_item": "Standard Order",
+        "wallet_hint": "📱 Scan with Phantom, Solflare or any Solana Wallet"
     },
     "uk": {
         "payment_success": "✅ Оплату Підтверджено!\nЧек #{invoice_id}\nСума: {amount} {currency}\nТранзакція: {tx_sig}",
-        "payment_pending": "⏳ Очікування Оплати...\nЧек #{invoice_id}\nСума: {amount} {currency}\nПосилання: {pay_url}",
+        "payment_pending": "⏳ Очікування Оплати...\nЧек #{invoice_id}\nСума: {amount} {currency}\nПосилання: {pay_url}\n📱 Скануйте через Phantom, Solflare або будь-який гаманець Solana",
         "refund_initiated": "🔄 Ініційовано Рефанд!\nЧек #{invoice_id}\nІндекс пропозиції: {proposal_idx}",
         "refund_error": "⚠️ Помилка Рефанду: {error_msg}",
-        "unsupported_currency": "❌ Помилка: Непідтримувана валюта '{currency}'"
+        "unsupported_currency": "❌ Помилка: Непідтримувана валюта '{currency}'",
+        "receipt_title": "☕ ZeroClaw POS Чек #{invoice_id}",
+        "receipt_tax": "ПДВ / Податок ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "РАЗОМ: ${amount_usdc} USDC",
+        "default_item": "Стандартне Замовлення",
+        "wallet_hint": "📱 Скануйте через Phantom, Solflare або будь-який гаманець Solana"
     },
     "pt": {
         "payment_success": "✅ Pagamento Confirmado!\nFatura #{invoice_id}\nValor: {amount} {currency}\nTx: {tx_sig}",
-        "payment_pending": "⏳ Aguardando Pagamento...\nFatura #{invoice_id}\nValor: {amount} {currency}\nLink: {pay_url}",
+        "payment_pending": "⏳ Aguardando Pagamento...\nFatura #{invoice_id}\nValor: {amount} {currency}\nLink: {pay_url}\n📱 Escaneie com Phantom, Solflare ou qualquer carteira Solana",
         "refund_initiated": "🔄 Reembolso Solicitado!\nFatura #{invoice_id}\nÍndice da Proposta: {proposal_idx}",
         "refund_error": "⚠️ Erro no Reembolso: {error_msg}",
-        "unsupported_currency": "❌ Erro: Moeda não suportada '{currency}'"
+        "unsupported_currency": "❌ Erro: Moeda não suportada '{currency}'",
+        "receipt_title": "☕ Recibo ZeroClaw POS #{invoice_id}",
+        "receipt_tax": "Imposto ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "TOTAL: ${amount_usdc} USDC",
+        "default_item": "Pedido Padrão",
+        "wallet_hint": "📱 Escaneie com Phantom, Solflare ou qualquer carteira Solana"
     },
     "es": {
         "payment_success": "✅ ¡Pago Confirmado!\nFactura #{invoice_id}\nMonto: {amount} {currency}\nFirma: {tx_sig}",
-        "payment_pending": "⏳ Esperando Pago...\nFactura #{invoice_id}\nMonto: {amount} {currency}\nEnlace: {pay_url}",
+        "payment_pending": "⏳ Esperando Pago...\nFactura #{invoice_id}\nMonto: {amount} {currency}\nEnlace: {pay_url}\n📱 Escanea con Phantom, Solflare o cualquier billetera Solana",
         "refund_initiated": "🔄 ¡Reembolso Solicitado!\nFactura #{invoice_id}\nÍndice: {proposal_idx}",
         "refund_error": "⚠️ Error de Reembolso: {error_msg}",
-        "unsupported_currency": "❌ Error: Moneda no soportada '{currency}'"
+        "unsupported_currency": "❌ Error: Moneda no soportada '{currency}'",
+        "receipt_title": "☕ Recibo ZeroClaw POS #{invoice_id}",
+        "receipt_tax": "Impuesto ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "TOTAL: ${amount_usdc} USDC",
+        "default_item": "Pedido Estándar",
+        "wallet_hint": "📱 Escanea con Phantom, Solflare o cualquier billetera Solana"
     },
     "de": {
         "payment_success": "✅ Zahlung Bestätigt!\nRechnung #{invoice_id}\nBetrag: {amount} {currency}\nTx: {tx_sig}",
-        "payment_pending": "⏳ Warten auf Zahlung...\nRechnung #{invoice_id}\nBetrag: {amount} {currency}\nLink: {pay_url}",
+        "payment_pending": "⏳ Warten auf Zahlung...\nRechnung #{invoice_id}\nBetrag: {amount} {currency}\nLink: {pay_url}\n📱 Scannen Sie mit Phantom, Solflare oder einer beliebigen Solana-Wallet",
         "refund_initiated": "🔄 Rückerstattung Beantragt!\nRechnung #{invoice_id}\nIndex: {proposal_idx}",
         "refund_error": "⚠️ Rückerstattungsfehler: {error_msg}",
-        "unsupported_currency": "❌ Fehler: Nicht unterstützte Währung '{currency}'"
+        "unsupported_currency": "❌ Fehler: Nicht unterstützte Währung '{currency}'",
+        "receipt_title": "☕ ZeroClaw POS Beleg #{invoice_id}",
+        "receipt_tax": "Steuer ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "GESAMT: ${amount_usdc} USDC",
+        "default_item": "Standardbestellung",
+        "wallet_hint": "📱 Scannen Sie mit Phantom, Solflare oder einer beliebigen Solana-Wallet"
     },
     "fr": {
         "payment_success": "✅ Paiement Confirmé !\nFacture #{invoice_id}\nMontant : {amount} {currency}\nTx : {tx_sig}",
-        "payment_pending": "⏳ En Attente de Paiement...\nFacture #{invoice_id}\nMontant : {amount} {currency}\nLien : {pay_url}",
+        "payment_pending": "⏳ En Attente de Paiement...\nFacture #{invoice_id}\nMontant : {amount} {currency}\nLien : {pay_url}\n📱 Scannez avec Phantom, Solflare ou tout portefeuille Solana",
         "refund_initiated": "🔄 Remboursement Demandé !\nFacture #{invoice_id}\nIndice : {proposal_idx}",
         "refund_error": "⚠️ Erreur de Remboursement : {error_msg}",
-        "unsupported_currency": "❌ Erreur : Devise non prise en charge '{currency}'"
+        "unsupported_currency": "❌ Erreur : Devise non prise en charge '{currency}'",
+        "receipt_title": "☕ Reçu ZeroClaw POS #{invoice_id}",
+        "receipt_tax": "Taxe ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "TOTAL: ${amount_usdc} USDC",
+        "default_item": "Commande Standard",
+        "wallet_hint": "📱 Scannez avec Phantom, Solflare ou tout portefeuille Solana"
     },
     "it": {
         "payment_success": "✅ Pagamento Confermato!\nFattura #{invoice_id}\nImporto: {amount} {currency}\nTx: {tx_sig}",
-        "payment_pending": "⏳ In Attesa di Pagamento...\nFattura #{invoice_id}\nImporto: {amount} {currency}\nLink: {pay_url}",
+        "payment_pending": "⏳ In Attesa di Pagamento...\nFattura #{invoice_id}\nImporto: {amount} {currency}\nLink: {pay_url}\n📱 Scansiona con Phantom, Solflare o qualsiasi portafoglio Solana",
         "refund_initiated": "🔄 Rimborso Richiesto!\nFattura #{invoice_id}\nIndice: {proposal_idx}",
         "refund_error": "⚠️ Errore di Rimborso: {error_msg}",
-        "unsupported_currency": "❌ Errore: Valuta non supportata '{currency}'"
+        "unsupported_currency": "❌ Errore: Valuta non supportata '{currency}'",
+        "receipt_title": "☕ Ricevuta ZeroClaw POS #{invoice_id}",
+        "receipt_tax": "Tassa ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "TOTALE: ${amount_usdc} USDC",
+        "default_item": "Ordine Standard",
+        "wallet_hint": "📱 Scansiona con Phantom, Solflare o qualsiasi portafoglio Solana"
     },
     "pl": {
         "payment_success": "✅ Płatność Potwierdzona!\nFaktura #{invoice_id}\nKwota: {amount} {currency}\nTx: {tx_sig}",
-        "payment_pending": "⏳ Oczekiwanie na Płatność...\nFaktura #{invoice_id}\nKwota: {amount} {currency}\nLink: {pay_url}",
+        "payment_pending": "⏳ Oczekiwanie na Płatność...\nFaktura #{invoice_id}\nKwota: {amount} {currency}\nLink: {pay_url}\n📱 Zeskanuj za pomocą Phantom, Solflare lub dowolnego portfela Solana",
         "refund_initiated": "🔄 Żądanie Zwrotu!\nFaktura #{invoice_id}\nIndeks: {proposal_idx}",
         "refund_error": "⚠️ Błąd Zwrotu: {error_msg}",
-        "unsupported_currency": "❌ Błąd: Nieobsługiwana waluta '{currency}'"
+        "unsupported_currency": "❌ Błąd: Nieobsługiwana waluta '{currency}'",
+        "receipt_title": "☕ Paragon ZeroClaw POS #{invoice_id}",
+        "receipt_tax": "Podatek ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "SUMA: ${amount_usdc} USDC",
+        "default_item": "Zamówienie Standardowe",
+        "wallet_hint": "📱 Zeskanuj za pomocą Phantom, Solflare lub dowolnego portfela Solana"
     },
     "tr": {
         "payment_success": "✅ Ödeme Onaylandı!\nFatura #{invoice_id}\nTutar: {amount} {currency}\nİşlem: {tx_sig}",
-        "payment_pending": "⏳ Ödeme Bekleniyor...\nFatura #{invoice_id}\nTutar: {amount} {currency}\nBağlantı: {pay_url}",
+        "payment_pending": "⏳ Ödeme Bekleniyor...\nFatura #{invoice_id}\nTutar: {amount} {currency}\nBağlantı: {pay_url}\n📱 Phantom, Solflare veya herhangi bir Solana Cüzdanı ile tarayın",
         "refund_initiated": "🔄 İade İstendi!\nFatura #{invoice_id}\nDizin: {proposal_idx}",
         "refund_error": "⚠️ İade Hatası: {error_msg}",
-        "unsupported_currency": "❌ Hata: Desteklenmeyen para birimi '{currency}'"
+        "unsupported_currency": "❌ Hata: Desteklenmeyen para birimi '{currency}'",
+        "receipt_title": "☕ ZeroClaw POS Fişi #{invoice_id}",
+        "receipt_tax": "Vergi ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "TOPLAM: ${amount_usdc} USDC",
+        "default_item": "Standart Sipariş",
+        "wallet_hint": "📱 Phantom, Solflare veya herhangi bir Solana Cüzdanı ile tarayın"
     },
     "ja": {
         "payment_success": "✅ 支払い完了!\n請求書 #{invoice_id}\n金額: {amount} {currency}\nTx: {tx_sig}",
-        "payment_pending": "⏳ 支払い待ち...\n請求書 #{invoice_id}\n金額: {amount} {currency}\nリンク: {pay_url}",
+        "payment_pending": "⏳ 支払い待ち...\n請求書 #{invoice_id}\n金額: {amount} {currency}\nリンク: {pay_url}\n📱 Phantom、Solflare、または任意のSolanaウォレットでスキャン",
         "refund_initiated": "🔄 返金要求!\n請求書 #{invoice_id}\nインデックス: {proposal_idx}",
         "refund_error": "⚠️ 返金エラー: {error_msg}",
-        "unsupported_currency": "❌ エラー: 未対応の通貨 '{currency}'"
+        "unsupported_currency": "❌ エラー: 未対応の通貨 '{currency}'",
+        "receipt_title": "☕ ZeroClaw POS レシート #{invoice_id}",
+        "receipt_tax": "税 ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "合計: ${amount_usdc} USDC",
+        "default_item": "標準注文",
+        "wallet_hint": "📱 Phantom、Solflare、または任意のSolanaウォレットでスキャン"
     },
     "zh": {
         "payment_success": "✅ 支付已确认！\n账单 #{invoice_id}\n金额：{amount} {currency}\n交易：{tx_sig}",
-        "payment_pending": "⏳ 等待支付...\n账单 #{invoice_id}\n金额：{amount} {currency}\n链接：{pay_url}",
+        "payment_pending": "⏳ 等待支付...\n账单 #{invoice_id}\n金额：{amount} {currency}\n链接：{pay_url}\n📱 使用 Phantom、Solflare 或任何 Solana 钱包扫描",
         "refund_initiated": "🔄 已申请退款！\n账单 #{invoice_id}\n索引：{proposal_idx}",
         "refund_error": "⚠️ 退款错误：{error_msg}",
-        "unsupported_currency": "❌ 错误：不支持的货币 '{currency}'"
+        "unsupported_currency": "❌ 错误：不支持的货币 '{currency}'",
+        "receipt_title": "☕ ZeroClaw POS 收据 #{invoice_id}",
+        "receipt_tax": "税费 ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "总计: ${amount_usdc} USDC",
+        "default_item": "标准订单",
+        "wallet_hint": "📱 使用 Phantom、Solflare 或任何 Solana 钱包扫描"
     },
     "hi": {
         "payment_success": "✅ भुगतान की पुष्टि की गई!\nबीजक #{invoice_id}\nराशि: {amount} {currency}\nलेन-देन: {tx_sig}",
-        "payment_pending": "⏳ भुगतान का इंतज़ार...\nबीजक #{invoice_id}\nराशि: {amount} {currency}\nलिंक: {pay_url}",
+        "payment_pending": "⏳ भुगतान का इंतज़ार...\nबीजक #{invoice_id}\nराशि: {amount} {currency}\nलिंक: {pay_url}\n📱 Phantom, Solflare या किसी भी Solana वॉलेट से स्कैन करें",
         "refund_initiated": "🔄 रिफंड का अनुरोध किया गया!\nबीजक #{invoice_id}\nइंडेक्स: {proposal_idx}",
         "refund_error": "⚠️ रिफंड त्रुटि: {error_msg}",
-        "unsupported_currency": "❌ त्रुटि: असमर्थित मुद्रा '{currency}'"
+        "unsupported_currency": "❌ त्रुटि: असमर्थित मुद्रा '{currency}'",
+        "receipt_title": "☕ ZeroClaw POS रसीद #{invoice_id}",
+        "receipt_tax": "कर ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "कुल: ${amount_usdc} USDC",
+        "default_item": "मानक ऑर्डर",
+        "wallet_hint": "📱 Phantom, Solflare या किसी भी Solana वॉलेट से स्कैन करें"
     },
     "ar": {
         "payment_success": "✅ تم تأكيد الدفع!\nالفاتورة #{invoice_id}\nالمبلغ: {amount} {currency}\nالمعاملة: {tx_sig}",
-        "payment_pending": "⏳ في انتظار الدفع...\nالفاتورة #{invoice_id}\nالمبلغ: {amount} {currency}\nالرابط: {pay_url}",
+        "payment_pending": "⏳ في انتظار الدفع...\nالفاتورة #{invoice_id}\nالمبلغ: {amount} {currency}\nالرابط: {pay_url}\n📱 امسح باستخدام Phantom أو Solflare أو أي محفظة Solana",
         "refund_initiated": "🔄 تم طلب الاسترداد!\nالفاتورة #{invoice_id}\nالفهرس: {proposal_idx}",
         "refund_error": "⚠️ خطأ في الاسترداد: {error_msg}",
-        "unsupported_currency": "❌ خطأ: عملة غير مدعومة '{currency}'"
+        "unsupported_currency": "❌ خطأ: عملة غير مدعومة '{currency}'",
+        "receipt_title": "☕ إيصال ZeroClaw POS #{invoice_id}",
+        "receipt_tax": "الضريبة ({tax_rate_pct}%): ${tax_amount}",
+        "receipt_total": "الإجمالي: ${amount_usdc} USDC",
+        "default_item": "طلب قياسي",
+        "wallet_hint": "📱 امسح باستخدام Phantom أو Solflare أو أي محفظة Solana"
     }
 }
 
@@ -116,6 +181,34 @@ def t(key: str, lang: Optional[str] = "en", escape_markdown: bool = True, **kwar
     if escape_markdown:
         return escape_telegram_markdown_v2(formatted_msg)
     return formatted_msg
+
+def format_itemized_receipt(
+    invoice_id: str,
+    items: str,
+    tax_rate_pct: float,
+    amount_usdc: float,
+    lang: str = "en"
+) -> str:
+    """Formats an itemized POS receipt with multi-language support (13 languages)."""
+    tax_amount = round(amount_usdc * (tax_rate_pct / 100.0), 2)
+    default_item = t("default_item", lang=lang, escape_markdown=False)
+    items_formatted = (items.replace(";", "\n• ") if items else default_item)
+    if not items_formatted.startswith("• "):
+        items_formatted = f"• {items_formatted}"
+    
+    title = t("receipt_title", lang=lang, escape_markdown=False, invoice_id=invoice_id)
+    tax_line = t("receipt_tax", lang=lang, escape_markdown=False, tax_rate_pct=f"{tax_rate_pct:.0f}", tax_amount=f"{tax_amount:.2f}")
+    total_line = t("receipt_total", lang=lang, escape_markdown=False, amount_usdc=f"{amount_usdc:.2f}")
+    
+    receipt_raw = (
+        f"*{title}*\n"
+        f"───────────────────────────\n"
+        f"{items_formatted}\n"
+        f"───────────────────────────\n"
+        f"• {tax_line}\n"
+        f"• *{total_line}*"
+    )
+    return escape_telegram_markdown_v2(receipt_raw)
 
 # Alias for backward compatibility
 get_localized_message = t
