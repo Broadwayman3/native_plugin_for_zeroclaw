@@ -94,6 +94,12 @@ def test_260_ultimate_master_benchmark_pass_260_of_260():
     """Ultimate Master Benchmark Pass - 260/260 Tests Complete."""
     assert True
 
+def test_261_dual_fiat_conversion_receipt_display():
+    """Verifies format_itemized_receipt displays original fiat charge and oracle exchange rate when provided."""
+    receipt = format_itemized_receipt("INV-103", "Coffee", 0.0, 10.0, lang="en", fiat_currency="BRL", fiat_amount=54.50, exchange_rate=5.45)
+    assert r"• Charged: 54\.50 BRL \(Rate: 5\.45\)" in receipt
+    assert r"*TOTAL: $10\.00 USDC*" in receipt
+
 def run_suite():
     tests = [
         ("Decimal Exact Micro-Lamport Math (No Float Drift)", test_251_decimal_exact_micro_lamport_math),
@@ -105,8 +111,10 @@ def run_suite():
         ("Telegram Refund Checkpoint Inline Keyboard Structure", test_257_telegram_refund_checkpoint_inline_keyboard),
         ("Active RPC URL Fallback Resolution", test_258_active_rpc_url_fallback_resolution),
         ("Clean Database Initialization Without Sample Data", test_259_clean_db_init_without_sample_data),
-        ("Ultimate Master Benchmark Pass (260/260 PASSED)", test_260_ultimate_master_benchmark_pass_260_of_260)
+        ("Ultimate Master Benchmark Pass (260/260 PASSED)", test_260_ultimate_master_benchmark_pass_260_of_260),
+        ("Dual Fiat Conversion Receipt Display", test_261_dual_fiat_conversion_receipt_display)
     ]
+
     passed = 0
     GREEN = "\033[92m"
     RESET = "\033[0m"

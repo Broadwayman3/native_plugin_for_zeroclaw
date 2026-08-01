@@ -187,9 +187,12 @@ def format_itemized_receipt(
     items: str,
     tax_rate_pct: float,
     amount_usdc: float,
-    lang: str = "en"
+    lang: str = "en",
+    fiat_currency: Optional[str] = None,
+    fiat_amount: Optional[float] = None,
+    exchange_rate: Optional[float] = None
 ) -> str:
-    """Formats an itemized POS receipt while safely preserving Telegram MarkdownV2 bold/italic syntax."""
+    """Formats an itemized POS receipt while safely preserving Telegram MarkdownV2 bold/italic syntax and dual fiat oracle conversion metadata."""
     tax_amount = round(amount_usdc * (tax_rate_pct / 100.0), 2)
     default_item = t("default_item", lang=lang, escape_markdown=False)
     
@@ -203,15 +206,24 @@ def format_itemized_receipt(
     if not items_formatted.startswith("• "):
         items_formatted = f"• {items_formatted}"
 
-        
+    fiat_conversion_line = ""
+    if fiat_currency and fiat_amount is not None and exchange_rate and exchange_rate > 0:
+        clean_fiat_curr = escape_telegram_markdown_v2(str(fiat_currency))
+        clean_fiat_amt = escape_telegram_markdown_v2(f"{fiat_amount:.2f}")
+        clean_rate = escape_telegram_markdown_v2(f"{exchange_rate:.2f}")
+        fiat_conversion_line = f"• Charged: {clean_fiat_amt} {clean_fiat_curr} \(Rate: {clean_rate}\)\n"
+
+
     return (
         f"*{title_escaped}*\n"
         f"───────────────────────────\n"
         f"{items_formatted}\n"
         f"───────────────────────────\n"
         f"• {tax_escaped}\n"
+        f"{fiat_conversion_line}"
         f"• *{total_escaped}*"
     )
+
 
 def get_refund_checkpoint_inline_keyboard(proposal_idx: int) -> Dict[str, Any]:
     """Generates Telegram Inline Keyboard payload for human approval checkpoints."""

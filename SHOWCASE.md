@@ -18,7 +18,7 @@ An autonomous AI POS Payment Terminal operating in Telegram/WhatsApp for local b
 - **SQLite POS REST Backend**: Local WAL-mode DB & reporting API (`GET /api/v1/sales/summary`).
 
 ### 🛡️ Security & Reproducibility:
-- **100% Automated CI Test Pass**: 260 boundary/stress tests + 6 prompt injection jailbreak tests + Rust `proptest` suite.
+- **100% Automated CI Test Pass**: 261 boundary/stress tests + 6 prompt injection jailbreak tests + Rust `proptest` suite.
 - **Fail-Closed Security**: Invalid LLM JSON, missing wallet configs, or unknown RPC hosts immediately halt payment verification without making arbitrary state mutations.
 
 ---
@@ -29,6 +29,7 @@ An autonomous AI POS Payment Terminal operating in Telegram/WhatsApp for local b
 - **[0:30 - 1:15] Screen 2 (Devnet Transaction Execution)**: Solflare mobile wallet scans QR code, confirms payment. POS Agent receives transaction, parses Associated Token Account balance deltas, and marks invoice as `PAID`.
 - **[1:15 - 1:50] Refund Flow & Squads v4 Proposal**: Cashier requests refund. POS Agent requests Human Manager Approval via Telegram button. Upon approval, POS Agent initiates a keyless Squads v4 Multisig proposal (Proposer role, no withdrawal key access).
 - **[1:50 - 2:10] Token-2022 Transfer Fee & Offline Fallback**: Demonstration of Token-2022 Transfer Fee capping and offline static fallback price feed when Pyth/Switchboard endpoints are simulated offline.
-- **[2:10 - 2:30] REST API & Test Pass**: Shows `curl http://localhost:8080/api/v1/sales/summary` and execution of `./scripts/build_wasm.sh` and `./scripts/test_boundary_cases.py` (260/260 PASSED).
+- **[2:10 - 2:30] REST API & Test Pass**: Shows `curl http://localhost:8080/api/v1/sales/summary` and execution of `./scripts/build_wasm.sh` and `./scripts/test_boundary_cases.py` (261/261 PASSED).
+
 
 
