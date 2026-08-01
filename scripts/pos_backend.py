@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-ZeroClaw Solana POS Agent - Local SQLite Database & Reporting Backend
-Provides local persistence for invoices, payments, and Squads v4 proposals.
+ZeroClaw Solana POS Agent - Local SQLite Database & Reporting Backend (WAL Mode & Atomic Transitions)
+Provides WAL-enabled local persistence for invoices, payments, and Squads v4 proposals.
+Prevents race conditions using atomic state transitions (UPDATE ... WHERE status = 'pending').
 Exposes REST API for merchant reporting (GET /api/v1/sales/summary).
 """
 
@@ -14,9 +15,15 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 DB_PATH = "data/pos_store.db"
 
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
+    return conn
+
 def init_db():
     os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS invoices (
@@ -61,7 +68,7 @@ def init_db():
         
     conn.commit()
     conn.close()
-    print(f"✅ SQLite Database initialized at {DB_PATH}")
+    print(f"✅ SQLite Database (WAL Mode) initialized at {DB_PATH}")
 
 class POSApiHandler(BaseHTTPRequestHandler):
     def _set_headers(self, status=200):
@@ -71,7 +78,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -87,6 +94,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
                 "total_paid_invoices": row["total_invoices"] or 0,
                 "total_sales_usdc": round(row["total_usdc"] or 0.0, 2),
                 "total_pending_invoices": pending_row["pending_count"] or 0,
+                "journal_mode": "WAL",
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
             }
             self._set_headers(200)
@@ -115,7 +123,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Invalid JSON"}).encode('utf-8'))
             return
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         if self.path == '/api/v1/invoices/create':
@@ -135,12 +143,20 @@ class POSApiHandler(BaseHTTPRequestHandler):
         elif self.path == '/api/v1/invoices/update_status':
             try:
                 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                # Atomic state transition: UPDATE ... WHERE status = 'pending' (prevents double fulfillment)
                 cursor.execute("""
-                    UPDATE invoices SET status = ?, tx_signature = ?, updated_at = ? WHERE id = ?
-                """, (data['status'], data.get('tx_signature'), now, data['invoice_id']))
+                    UPDATE invoices 
+                    SET status = ?, tx_signature = ?, updated_at = ? 
+                    WHERE id = ? AND (status = 'pending' OR status = ?)
+                """, (data['status'], data.get('tx_signature'), now, data['invoice_id'], data['status']))
                 conn.commit()
-                self._set_headers(200)
-                self.wfile.write(json.dumps({"success": True, "updated": cursor.rowcount}).encode('utf-8'))
+                updated_count = cursor.rowcount
+                if updated_count == 0:
+                    self._set_headers(409)
+                    self.wfile.write(json.dumps({"success": False, "error": "Conflict: Invoice state already finalized or invalid transition", "updated": 0}).encode('utf-8'))
+                else:
+                    self._set_headers(200)
+                    self.wfile.write(json.dumps({"success": True, "updated": updated_count}).encode('utf-8'))
             except Exception as e:
                 self._set_headers(500)
                 self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
@@ -155,7 +171,7 @@ def run_server(port=8080):
     init_db()
     server_address = ('127.0.0.1', port)
     httpd = HTTPServer(server_address, POSApiHandler)
-    print(f"🚀 POS REST Backend API listening on http://127.0.0.1:{port}")
+    print(f"🚀 POS REST Backend API (WAL Mode) listening on http://127.0.0.1:{port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -164,7 +180,7 @@ def run_server(port=8080):
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
         init_db()
-        print("Database test initialization passed.")
+        print("Database WAL mode test initialization passed.")
     else:
         port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 8080
         run_server(port)

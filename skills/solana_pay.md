@@ -1,11 +1,11 @@
 ---
 name: solana_pay
-description: Skill for generating Solana Pay URLs, QR codes, and Blinks with unique reference public keys for POS invoicing.
+description: Skill for generating Solana Pay URLs, QR codes, and Blinks with unique reference public keys and Triple Payment Verification.
 ---
 
 # Solana Pay Invoicing & QR Code Skill
 
-This skill allows the agent to parse customer/cashier invoice requests and generate valid, non-custodial Solana Pay URLs and QR code representations.
+This skill allows the agent to parse customer/cashier invoice requests, generate valid non-custodial Solana Pay URLs, and enforce **Triple Payment Verification**.
 
 ## Key Rules & Workflow
 
@@ -26,18 +26,12 @@ This skill allows the agent to parse customer/cashier invoice requests and gener
 solana:<MERCHANT_PUBKEY>?amount=<AMOUNT>&spl-token=<USDC_MINT>&reference=<UNIQUE_REFERENCE_PUBKEY>&label=<LABEL>&message=<MESSAGE>
 ```
 
-3. **Output Formatting for LLM (Token-Optimized)**:
+3. **Triple Payment Verification Engine (Prevents Forgery & Dusting)**:
+   - **Condition 1 (Reference Matching)**: Transaction must include the invoice's unique `reference` Ed25519 public key.
+   - **Condition 2 (Token Mint Enforcement)**: Token transfer mint must EXACTLY match USDC Mint (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`). Rejects fake/custom SPL tokens.
+   - **Condition 3 (Amount Sufficiency)**: `paid_amount_atomic_units` >= `expected_amount_atomic_units`. Rejects 1-lamport micro-dusting attacks!
+
+4. **Output Formatting for LLM (Token-Optimized)**:
    - Always produce a concise response (<200 tokens).
    - Provide the direct Solana Pay deep link.
    - Include a clickable QR code image link via standard QR rendering.
-   - Output example:
-     ```
-     🧾 **Рахунок #102 сформовано**
-     • Сума: **5.00 USDC** (≈ 207.50 UAH)
-     • Reference Key: `7xWz...9qKP`
-     
-     📱 **Оплатіть через Phantom / Solflare:**
-     [Сканувати QR Код](https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=solana:8xAZ...%3Famount=5.00...)
-     
-     *Очікую підтвердження з мережі Solana...*
-     ```
