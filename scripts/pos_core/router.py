@@ -36,6 +36,15 @@ def send_json_response(handler: Any, status_code: int, body: Any, extra_headers:
     handler.end_headers()
     handler.wfile.write(json.dumps(body, indent=2).encode('utf-8'))
 
+def handle_options_request(handler: Any) -> None:
+    """Full CORS Preflight Options Request Interceptor."""
+    handler.send_response(204)
+    handler.send_header('Access-Control-Allow-Origin', '*')
+    handler.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+    handler.send_header('Access-Control-Allow-Headers', 'Content-Type, X-ACCEPT-PAYMENT, X-Telegram-Bot-Api-Secret-Token, Authorization, Content-Encoding, Accept-Encoding')
+    handler.send_header('Access-Control-Max-Age', '86400')
+    handler.end_headers()
+
 def dispatch_request(handler: Any, method: str, post_data: Optional[Dict[str, Any]] = None) -> None:
     """Dispatches HTTP GET and POST requests by matching clean path (without query params)."""
     routes = ROUTES_GET if method == 'GET' else ROUTES_POST

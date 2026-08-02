@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-ZeroClaw Solana POS Agent - Database Core Module (WAL Mode & Schema Management)
+ZeroClaw Solana POS Agent - Database Core Module (WAL Mode, DAO Layer & Schema Management)
 """
 
 import os
 import sqlite3
 import datetime
 from contextlib import contextmanager
-from typing import Optional, Generator
+from typing import Optional, Generator, Dict, Any, List, Tuple
 from pos_core.constants import DEFAULT_SOCKET_TIMEOUT
 
 DB_PATH: str = "data/pos_store.db"
@@ -83,36 +83,9 @@ def check_and_register_telegram_update(conn: Optional[sqlite3.Connection] = None
         except (sqlite3.IntegrityError, sqlite3.InterfaceError):
             return False
 
-def init_db(db_path: str = DB_PATH, seed_sample_data: bool = True) -> None:
-    """Initializes SQLite tables and default nonce pool / optional sample data."""
-    conn = get_db_connection(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute("CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, reference_pubkey TEXT UNIQUE NOT NULL, fiat_currency TEXT NOT NULL, fiat_amount REAL NOT NULL, usdc_amount REAL NOT NULL, status TEXT NOT NULL DEFAULT 'pending', tx_signature TEXT, customer_address TEXT, pix_id TEXT, pix_payload TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_tx_sig ON invoices(tx_signature) WHERE tx_signature IS NOT NULL;")
-    
-    # Backward-compatible schema migration for POS tax & receipt breakdown metadata
-    cursor.execute("PRAGMA table_info(invoices)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if "tax_rate_pct" not in columns:
-        cursor.execute("ALTER TABLE invoices ADD COLUMN tax_rate_pct REAL DEFAULT 0.0")
-    if "items_breakdown" not in columns:
-        cursor.execute("ALTER TABLE invoices ADD COLUMN items_breakdown TEXT")
-
-    cursor.execute("CREATE TABLE IF NOT EXISTS squads_proposals (proposal_index INTEGER PRIMARY KEY, invoice_id TEXT NOT NULL, recipient_pubkey TEXT NOT NULL, amount_usdc REAL NOT NULL, status TEXT NOT NULL DEFAULT 'created', tx_base64 TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (invoice_id) REFERENCES invoices(id))")
-    cursor.execute("CREATE TABLE IF NOT EXISTS processed_updates (update_id INTEGER PRIMARY KEY, processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS nonce_accounts (pubkey TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'free', locked_at TIMESTAMP)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS sop_checkpoints (id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, step_id TEXT NOT NULL, state_data TEXT, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-
-    cursor.execute("SELECT COUNT(*) FROM nonce_accounts")
-    if cursor.fetchone()[0] == 0:
-        cursor.executemany("INSERT INTO nonce_accounts (pubkey, status) VALUES (?, 'free')", [
-            ("Nonce111111111111111111111111111111111111111",),
-            ("Nonce222222222222222222222222222222222222222",),
-            ("Nonce333333333333333333333333333333333333333",)
-        ])
-
-    if seed_sample_data:
+def seed_sample_data(conn: Optional[sqlite3.Connection] = None, db_path: str = DB_PATH) -> None:
+    """Populates SQLite database with default sample invoices if table is empty."""
+    with get_db_cursor(conn, db_path) as cursor:
         cursor.execute("SELECT COUNT(*) FROM invoices")
         if cursor.fetchone()[0] == 0:
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -123,7 +96,135 @@ def init_db(db_path: str = DB_PATH, seed_sample_data: bool = True) -> None:
             ]
             cursor.executemany("INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, tx_signature, customer_address, pix_id, pix_payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", sample_data)
 
-    conn.commit()
-    cleanup_expired_pending_invoices(conn)
-    conn.close()
+def init_db(db_path: str = DB_PATH, seed_sample_data: bool = True) -> None:
+    """Initializes SQLite tables, default nonce pool, and optional sample data."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
 
+        cursor.execute("CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, reference_pubkey TEXT UNIQUE NOT NULL, fiat_currency TEXT NOT NULL, fiat_amount REAL NOT NULL, usdc_amount REAL NOT NULL, status TEXT NOT NULL DEFAULT 'pending', tx_signature TEXT, customer_address TEXT, pix_id TEXT, pix_payload TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_tx_sig ON invoices(tx_signature) WHERE tx_signature IS NOT NULL;")
+        
+        # Backward-compatible schema migration for POS tax & receipt breakdown metadata
+        cursor.execute("PRAGMA table_info(invoices)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "tax_rate_pct" not in columns:
+            cursor.execute("ALTER TABLE invoices ADD COLUMN tax_rate_pct REAL DEFAULT 0.0")
+        if "items_breakdown" not in columns:
+            cursor.execute("ALTER TABLE invoices ADD COLUMN items_breakdown TEXT")
+
+        cursor.execute("CREATE TABLE IF NOT EXISTS squads_proposals (proposal_index INTEGER PRIMARY KEY, invoice_id TEXT NOT NULL, recipient_pubkey TEXT NOT NULL, amount_usdc REAL NOT NULL, status TEXT NOT NULL DEFAULT 'created', tx_base64 TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (invoice_id) REFERENCES invoices(id))")
+        cursor.execute("CREATE TABLE IF NOT EXISTS processed_updates (update_id INTEGER PRIMARY KEY, processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS nonce_accounts (pubkey TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'free', locked_at TIMESTAMP)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS sop_checkpoints (id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, step_id TEXT NOT NULL, state_data TEXT, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+
+        cursor.execute("SELECT COUNT(*) FROM nonce_accounts")
+        if cursor.fetchone()[0] == 0:
+            cursor.executemany("INSERT INTO nonce_accounts (pubkey, status) VALUES (?, 'free')", [
+                ("Nonce111111111111111111111111111111111111111",),
+                ("Nonce222222222222222222222222222222222222222",),
+                ("Nonce333333333333333333333333333333333333333",)
+            ])
+
+        conn.commit()
+
+        if seed_sample_data:
+            globals()["seed_sample_data"](conn=conn)
+
+        cleanup_expired_pending_invoices(conn=conn)
+    finally:
+        conn.close()
+
+
+# =====================================================================
+# Data Access Object (DAO / Repository) Layer
+# =====================================================================
+
+def get_sales_summary_stats(db_path: str = DB_PATH) -> Dict[str, Any]:
+    """Retrieves aggregated sales metrics, pending invoice counts, and breakdown by currency."""
+    conn = get_db_connection(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as total_invoices, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid'")
+        row = cursor.fetchone()
+        cursor.execute("SELECT COUNT(*) as pending_count FROM invoices WHERE status = 'pending'")
+        pending_row = cursor.fetchone()
+
+        cursor.execute("SELECT fiat_currency, COUNT(*) as count, SUM(fiat_amount) as total_fiat, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid' GROUP BY fiat_currency")
+        by_curr = {r["fiat_currency"]: {"count": r["count"], "total_fiat": round(r["total_fiat"] or 0.0, 2), "total_usdc": round(r["total_usdc"] or 0.0, 2)} for r in cursor.fetchall()}
+
+        return {
+            "business_name": "ZeroClaw Coffee POS",
+            "currency": "USDC",
+            "total_paid_invoices": (row["total_invoices"] if row else 0) or 0,
+            "total_sales_usdc": round((row["total_usdc"] if row else 0.0) or 0.0, 2),
+            "total_pending_invoices": (pending_row["pending_count"] if pending_row else 0) or 0,
+            "sales_by_currency": by_curr,
+            "journal_mode": "WAL",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        }
+    finally:
+        conn.close()
+
+def get_invoices_list(invoice_id: Optional[str] = None, db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+    """Fetches list of invoices or single invoice by ID after cleaning expired pending records."""
+    conn = get_db_connection(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        cleanup_expired_pending_invoices(conn)
+        cursor = conn.cursor()
+        if invoice_id:
+            cursor.execute("SELECT * FROM invoices WHERE id = ? ORDER BY created_at DESC", (invoice_id,))
+        else:
+            cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def create_invoice_record(data: Dict[str, Any], db_path: str = DB_PATH) -> Tuple[bool, str]:
+    """Creates a new pending invoice record in the database."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor.execute("""
+            INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        """, (data['id'], data['reference_pubkey'], data.get('fiat_currency', 'USD'), data.get('fiat_amount', data['usdc_amount']), data['usdc_amount'], now, now))
+        conn.commit()
+        return True, data['id']
+    finally:
+        conn.close()
+
+def update_invoice_status_record(invoice_id: str, status: str, tx_signature: Optional[str] = None, db_path: str = DB_PATH) -> int:
+    """Atomically updates invoice status if transition is valid from pending or partially_paid."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor.execute("""
+            UPDATE invoices 
+            SET status = ?, tx_signature = ?, updated_at = ? 
+            WHERE id = ? AND (status = 'pending' OR status = 'partially_paid' OR status = ?)
+        """, (status, tx_signature, now, invoice_id, status))
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+def cancel_invoice_record(invoice_id: str, db_path: str = DB_PATH) -> int:
+    """Atomically cancels/voids a pending invoice."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor.execute("""
+            UPDATE invoices 
+            SET status = 'cancelled', updated_at = ? 
+            WHERE id = ? AND status = 'pending'
+        """, (now, invoice_id))
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()

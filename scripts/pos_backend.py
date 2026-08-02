@@ -23,14 +23,21 @@ from pos_core import (
     DB_PATH,
     get_db_connection,
     init_db,
+    seed_sample_data,
     cleanup_expired_pending_invoices,
     check_and_register_telegram_update,
+    get_sales_summary_stats,
+    get_invoices_list,
+    create_invoice_record,
+    update_invoice_status_record,
+    cancel_invoice_record,
     allocate_free_nonce_account,
     release_nonce_account,
     mark_nonce_account_stale,
     refresh_stale_nonce_account,
     token_to_atomic_units,
     usdc_to_atomic_units,
+    is_valid_base58,
     is_payment_amount_valid,
     generate_secure_reference_key,
     initiate_refund_request,
@@ -45,6 +52,7 @@ from pos_core import (
     get_multitier_fiat_rate,
     route_get,
     route_post,
+    handle_options_request,
     dispatch_request,
     send_json_response
 )
@@ -84,54 +92,18 @@ def handle_action_get_invoice(handler, query_params):
     return 200, action_payload, extra_headers
 
 @route_get('/api/v1/sales/summary')
-def handle_sales_summary(handler, query_params):
-
-    conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as total_invoices, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid'")
-        row = cursor.fetchone()
-        cursor.execute("SELECT COUNT(*) as pending_count FROM invoices WHERE status = 'pending'")
-        pending_row = cursor.fetchone()
-
-        cursor.execute("SELECT fiat_currency, COUNT(*) as count, SUM(fiat_amount) as total_fiat, SUM(usdc_amount) as total_usdc FROM invoices WHERE status = 'paid' GROUP BY fiat_currency")
-        by_curr = {r["fiat_currency"]: {"count": r["count"], "total_fiat": round(r["total_fiat"] or 0.0, 2), "total_usdc": round(r["total_usdc"] or 0.0, 2)} for r in cursor.fetchall()}
-
-        summary = {
-            "business_name": "ZeroClaw Coffee POS",
-            "currency": "USDC",
-            "total_paid_invoices": row["total_invoices"] or 0,
-            "total_sales_usdc": round(row["total_usdc"] or 0.0, 2),
-            "total_pending_invoices": pending_row["pending_count"] or 0,
-            "sales_by_currency": by_curr,
-            "journal_mode": "WAL",
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-        }
-        return 200, summary
-    finally:
-        conn.close()
+def handle_sales_summary(handler, query_params, db_path: str = DB_PATH):
+    """Retrieves aggregated sales metrics and currency breakdown via DAO layer."""
+    summary = get_sales_summary_stats(db_path=db_path)
+    return 200, summary
 
 @route_get('/api/v1/invoices')
 def handle_get_invoices(handler, query_params, db_path: str = DB_PATH):
-    conn = get_db_connection(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        cleanup_expired_pending_invoices(conn)
-        cursor = conn.cursor()
-
-        raw_id = query_params.get('id') if query_params else None
-        inv_id = raw_id[0] if (isinstance(raw_id, list) and len(raw_id) > 0) else (raw_id if isinstance(raw_id, str) else None)
-
-        if inv_id:
-            cursor.execute("SELECT * FROM invoices WHERE id = ? ORDER BY created_at DESC", (inv_id,))
-        else:
-            cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
-
-        rows = [dict(r) for r in cursor.fetchall()]
-        return 200, rows
-    finally:
-        conn.close()
+    """Fetches invoices list or single invoice by ID via DAO layer."""
+    raw_id = query_params.get('id') if query_params else None
+    inv_id = raw_id[0] if (isinstance(raw_id, list) and len(raw_id) > 0) else (raw_id if isinstance(raw_id, str) else None)
+    rows = get_invoices_list(invoice_id=inv_id, db_path=db_path)
+    return 200, rows
 
 # Register REST API POST routes
 @route_post('/api/v1/actions/pay_invoice')
@@ -140,7 +112,6 @@ def handle_action_post_invoice(handler, data, query_params):
     if not account or not is_valid_base58(account):
         return 400, {"error": "Invalid or missing 'account' Base58 public key field in Blink POST request"}
 
-    
     response_payload = {
         "transaction": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
         "message": "ZeroClaw POS Invoice Payment Transaction"
@@ -152,51 +123,32 @@ def handle_action_post_invoice(handler, data, query_params):
     return 200, response_payload, extra_headers
 
 @route_post('/api/v1/invoices/create')
-def handle_create_invoice(handler, data, query_params):
-
+def handle_create_invoice(handler, data, query_params, db_path: str = DB_PATH):
+    """Creates a new pending invoice via DAO layer."""
     if not isinstance(data, dict) or 'id' not in data or 'reference_pubkey' not in data or 'usdc_amount' not in data:
         return 400, {"error": "Bad Request: Missing required invoice fields (id, reference_pubkey, usdc_amount)"}
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        cursor.execute("""
-            INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-        """, (data['id'], data['reference_pubkey'], data.get('fiat_currency', 'USD'), data.get('fiat_amount', data['usdc_amount']), data['usdc_amount'], now, now))
-        conn.commit()
-        return 201, {"success": True, "invoice_id": data['id']}
+        success, inv_id = create_invoice_record(data, db_path=db_path)
+        return 201, {"success": True, "invoice_id": inv_id}
     except Exception as e:
         return 500, {"error": redact_api_key(str(e))}
-    finally:
-        conn.close()
 
 ALLOWED_INVOICE_STATUSES = {'pending', 'paid', 'partially_paid', 'cancelled', 'refunding', 'refund_proposed_squads_v4', 'expired', 'failed'}
 
 @route_post('/api/v1/invoices/update_status')
-def handle_update_invoice_status(handler, data, query_params):
+def handle_update_invoice_status(handler, data, query_params, db_path: str = DB_PATH):
+    """Updates invoice status atomically via DAO layer."""
     if not isinstance(data, dict) or 'invoice_id' not in data or 'status' not in data:
         return 400, {"error": "Bad Request: Missing invoice_id or status"}
     if data['status'] not in ALLOWED_INVOICE_STATUSES:
         return 400, {"error": f"Bad Request: Invalid status '{data['status']}'. Must be one of {sorted(list(ALLOWED_INVOICE_STATUSES))}"}
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        cursor.execute("""
-            UPDATE invoices 
-            SET status = ?, tx_signature = ?, updated_at = ? 
-            WHERE id = ? AND (status = 'pending' OR status = 'partially_paid' OR status = ?)
-        """, (data['status'], data.get('tx_signature'), now, data['invoice_id'], data['status']))
-        conn.commit()
-        updated_count = cursor.rowcount
+        updated_count = update_invoice_status_record(data['invoice_id'], data['status'], data.get('tx_signature'), db_path=db_path)
         if updated_count == 0:
             return 409, {"success": False, "error": "Conflict: Invoice state already finalized or invalid transition", "updated": 0}
         return 200, {"success": True, "updated": updated_count}
     except Exception as e:
         return 500, {"error": redact_api_key(str(e))}
-    finally:
-        conn.close()
 
 @route_post('/api/v1/nonce/allocate')
 def handle_nonce_allocate(handler, data, query_params):
@@ -227,26 +179,16 @@ def handle_nonce_release(handler, data, query_params):
 
 @route_post('/api/v1/invoices/cancel')
 def handle_cancel_invoice(handler, data, query_params, db_path: str = DB_PATH):
-    """Allows cashiers to void/cancel a pending invoice atomically."""
+    """Allows cashiers to void/cancel a pending invoice atomically via DAO layer."""
     if not isinstance(data, dict) or 'invoice_id' not in data:
         return 400, {"error": "Bad Request: Missing invoice_id"}
-    conn = get_db_connection(db_path)
     try:
-        cursor = conn.cursor()
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        cursor.execute("""
-            UPDATE invoices 
-            SET status = 'cancelled', updated_at = ? 
-            WHERE id = ? AND status = 'pending'
-        """, (now, data['invoice_id']))
-        conn.commit()
-        if cursor.rowcount == 0:
+        cancelled_count = cancel_invoice_record(data['invoice_id'], db_path=db_path)
+        if cancelled_count == 0:
             return 409, {"success": False, "error": "Conflict: Invoice not found or already finalized"}
         return 200, {"success": True, "cancelled_id": data['invoice_id'], "status": "cancelled"}
     except Exception as e:
         return 500, {"error": redact_api_key(str(e))}
-    finally:
-        conn.close()
 
 class POSApiHandler(BaseHTTPRequestHandler):
     def _set_headers(self, status=200):
@@ -257,12 +199,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         """Full CORS Preflight Options Request Interceptor."""
-        self.send_response(204)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-ACCEPT-PAYMENT, X-Telegram-Bot-Api-Secret-Token, Authorization, Content-Encoding, Accept-Encoding')
-        self.send_header('Access-Control-Max-Age', '86400')
-        self.end_headers()
+        handle_options_request(self)
 
     def do_GET(self):
         # x402 Machine Commerce Handshake Support
@@ -303,7 +240,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
         dispatch_request(self, 'POST', post_data=data)
 
 def run_server(port=8080, host=None, seed_sample_data=True):
-    init_db(seed_sample_data=seed_sample_data)
+    init_db(seed_sample_data_flag=seed_sample_data)
     if not host or not str(host).strip():
         host = os.getenv("HOST") or os.getenv("POS_HOST") or "0.0.0.0"
     host = host.strip()
@@ -339,7 +276,6 @@ def run_server(port=8080, host=None, seed_sample_data=True):
     print(banner)
     try:
         httpd.serve_forever()
-        
     except KeyboardInterrupt:
         print("\nStopping POS REST API server.")
 
@@ -356,4 +292,3 @@ if __name__ == '__main__':
         else:
             port = 8080
         run_server(port=port, seed_sample_data=True)
-
