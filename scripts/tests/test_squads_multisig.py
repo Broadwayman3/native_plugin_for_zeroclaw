@@ -270,17 +270,18 @@ def test_140_intermediate_comprehensive_master_benchmark():
     assert get_solscan_tx_url("5k9X1111111111111111111111111111111111111111").startswith("https://solscan.io/tx/")
 
 def test_141_post_pre_token_balance_delta_verification():
+    from pos_core.constants import USDC_MINT
     mock_delta_tx = {
         "meta": {
             "err": None,
             "preTokenBalances": [{
                 "accountIndex": 1,
-                "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "mint": USDC_MINT,
                 "uiTokenAmount": {"amount": "5000000"}
             }],
             "postTokenBalances": [{
                 "accountIndex": 1,
-                "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "mint": USDC_MINT,
                 "uiTokenAmount": {"amount": "15000000"}
             }]
         },
@@ -294,7 +295,7 @@ def test_141_post_pre_token_balance_delta_verification():
             }
         }
     }
-    res_delta = verify_solana_transaction_payload(mock_delta_tx, "MerchantUSDC_ATA", 10000000)
+    res_delta = verify_solana_transaction_payload(mock_delta_tx, "MerchantUSDC_ATA", 10000000, expected_mint=USDC_MINT)
     assert res_delta["is_valid"] and res_delta.get("verification_method") == "balance_delta" and res_delta.get("paid_atomic") == 10000000
 
 def test_142_multitier_price_feed_fallback_pyth():
@@ -332,15 +333,16 @@ def test_147_reverted_tx_nonce_hash_invalidation():
     assert stale_nonce_flag
 
 def test_148_multitransfer_single_tx_antidusting_isolation():
+    from pos_core.constants import USDC_MINT
     multi_tx_mock = {
         "meta": {
             "err": None,
-            "preTokenBalances": [{"accountIndex": 1, "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "uiTokenAmount": {"amount": "0"}}],
-            "postTokenBalances": [{"accountIndex": 1, "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "uiTokenAmount": {"amount": "1000000"}}]
+            "preTokenBalances": [{"accountIndex": 1, "mint": USDC_MINT, "uiTokenAmount": {"amount": "0"}}],
+            "postTokenBalances": [{"accountIndex": 1, "mint": USDC_MINT, "uiTokenAmount": {"amount": "1000000"}}]
         },
         "transaction": {"message": {"accountKeys": [{"pubkey": "OtherAcc"}, {"pubkey": "MerchantATA"}]}}
     }
-    res_multi = verify_solana_transaction_payload(multi_tx_mock, "MerchantATA", 10000000)
+    res_multi = verify_solana_transaction_payload(multi_tx_mock, "MerchantATA", 10000000, expected_mint=USDC_MINT)
     assert not res_multi["is_valid"]
 
 def test_149_simultaneous_refund_sop_reentrancy_lock():

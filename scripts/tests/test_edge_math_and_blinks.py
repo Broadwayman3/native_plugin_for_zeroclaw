@@ -440,12 +440,13 @@ def test_300_master_system_perfection_benchmark_300_of_300():
     assert token_to_atomic_units("10.0", decimals=6) == 10000000
 
 def test_301_versioned_v0_tx_static_and_lookup_account_keys_parsing():
-    """Verifies parsing Versioned v0 transactions with Address Lookup Tables."""
+    """Verifies parsing static and lookup account keys in Versioned v0 transactions."""
+    from pos_core.constants import USDC_MINT
     mock_v0_tx = {
         "meta": {
             "err": None,
-            "preTokenBalances": [{"accountIndex": 1, "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "uiTokenAmount": {"amount": "0"}}],
-            "postTokenBalances": [{"accountIndex": 1, "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "uiTokenAmount": {"amount": "10000000"}}]
+            "preTokenBalances": [{"accountIndex": 1, "mint": USDC_MINT, "uiTokenAmount": {"amount": "0"}}],
+            "postTokenBalances": [{"accountIndex": 1, "mint": USDC_MINT, "uiTokenAmount": {"amount": "10000000"}}]
         },
         "transaction": {
             "message": {
@@ -454,7 +455,7 @@ def test_301_versioned_v0_tx_static_and_lookup_account_keys_parsing():
             }
         }
     }
-    res = verify_solana_transaction_payload(mock_v0_tx, "MerchantUSDC_ATA111111111111111111111111111", 10000000)
+    res = verify_solana_transaction_payload(mock_v0_tx, "MerchantUSDC_ATA111111111111111111111111111", 10000000, expected_mint=USDC_MINT)
     assert res["is_valid"]
 
 def test_302_token2022_program_id_vs_standard_spl_token_program_id():

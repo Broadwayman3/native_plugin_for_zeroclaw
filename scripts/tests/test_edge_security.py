@@ -227,15 +227,16 @@ def test_185_reverted_solana_tx_meta_err_rejection():
     assert not res["is_valid"] and "reverted" in res["error"]
 
 def test_186_balance_delta_post_minus_pre_verification():
+    from pos_core.constants import USDC_MINT
     mock_delta_tx = {
         "meta": {
             "err": None,
-            "preTokenBalances": [{"accountIndex": 1, "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "uiTokenAmount": {"amount": "1000000"}}],
-            "postTokenBalances": [{"accountIndex": 1, "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "uiTokenAmount": {"amount": "11000000"}}]
+            "preTokenBalances": [{"accountIndex": 1, "mint": USDC_MINT, "uiTokenAmount": {"amount": "1000000"}}],
+            "postTokenBalances": [{"accountIndex": 1, "mint": USDC_MINT, "uiTokenAmount": {"amount": "11000000"}}]
         },
         "transaction": {"message": {"accountKeys": [{"pubkey": "Payer"}, {"pubkey": "MerchantATA"}]}}
     }
-    res = verify_solana_transaction_payload(mock_delta_tx, "MerchantATA", 10000000)
+    res = verify_solana_transaction_payload(mock_delta_tx, "MerchantATA", 10000000, expected_mint=USDC_MINT)
     assert res["is_valid"] and res["paid_atomic"] == 10000000
 
 def test_187_telegram_webhook_update_id_deduplication():

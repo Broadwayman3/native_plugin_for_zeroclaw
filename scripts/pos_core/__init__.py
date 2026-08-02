@@ -67,7 +67,10 @@ from pos_core.solana_pay import (
     get_active_rpc_url
 )
 from pos_core.i18n import (
+    LANG_META,
     TRANSLATIONS,
+    get_lang_meta,
+    get_localized_confirmation,
     get_localized_message,
     t,
     format_itemized_receipt,
@@ -140,7 +143,10 @@ __all__ = [
     "get_active_rpc_url",
     "format_pubkey_short",
     "get_solscan_tx_url",
+    "LANG_META",
     "TRANSLATIONS",
+    "get_lang_meta",
+    "get_localized_confirmation",
     "get_localized_message",
     "t",
     "format_itemized_receipt",

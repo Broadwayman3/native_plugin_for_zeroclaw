@@ -8,6 +8,22 @@ detection from Telegram language_code and automatic MarkdownV2 escaping.
 from typing import Dict, Any, Optional
 from sanitizer import escape_telegram_markdown_v2
 
+LANG_META: Dict[str, tuple] = {
+    "uk": ("🇺🇦", "Українська"),
+    "en": ("🇺🇸", "English"),
+    "pt": ("🇧🇷", "Português"),
+    "es": ("🇪🇸", "Español"),
+    "de": ("🇩🇪", "Deutsch"),
+    "fr": ("🇫🇷", "Français"),
+    "it": ("🇮🇹", "Italiano"),
+    "pl": ("🇵🇱", "Polski"),
+    "tr": ("🇹🇷", "Türkçe"),
+    "ja": ("🇯🇵", "日本語"),
+    "zh": ("🇨🇳", "中文"),
+    "ar": ("🇸🇦", "العربية"),
+    "hi": ("🇮🇳", "हिन्दी")
+}
+
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "en": {
         "payment_success": "✅ Payment Confirmed!\nInvoice #{invoice_id}\nAmount: {amount} {currency}\nTx: {tx_sig}",
@@ -19,7 +35,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Tax ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "TOTAL: ${amount_usdc} USDC",
         "default_item": "Standard Order",
-        "wallet_hint": "📱 Scan with Phantom, Solflare or any Solana Wallet"
+        "wallet_hint": "📱 Scan with Phantom, Solflare or any Solana Wallet",
+        "lang_confirm": "🌐 Interface language successfully changed to {flag} {lang_name}!"
     },
     "uk": {
         "payment_success": "✅ Оплату Підтверджено!\nЧек #{invoice_id}\nСума: {amount} {currency}\nТранзакція: {tx_sig}",
@@ -31,7 +48,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "ПДВ / Податок ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "РАЗОМ: ${amount_usdc} USDC",
         "default_item": "Стандартне Замовлення",
-        "wallet_hint": "📱 Скануйте через Phantom, Solflare або будь-який гаманець Solana"
+        "wallet_hint": "📱 Скануйте через Phantom, Solflare або будь-який гаманець Solana",
+        "lang_confirm": "🌐 Мову інтерфейсу успішно змінено на {flag} {lang_name}!"
     },
     "pt": {
         "payment_success": "✅ Pagamento Confirmado!\nFatura #{invoice_id}\nValor: {amount} {currency}\nTx: {tx_sig}",
@@ -43,7 +61,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Imposto ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "TOTAL: ${amount_usdc} USDC",
         "default_item": "Pedido Padrão",
-        "wallet_hint": "📱 Escaneie com Phantom, Solflare ou qualquer carteira Solana"
+        "wallet_hint": "📱 Escaneie com Phantom, Solflare ou qualquer carteira Solana",
+        "lang_confirm": "🌐 Idioma da interface alterado para {flag} {lang_name}!"
     },
     "es": {
         "payment_success": "✅ ¡Pago Confirmado!\nFactura #{invoice_id}\nMonto: {amount} {currency}\nFirma: {tx_sig}",
@@ -55,7 +74,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Impuesto ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "TOTAL: ${amount_usdc} USDC",
         "default_item": "Pedido Estándar",
-        "wallet_hint": "📱 Escanea con Phantom, Solflare o cualquier billetera Solana"
+        "wallet_hint": "📱 Escanea con Phantom, Solflare o cualquier billetera Solana",
+        "lang_confirm": "🌐 ¡Idioma de interfaz cambiado a {flag} {lang_name}!"
     },
     "de": {
         "payment_success": "✅ Zahlung Bestätigt!\nRechnung #{invoice_id}\nBetrag: {amount} {currency}\nTx: {tx_sig}",
@@ -67,7 +87,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Steuer ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "GESAMT: ${amount_usdc} USDC",
         "default_item": "Standardbestellung",
-        "wallet_hint": "📱 Scannen Sie mit Phantom, Solflare oder einer beliebigen Solana-Wallet"
+        "wallet_hint": "📱 Scannen Sie mit Phantom, Solflare oder einer beliebigen Solana-Wallet",
+        "lang_confirm": "🌐 Schnittstellensprache erfolgreich geändert auf {flag} {lang_name}!"
     },
     "fr": {
         "payment_success": "✅ Paiement Confirmé !\nFacture #{invoice_id}\nMontant : {amount} {currency}\nTx : {tx_sig}",
@@ -79,7 +100,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Taxe ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "TOTAL: ${amount_usdc} USDC",
         "default_item": "Commande Standard",
-        "wallet_hint": "📱 Scannez avec Phantom, Solflare ou tout portefeuille Solana"
+        "wallet_hint": "📱 Scannez avec Phantom, Solflare ou tout portefeuille Solana",
+        "lang_confirm": "🌐 Langue de l'interface modifiée avec succès en {flag} {lang_name} !"
     },
     "it": {
         "payment_success": "✅ Pagamento Confermato!\nFattura #{invoice_id}\nImporto: {amount} {currency}\nTx: {tx_sig}",
@@ -91,7 +113,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Tassa ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "TOTALE: ${amount_usdc} USDC",
         "default_item": "Ordine Standard",
-        "wallet_hint": "📱 Scansiona con Phantom, Solflare o qualsiasi portafoglio Solana"
+        "wallet_hint": "📱 Scansiona con Phantom, Solflare o qualsiasi portafoglio Solana",
+        "lang_confirm": "🌐 Lingua dell'interfaccia modificata con successo in {flag} {lang_name}!"
     },
     "pl": {
         "payment_success": "✅ Płatność Potwierdzona!\nFaktura #{invoice_id}\nKwota: {amount} {currency}\nTx: {tx_sig}",
@@ -103,7 +126,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Podatek ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "SUMA: ${amount_usdc} USDC",
         "default_item": "Zamówienie Standardowe",
-        "wallet_hint": "📱 Zeskanuj za pomocą Phantom, Solflare lub dowolnego portfela Solana"
+        "wallet_hint": "📱 Zeskanuj za pomocą Phantom, Solflare lub dowolnego portfela Solana",
+        "lang_confirm": "🌐 Język interfejsu pomyślnie zmieniony na {flag} {lang_name}!"
     },
     "tr": {
         "payment_success": "✅ Ödeme Onaylandı!\nFatura #{invoice_id}\nTutar: {amount} {currency}\nİşlem: {tx_sig}",
@@ -115,7 +139,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "Vergi ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "TOPLAM: ${amount_usdc} USDC",
         "default_item": "Standart Sipariş",
-        "wallet_hint": "📱 Phantom, Solflare veya herhangi bir Solana Cüzdanı ile tarayın"
+        "wallet_hint": "📱 Phantom, Solflare veya herhangi bir Solana Cüzdanı ile tarayın",
+        "lang_confirm": "🌐 Arayüz dili başarıyla {flag} {lang_name} olarak değiştirildi!"
     },
     "ja": {
         "payment_success": "✅ 支払い完了!\n請求書 #{invoice_id}\n金額: {amount} {currency}\nTx: {tx_sig}",
@@ -127,7 +152,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "税 ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "合計: ${amount_usdc} USDC",
         "default_item": "標準注文",
-        "wallet_hint": "📱 Phantom、Solflare、または任意のSolanaウォレットでスキャン"
+        "wallet_hint": "📱 Phantom、Solflare、または任意のSolanaウォレットでスキャン",
+        "lang_confirm": "🌐 インターフェース言語が {flag} {lang_name} に変更されました！"
     },
     "zh": {
         "payment_success": "✅ 支付已确认！\n账单 #{invoice_id}\n金额：{amount} {currency}\n交易：{tx_sig}",
@@ -139,7 +165,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "税费 ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "总计: ${amount_usdc} USDC",
         "default_item": "标准订单",
-        "wallet_hint": "📱 使用 Phantom、Solflare 或任何 Solana 钱包扫描"
+        "wallet_hint": "📱 使用 Phantom、Solflare 或任何 Solana 钱包扫描",
+        "lang_confirm": "🌐 界面语言已成功更改为 {flag} {lang_name}！"
     },
     "hi": {
         "payment_success": "✅ भुगतान की पुष्टि की गई!\nबीजक #{invoice_id}\nराशि: {amount} {currency}\nलेन-देन: {tx_sig}",
@@ -151,7 +178,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "कर ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "कुल: ${amount_usdc} USDC",
         "default_item": "मानक ऑर्डर",
-        "wallet_hint": "📱 Phantom, Solflare या किसी भी Solana वॉलेट से स्कैन करें"
+        "wallet_hint": "📱 Phantom, Solflare या किसी भी Solana वॉलेट से स्कैन करें",
+        "lang_confirm": "🌐 इंटरफ़ेस भाषा सफलतापूर्वक {flag} {lang_name} में बदल दी गई!"
     },
     "ar": {
         "payment_success": "✅ تم تأكيد الدفع!\nالفاتورة #{invoice_id}\nالمبلغ: {amount} {currency}\nالمعاملة: {tx_sig}",
@@ -163,9 +191,24 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "receipt_tax": "الضريبة ({tax_rate_pct}%): ${tax_amount}",
         "receipt_total": "الإجمالي: ${amount_usdc} USDC",
         "default_item": "طلب قياسي",
-        "wallet_hint": "📱 امسح باستخدام Phantom أو Solflare أو أي محفظة Solana"
+        "wallet_hint": "📱 امسح باستخدام Phantom أو Solflare أو أي محفظة Solana",
+        "lang_confirm": "🌐 تم تغيير لغة الواجهة بنجاح إلى {flag} {lang_name}!"
     }
 }
+
+def get_lang_meta(lang_code: str) -> tuple:
+    """Retrieves (flag_emoji, native_name) tuple for a language code."""
+    clean = (lang_code or "en").lower().split("-")[0].split("_")[0]
+    return LANG_META.get(clean, LANG_META["en"])
+
+def get_localized_confirmation(lang_code: str) -> str:
+    """Returns localized language change confirmation message with flag and native language name."""
+    flag, name = get_lang_meta(lang_code)
+    clean = (lang_code or "en").lower().split("-")[0].split("_")[0]
+    lang_dict = TRANSLATIONS.get(clean, TRANSLATIONS["en"])
+    template = lang_dict.get("lang_confirm", TRANSLATIONS["en"]["lang_confirm"])
+    return template.format(flag=flag, lang_name=name)
+
 
 def t(key: str, lang: Optional[str] = "en", escape_markdown: bool = True, **kwargs: Any) -> str:
     """
