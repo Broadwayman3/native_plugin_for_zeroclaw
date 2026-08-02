@@ -171,8 +171,14 @@ def handle_create_invoice(handler, data, query_params):
     finally:
         conn.close()
 
+ALLOWED_INVOICE_STATUSES = {'pending', 'paid', 'partially_paid', 'cancelled', 'refunding', 'refund_proposed_squads_v4', 'expired', 'failed'}
+
 @route_post('/api/v1/invoices/update_status')
 def handle_update_invoice_status(handler, data, query_params):
+    if not isinstance(data, dict) or 'invoice_id' not in data or 'status' not in data:
+        return 400, {"error": "Bad Request: Missing invoice_id or status"}
+    if data['status'] not in ALLOWED_INVOICE_STATUSES:
+        return 400, {"error": f"Bad Request: Invalid status '{data['status']}'. Must be one of {sorted(list(ALLOWED_INVOICE_STATUSES))}"}
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -302,7 +308,21 @@ def run_server(port=8080, host=None, seed_sample_data=True):
         host = os.getenv("HOST") or os.getenv("POS_HOST") or "0.0.0.0"
     host = host.strip()
     server_address = (host, port)
-    httpd = ThreadingHTTPServer(server_address, POSApiHandler)
+    try:
+        httpd = ThreadingHTTPServer(server_address, POSApiHandler)
+    except OSError as e:
+        if getattr(e, 'errno', None) == 98 or "already in use" in str(e).lower():
+            fallback_port = port + 1
+            print(f"⚠️ [POS Server] Port {port} is busy. Retrying on PORT={fallback_port}...")
+            server_address = (host, fallback_port)
+            try:
+                httpd = ThreadingHTTPServer(server_address, POSApiHandler)
+                port = fallback_port
+            except OSError:
+                print(f"❌ [POS Server Error] Both PORT={port - 1} and PORT={fallback_port} are already in use. Please free a port or set PORT environment variable. Exiting safely.")
+                sys.exit(1)
+        else:
+            raise
     banner = (
         "=================================================================\n"
         "🚀 ZeroClaw Solana POS REST API Backend Server\n"

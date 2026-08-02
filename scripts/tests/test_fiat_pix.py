@@ -98,17 +98,32 @@ def test_091_telegram_auth_user_id_string_casting():
     assert str(user_id_int) == allowed_id_str
 
 def test_092_checkpoint_default_24h_timeout_setting():
-    assert 86400 == 86400
+    import json
+    with open("sops/refund_approval.json", "r") as f:
+        sop = json.load(f)
+    checkpoint_step = next(s for s in sop["steps"] if s["step_id"] == "human_approval_checkpoint")
+    assert checkpoint_step["timeout_seconds"] == 86400
 
 def test_093_solana_pay_protocol_scheme_prefix():
     pay_url_sample = "solana:8xAZmQ11...?"
     assert pay_url_sample.startswith("solana:")
 
 def test_094_sqlite_busy_timeout_5000ms_lock():
-    assert 5000 >= 5000
+    setup_test_db()
+    try:
+        conn = get_db_connection(TEST_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA busy_timeout;")
+        val = cursor.fetchone()[0]
+        conn.close()
+        assert val >= 5000
+    finally:
+        teardown_test_db()
 
 def test_095_high_value_finalized_commitment_threshold():
-    assert 50.0 == 50.0
+    from pos_core.solana_pay import get_required_commitment_level
+    assert get_required_commitment_level(50.0, threshold_usdc=50.0) == "finalized"
+    assert get_required_commitment_level(49.9, threshold_usdc=50.0) == "confirmed"
 
 def test_096_command_injection_control_char_isolation():
     malicious_cmd = "Coffee \x00; rm -rf / \x1b"

@@ -72,7 +72,22 @@ def validate_safe_rpc_url(url: str) -> bool:
             if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
                 return False
         except ValueError:
-            pass # Public domain name (e.g. devnet.helius-rpc.com)
+            if "127.0.0.1" in hostname or "169.254.169.254" in hostname or hostname.endswith(".local") or hostname.endswith(".internal"):
+                return False
+            try:
+                import socket
+                old_timeout = socket.getdefaulttimeout()
+                socket.setdefaulttimeout(2.0)
+                try:
+                    addrs = socket.getaddrinfo(hostname, None)
+                    for addr in addrs:
+                        resolved_ip = ipaddress.ip_address(addr[4][0])
+                        if resolved_ip.is_private or resolved_ip.is_loopback or resolved_ip.is_link_local or resolved_ip.is_reserved or resolved_ip.is_unspecified:
+                            return False
+                finally:
+                    socket.setdefaulttimeout(old_timeout)
+            except (socket.gaierror, socket.timeout, UnicodeError, Exception):
+                pass
         return True
     except Exception:
         return False

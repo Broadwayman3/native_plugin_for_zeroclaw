@@ -156,13 +156,18 @@ def test_045_fail_closed_security_policy_empty_env():
         return "OPERATIONAL"
     assert evaluate_security_policy(empty_config) == "FAIL_CLOSED_HALT"
 
-def test_046_durable_nonce_account_allocation():
+def test_046_durable_nonce_allocation_and_release():
     setup_test_db()
     try:
         allocated = allocate_free_nonce_account(db_path=TEST_DB_PATH)
         assert allocated is not None
         release_nonce_account(pubkey=allocated, db_path=TEST_DB_PATH)
-        assert True
+        conn = get_db_connection(TEST_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT status FROM nonce_accounts WHERE pubkey = ?", (allocated,))
+        st = cursor.fetchone()[0]
+        conn.close()
+        assert st == 'free'
     finally:
         teardown_test_db()
 
@@ -173,7 +178,12 @@ def test_047_durable_nonce_stale_mark_and_refresh():
         assert allocated is not None
         mark_nonce_account_stale(pubkey=allocated, db_path=TEST_DB_PATH)
         refresh_stale_nonce_account(pubkey=allocated, db_path=TEST_DB_PATH)
-        assert True
+        conn = get_db_connection(TEST_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT status FROM nonce_accounts WHERE pubkey = ?", (allocated,))
+        st = cursor.fetchone()[0]
+        conn.close()
+        assert st == 'free'
     finally:
         teardown_test_db()
 
@@ -199,7 +209,12 @@ def test_049_atomic_double_nonce_release_idempotency():
         assert allocated is not None
         release_nonce_account(pubkey=allocated, db_path=TEST_DB_PATH)
         release_nonce_account(pubkey=allocated, db_path=TEST_DB_PATH)
-        assert True
+        conn = get_db_connection(TEST_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT status FROM nonce_accounts WHERE pubkey = ?", (allocated,))
+        st = cursor.fetchone()[0]
+        conn.close()
+        assert st == 'free'
     finally:
         teardown_test_db()
 
@@ -233,7 +248,7 @@ def run_suite():
         ("Squads v4 Threshold Signers Count Guard", test_043_squads_v4_threshold_signers_count_guard),
         ("WASM Sandbox Max Memory Pages Allocation Guard", test_044_wasm_sandbox_max_memory_pages_allocation_guard),
         ("Fail-Closed Security Policy on Empty Environment Config", test_045_fail_closed_security_policy_empty_env),
-        ("Durable Nonce Account Allocation & Release", test_046_durable_nonce_account_allocation),
+        ("Durable Nonce Account Allocation & Release", test_046_durable_nonce_allocation_and_release),
         ("Durable Nonce Stale Mark & Refresh Protocol", test_047_durable_nonce_stale_mark_and_refresh),
         ("Durable Nonce TTL Expiry Reclaim Check", test_048_durable_nonce_ttl_expiry_reclaim),
         ("Atomic Double Nonce Release Idempotency Guard", test_049_atomic_double_nonce_release_idempotency),

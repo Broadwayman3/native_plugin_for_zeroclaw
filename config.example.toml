@@ -40,3 +40,11 @@ auto_load = true
 [sops]
 directory = "./sops"
 auto_load = true
+
+[plugins]
+enabled = true
+directory = "./plugins"
+
+[plugins.solana_pos_core]
+path = "./plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm"
+

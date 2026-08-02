@@ -164,8 +164,9 @@ def test_175_base58_invalid_alphabet_characters_rejection():
     assert not is_valid_base58("8xAZmQ111111111111111111111111111111111111000O")
 
 def test_176_squads_v4_proposal_index_monotonic_increment():
-    idx = 100
-    assert idx + 1 == 101
+    from pos_core.solana_pay import validate_squads_multisig_account
+    next_idx = validate_squads_multisig_account({"transaction_index": 100})
+    assert next_idx == 101
 
 def test_177_nonce_account_ttl_expiry_15m_auto_release():
     setup_test_db()

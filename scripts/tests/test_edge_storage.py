@@ -27,7 +27,8 @@ from pos_core import (
     verify_solana_transaction_payload,
     is_valid_base58,
     generate_atomic_refund_instructions,
-    generate_secure_reference_key
+    generate_secure_reference_key,
+    cleanup_expired_pending_invoices
 )
 from sanitizer import sanitize_external_input, redact_api_key, validate_safe_rpc_url, escape_telegram_markdown_v2
 from validators import validate_llm_json_output, truncate_for_context
@@ -111,8 +112,17 @@ def test_229_sqlite_tx_signature_unique_constraint():
 
 def test_230_cron_sop_empty_pending_invoices_guard():
     """Verifies SOP logger handles zero pending invoices gracefully."""
-    pending_list = []
-    assert len(pending_list) == 0
+    setup_test_db()
+    try:
+        conn = get_db_connection(TEST_DB_PATH)
+        cleanup_expired_pending_invoices(conn)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM invoices WHERE status = 'non_existent_status'")
+        cnt = cursor.fetchone()[0]
+        conn.close()
+        assert cnt == 0
+    finally:
+        teardown_test_db()
 
 def test_231_u64_max_atomic_conversion_cap():
     """Caps atomic unit conversions exceeding u64::MAX to MAX_U64."""
@@ -248,7 +258,8 @@ def test_249_verify_all_master_runner_script_existence():
 
 def test_250_ultimate_master_benchmark_pass_250_of_250():
     """Ultimate Master Benchmark Pass - 250/250 Tests Complete."""
-    assert True
+    from sanitizer import validate_safe_rpc_url
+    assert validate_safe_rpc_url("https://api.mainnet-beta.solana.com")
 
 def run_suite():
     tests = [

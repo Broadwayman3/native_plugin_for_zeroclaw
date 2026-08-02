@@ -13,7 +13,7 @@
       "step_id": "fetch_pending_invoices",
       "action": "http_request",
       "method": "GET",
-      "url": "http://127.0.0.1:8080/api/v1/invoices?status=pending"
+      "url": "${POS_BACKEND_URL:-http://127.0.0.1:8080}/api/v1/invoices?status=pending"
     },
     {
       "id": "guard_empty_pending",

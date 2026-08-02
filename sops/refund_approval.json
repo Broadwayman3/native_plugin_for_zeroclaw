@@ -37,7 +37,7 @@
       "step_id": "allocate_nonce",
       "action": "http_request",
       "method": "POST",
-      "url": "http://127.0.0.1:8080/api/v1/nonce/allocate"
+      "url": "${POS_BACKEND_URL:-http://127.0.0.1:8080}/api/v1/nonce/allocate"
     },
     {
       "id": "guard_nonce_allocated",
@@ -93,7 +93,7 @@
         {
           "action": "http_request",
           "method": "POST",
-          "url": "http://127.0.0.1:8080/api/v1/nonce/release",
+          "url": "${POS_BACKEND_URL:-http://127.0.0.1:8080}/api/v1/nonce/release",
           "body": {
             "nonce_pubkey": "${allocate_nonce.body.nonce_pubkey}"
           }
@@ -114,7 +114,7 @@
         {
           "action": "http_request",
           "method": "POST",
-          "url": "http://127.0.0.1:8080/api/v1/nonce/release",
+          "url": "${POS_BACKEND_URL:-http://127.0.0.1:8080}/api/v1/nonce/release",
           "body": {
             "nonce_pubkey": "${allocate_nonce.body.nonce_pubkey}"
           }

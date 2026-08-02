@@ -1,10 +1,21 @@
 version: '3.8'
 
 services:
+  pos-backend:
+    build: .
+    container_name: zeroclaw_pos_backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
   zeroclaw-agent:
     image: ghcr.io/zeroclaw/zeroclaw:latest
     container_name: zeroclaw_solana_pos
     restart: unless-stopped
+    depends_on:
+      - pos-backend
     env_file:
       - .env
     volumes:
@@ -14,8 +25,10 @@ services:
       - ./data:/var/lib/zeroclaw/data
     environment:
       - ZEROCLAW_CONFIG=/etc/zeroclaw/config.toml
+      - POS_BACKEND_URL=http://pos-backend:8080
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+

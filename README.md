@@ -140,6 +140,24 @@ Run the single automated verification script to setup environment, compile WASM,
 
 ---
 
+## 🇧🇷 Brazil-First BRL & EMV PIX Reconciliation (Bounty Priority Flow)
+
+The agent directly satisfies the hackathon priority requirement (*"Brazil-first flows (PIX and USDC reconciliation, BRL invoicing) are especially welcome"*):
+- **EMV QRCPS Tag 6304 PIX String Generation**: Native CRC16 CCITT-FALSE payload generation in `scripts/pos_core/pix_brl.py`.
+- **Switchboard Crossbar Real-Time BRL/USD Pricing**: Queries `https://crossbar.switchboard.xyz/fiat/BRL_USD` as Tier 1 Primary feed to calculate sub-cent exact USDC payment amounts.
+- **Dual PIX QR & Solana Pay Invoicing**: Customers can scan with Brazilian banking apps or web3 wallets (Solflare, Phantom).
+
+---
+
+## 🏬 Quickstart for Retail Merchants (15-Min Setup)
+
+1. **Create Telegram Bot**: Open Telegram, talk to [@BotFather](https://t.me/BotFather), send `/newbot`, and copy your bot token into `.env` (`TELEGRAM_BOT_TOKEN=...`).
+2. **Set Merchant Wallet**: Paste your Solana Store Wallet address in `.env` (`MERCHANT_WALLET_PUBKEY=...`).
+3. **Launch Terminal**: Run `docker-compose up -d` or `./scripts/setup.sh && python3 scripts/pos_backend.py`.
+4. **Start Cashier Session**: Send `/start` to your Telegram POS bot to accept instant payments in BRL, UAH, or USD!
+
+---
+
 ## 🎁 Judges Testing & Faucet Instructions (Solana Devnet)
 
 To test the agent on Solana Devnet:
@@ -160,6 +178,9 @@ To test the agent on Solana Devnet:
 ```bash
 ./scripts/build_wasm.sh
 wasm-tools validate plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm --features component-model
+
+# ZeroClaw Host Compilation with WASM plugin support (for judges compiling host from source):
+# cargo build --release --features plugins-wasm-cranelift
 ```
 
 ### 3. Start Local POS Database & REST API Backend
