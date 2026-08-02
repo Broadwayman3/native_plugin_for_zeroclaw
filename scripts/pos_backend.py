@@ -240,7 +240,7 @@ class POSApiHandler(BaseHTTPRequestHandler):
         dispatch_request(self, 'POST', post_data=data)
 
 def run_server(port=8080, host=None, seed_sample_data=True):
-    init_db(seed_sample_data_flag=seed_sample_data)
+    init_db(seed_sample_data=seed_sample_data)
     if not host or not str(host).strip():
         host = os.getenv("HOST") or os.getenv("POS_HOST") or "0.0.0.0"
     host = host.strip()
