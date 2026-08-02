@@ -45,7 +45,7 @@ USER_SESSIONS: Dict[int, Dict[str, Any]] = {}
 
 def get_session(chat_id: int) -> Dict[str, Any]:
     if chat_id not in USER_SESSIONS:
-        USER_SESSIONS[chat_id] = {"lang": "uk", "state": "idle"}
+        USER_SESSIONS[chat_id] = {"lang": "uk", "state": "idle", "user_set": False}
     return USER_SESSIONS[chat_id]
 
 LANG_KEYBOARD = {
@@ -79,7 +79,7 @@ def is_btn_click(text: str, key: str) -> bool:
     return False
 
 def start_polling():
-    print("🤖 ZeroClaw POS Bot (Per-Chat Session & Multi-Lang Keyboards) STARTED!")
+    print("🤖 ZeroClaw POS Bot (Explicit Language Lock & Multi-Lang Keyboards) STARTED!")
     offset = 0
 
     while True:
@@ -111,6 +111,7 @@ def start_polling():
                     if data_str.startswith("set_lang_"):
                         new_lang = data_str.replace("set_lang_", "")
                         session["lang"] = new_lang
+                        session["user_set"] = True
                         conf_msg = get_localized_confirmation(new_lang)
                         tg_request("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Language Changed!"})
                         tg_request("sendMessage", {
@@ -144,15 +145,14 @@ def start_polling():
                     msg = update["message"]
                     chat_id = msg["chat"]["id"]
                     session = get_session(chat_id)
-                    user_lang = session["lang"]
 
-                    # Auto-detect language from Telegram message user language_code if not explicitly set
-                    if session.get("state") == "idle" and "from" in msg and "language_code" in msg["from"]:
+                    # Only auto-detect language from Telegram if user has NOT explicitly selected a language
+                    if not session.get("user_set") and "from" in msg and "language_code" in msg["from"]:
                         tg_lang = msg["from"]["language_code"].lower().split("-")[0]
-                        if tg_lang in LANG_META and session.get("user_set") is not True:
+                        if tg_lang in LANG_META:
                             session["lang"] = tg_lang
-                            user_lang = tg_lang
 
+                    user_lang = session["lang"]
                     text = (msg.get("text") or "").strip()
                     text_lower = text.lower()
 
@@ -193,7 +193,7 @@ def start_polling():
                         })
 
                     # Button: Quick receipt (200 UAH)
-                    elif is_btn_click(text, "btn_quick_uah") or "quick" in text_lower or "200 uah" in text_lower or "швидкий" in text_lower:
+                    elif is_btn_click(text, "btn_quick_uah") or "quick" in text_lower or "200 uah" in text_lower or "швидкий" in text_lower or "szybki" in text_lower or "schnell" in text_lower or "rápido" in text_lower or "rapide" in text_lower or "rapido" in text_lower or "hızlı" in text_lower or "クイック" in text_lower or "快速" in text_lower or "त्वरित" in text_lower or "سريع" in text_lower:
                         session["state"] = "idle"
                         fiat_amt = 200.0
                         fiat_curr = "UAH"
