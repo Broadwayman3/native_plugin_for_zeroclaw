@@ -56,7 +56,7 @@ def escape_telegram_markdown_v2(text: str) -> str:
 def validate_safe_rpc_url(url: str) -> bool:
     """
     Evaluates Solana RPC URL to prevent SSRF (Server-Side Request Forgery) attacks.
-    Blocks private IP ranges, cloud metadata endpoints (169.254.169.254), loopback, and local hostnames.
+    Blocks private IP ranges, cloud metadata endpoints (169.254.169.254), loopback, unspecified, and local hostnames.
     """
     if not url or not isinstance(url, str):
         return False
@@ -64,12 +64,12 @@ def validate_safe_rpc_url(url: str) -> bool:
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme not in ("http", "https"):
             return False
-        hostname = (parsed.hostname or "").lower()
+        hostname = (parsed.hostname or "").lower().strip("[]")
         if not hostname or hostname in ("localhost", "0.0.0.0", "::1"):
             return False
         try:
             ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
                 return False
         except ValueError:
             pass # Public domain name (e.g. devnet.helius-rpc.com)

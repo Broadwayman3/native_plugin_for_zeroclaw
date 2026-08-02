@@ -68,12 +68,19 @@ def cleanup_expired_pending_invoices(conn: Optional[sqlite3.Connection] = None, 
 
 def check_and_register_telegram_update(conn: Optional[sqlite3.Connection] = None, update_id: Optional[int] = None, db_path: str = DB_PATH) -> bool:
     """Deduplicates Telegram webhook update IDs with 24h TTL cleanup."""
+    if update_id is None:
+        return False
+    try:
+        clean_update_id = int(update_id)
+    except (ValueError, TypeError):
+        return False
+
     with get_db_cursor(conn, db_path) as cursor:
         cursor.execute("DELETE FROM processed_updates WHERE processed_at < datetime('now', '-1 day')")
         try:
-            cursor.execute("INSERT INTO processed_updates (update_id) VALUES (?)", (update_id,))
+            cursor.execute("INSERT INTO processed_updates (update_id) VALUES (?)", (clean_update_id,))
             return True
-        except sqlite3.IntegrityError:
+        except (sqlite3.IntegrityError, sqlite3.InterfaceError):
             return False
 
 def init_db(db_path: str = DB_PATH, seed_sample_data: bool = True) -> None:

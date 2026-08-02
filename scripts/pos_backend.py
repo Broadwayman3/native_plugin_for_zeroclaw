@@ -296,16 +296,19 @@ class POSApiHandler(BaseHTTPRequestHandler):
 
         dispatch_request(self, 'POST', post_data=data)
 
-def run_server(port=8080, seed_sample_data=True):
+def run_server(port=8080, host=None, seed_sample_data=True):
     init_db(seed_sample_data=seed_sample_data)
-    server_address = ('127.0.0.1', port)
+    if not host or not str(host).strip():
+        host = os.getenv("HOST") or os.getenv("POS_HOST") or "0.0.0.0"
+    host = host.strip()
+    server_address = (host, port)
     httpd = ThreadingHTTPServer(server_address, POSApiHandler)
     banner = (
         "=================================================================\n"
         "🚀 ZeroClaw Solana POS REST API Backend Server\n"
         "=================================================================\n"
         "• Status       : OPERATIONAL (WAL Mode)\n"
-        f"• Listening    : http://127.0.0.1:{port}\n"
+        f"• Listening    : http://{host}:{port}\n"
         f"• Database     : {DB_PATH}\n"
         "• x402 Spec    : Active on /api/v1/sales/premium_analytics\n"
         "• Endpoints    : /actions.json, /api/v1/actions/pay_invoice, /sales/summary,\n"
@@ -316,6 +319,7 @@ def run_server(port=8080, seed_sample_data=True):
     print(banner)
     try:
         httpd.serve_forever()
+        
     except KeyboardInterrupt:
         print("\nStopping POS REST API server.")
 
@@ -331,5 +335,5 @@ if __name__ == '__main__':
             port = int(sys.argv[1])
         else:
             port = 8080
-        run_server(port, seed_sample_data=True)
+        run_server(port=port, seed_sample_data=True)
 

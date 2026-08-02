@@ -39,8 +39,20 @@ def check_sql_injection(node, file_path):
                     return False
     return True
 
+def check_dangerous_builtins(node, file_path):
+    """Prevents execution of dangerous dynamic execution or system call functions."""
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id in ('eval', 'exec', '__import__'):
+            print(f"🚨 [AST GUARD] Dangerous function '{node.func.id}' detected in {file_path}:{node.lineno}")
+            return False
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            if node.func.value.id == 'os' and node.func.attr == 'system':
+                print(f"🚨 [AST GUARD] Dangerous call 'os.system' detected in {file_path}:{node.lineno}")
+                return False
+    return True
+
 def run_ast_linter():
-    print("🔍 Running ZeroClaw AST Static Code Safety Guardrail...")
+    print("🔍 Running ZeroClaw Enhanced AST Static Code Safety Guardrail...")
     failed = False
     scripts_dir = os.path.dirname(os.path.abspath(__file__))
     
@@ -64,6 +76,8 @@ def run_ast_linter():
                 tree = ast.parse(f.read(), filename=file_path)
                 for node in ast.walk(tree):
                     if not check_sql_injection(node, file_path):
+                        failed = True
+                    if not check_dangerous_builtins(node, file_path):
                         failed = True
             except Exception as e:
                 print(f"⚠️ Error parsing {file_path}: {e}")

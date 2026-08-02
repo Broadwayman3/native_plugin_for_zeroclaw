@@ -35,9 +35,14 @@ def generate_pix_emv_payload(pix_key: str, amount_brl: float, merchant_name: str
         merchant_bytes = merchant_bytes[:99]
         merchant_name = merchant_bytes.decode('utf-8', errors='ignore')
         merchant_bytes = merchant_name.encode('utf-8')
-        
-    merchant_len = len(merchant_bytes)
+
     pix_key_bytes = pix_key.encode('utf-8')
+    if len(pix_key_bytes) > 99:
+        pix_key_bytes = pix_key_bytes[:99]
+        pix_key = pix_key_bytes.decode('utf-8', errors='ignore')
+        pix_key_bytes = pix_key.encode('utf-8')
+
+    merchant_len = len(merchant_bytes)
     pix_key_len = len(pix_key_bytes)
     payload_base = (
         "00020126580014br.gov.bcb.pix"

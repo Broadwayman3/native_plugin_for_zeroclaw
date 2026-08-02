@@ -47,6 +47,8 @@ def usdc_to_atomic_units(amount: Union[float, str, Decimal]) -> int:
 
 def calculate_token2022_fee(amount_usdc: Union[float, str, Decimal], fee_basis_points: int, max_fee_units: int, decimals: int = USDC_DECIMALS) -> float:
     """Calculates Token-2022 transfer fee using Decimal-backed atomic conversion."""
+    if decimals > 18:
+        return 0.0
     scale = 10**decimals
     if fee_basis_points > 10000: return max_fee_units / float(scale)
     amount_units = token_to_atomic_units(amount_usdc, decimals=decimals)

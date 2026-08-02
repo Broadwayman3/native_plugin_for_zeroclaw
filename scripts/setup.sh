@@ -35,6 +35,15 @@ echo "📁 Setting up data directory permissions for Docker & SQLite WAL..."
 mkdir -p data sops skills scripts plugins/solana-pos-core
 chmod -R 777 data
 
+# Install Git Pre-Commit Hook for guaranteed pre-commit checks
+if [ -d ".git" ]; then
+    echo "⚙️ Installing Git Pre-Commit Hook (.git/hooks/pre-commit)..."
+    mkdir -p .git/hooks
+    cp scripts/pre_commit.sh .git/hooks/pre-commit
+    chmod +x .git/hooks/pre-commit
+    echo "✅ Git Pre-Commit Hook installed successfully!"
+fi
+
 echo ""
 echo "=========================================================="
 echo "✨ Environment initialized successfully!"
