@@ -9,8 +9,17 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "plugins/solana-pos-core"
 
       - name: Install Rust Toolchain & WASM Target
         uses: dtolnay/rust-toolchain@stable
@@ -26,15 +35,16 @@ jobs:
           curl https://wasmtime.dev/install.sh -s Sf | bash || true
           echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
 
-      - name: Set up Python 3.10
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
       - name: Install Python Validation & Static Security Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install jsonschema mypy flake8 bandit
+          pip install jsonschema mypy flake8 bandit wasmtime
 
       - name: Make Scripts Executable
         run: chmod +x scripts/*.sh
@@ -92,10 +102,10 @@ jobs:
       - name: Run Senior Lead QA & Red Team Security Audit Suite
         run: python3 scripts/qa_red_team_audit.py
 
-      - name: Run 280 Comprehensive Boundary & Stress Test Cases
+      - name: Run 305 Comprehensive Boundary & Stress Test Cases
         run: python3 scripts/test_boundary_cases.py
-
 
       - name: Run Complete 1-Command Automated Verification Pipeline
         run: ./scripts/verify_all.sh
+
 

@@ -54,7 +54,7 @@ python3 scripts/sanitizer.py
 # 7. Security Audit & Prompt Injection Suite
 python3 scripts/test_prompt_inj.py
 
-# 8. Comprehensive Boundary Cases (280 Tests)
+# 8. Comprehensive Boundary Cases (305 Tests)
 python3 scripts/test_boundary_cases.py
 
 echo "================================================================="

@@ -43,7 +43,7 @@ def run_boundary_tests():
     tests_passed += test_edge_storage.run_suite()
     tests_passed += test_edge_math_and_blinks.run_suite()
 
-    total_tests = 280
+    total_tests = 305
     cleanup_db_files("data/test_boundary.db")
 
     print("\n-----------------------------------------------------------------")
@@ -53,7 +53,9 @@ def run_boundary_tests():
 def test_boundary_suite():
     """Pytest entrypoint to execute full boundary test suite."""
     passed = run_boundary_tests()
-    assert passed == 280
+    assert passed == 305
+
+
 
 
 

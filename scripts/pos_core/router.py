@@ -25,10 +25,11 @@ def route_post(path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     return decorator
 
 def send_json_response(handler: Any, status_code: int, body: Any, extra_headers: Optional[Dict[str, str]] = None) -> None:
-    """Sends standardized JSON HTTP responses with CORS and custom headers."""
+    """Sends standardized JSON HTTP responses with CORS, connection cleanup, and custom headers."""
     handler.send_response(status_code)
     handler.send_header('Content-Type', 'application/json')
     handler.send_header('Access-Control-Allow-Origin', '*')
+    handler.send_header('Connection', 'close')
     if extra_headers:
         for k, v in extra_headers.items():
             handler.send_header(k, v)

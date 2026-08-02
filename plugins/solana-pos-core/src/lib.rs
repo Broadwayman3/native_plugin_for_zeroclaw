@@ -269,6 +269,12 @@ mod tests {
         assert_eq!(fee, 0.50);
     }
 
+    #[test]
+    fn test_zero_decimals_token2022_fee() {
+        let fee = calculate_token2022_fee_internal(100.0, 100, 10, 0);
+        assert_eq!(fee, 1.0);
+    }
+
     // Property-based testing: mathematical stability for arbitrary float inputs
     proptest! {
         #[test]

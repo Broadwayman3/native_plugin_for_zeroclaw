@@ -6,6 +6,23 @@ Centralized source of truth for financial precision, token mints, system limits,
 
 import os
 
+# Auto-load .env configuration using stdlib if present in project root
+_root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_env_file = os.path.join(_root_dir, ".env")
+if os.path.exists(_env_file):
+    try:
+        with open(_env_file, "r", encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    _k = _k.strip()
+                    _v = _v.strip().strip('"').strip("'")
+                    if _k and _k not in os.environ:
+                        os.environ[_k] = _v
+    except Exception:
+        pass
+
 # Financial token decimal places
 USDC_DECIMALS: int = 6
 SOL_DECIMALS: int = 9

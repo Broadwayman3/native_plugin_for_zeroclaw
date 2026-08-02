@@ -192,7 +192,10 @@ def format_itemized_receipt(
     fiat_amount: Optional[float] = None,
     exchange_rate: Optional[float] = None
 ) -> str:
-    """Formats an itemized POS receipt while safely preserving Telegram MarkdownV2 bold/italic syntax and dual fiat oracle conversion metadata."""
+    """
+    Formats an itemized POS receipt while safely preserving Telegram MarkdownV2 bold/italic syntax and dual fiat oracle conversion metadata.
+    NOTE: The returned string is already fully escaped for MarkdownV2. DO NOT pass the return value to escape_telegram_markdown_v2() to prevent double-escaping bugs!
+    """
     tax_amount = round(amount_usdc * (tax_rate_pct / 100.0), 2)
     default_item = t("default_item", lang=lang, escape_markdown=False)
     
@@ -211,7 +214,7 @@ def format_itemized_receipt(
         clean_fiat_curr = escape_telegram_markdown_v2(str(fiat_currency))
         clean_fiat_amt = escape_telegram_markdown_v2(f"{fiat_amount:.2f}")
         clean_rate = escape_telegram_markdown_v2(f"{exchange_rate:.2f}")
-        fiat_conversion_line = f"• Charged: {clean_fiat_amt} {clean_fiat_curr} \(Rate: {clean_rate}\)\n"
+        fiat_conversion_line = rf"• Charged: {clean_fiat_amt} {clean_fiat_curr} \(Rate: {clean_rate}\)" + "\n"
 
 
     return (

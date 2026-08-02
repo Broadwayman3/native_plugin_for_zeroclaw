@@ -86,3 +86,26 @@ def refresh_stale_nonce_account(conn: Optional[sqlite3.Connection] = None, pubke
             SET status = 'free', locked_at = NULL 
             WHERE pubkey = ?
         """, (pubkey,))
+
+
+def verify_nonce_instruction_ordering(instructions: list) -> bool:
+    """
+    Validates Solana Runtime rule that AdvanceNonceAccount must be the first non-budget execution instruction.
+    Filters out Compute Budget meta-instructions (SetComputeUnitPrice, SetComputeUnitLimit) before checking index.
+    """
+    if not instructions:
+        return True
+    has_nonce = any(isinstance(ix, dict) and ix.get("instruction") == "AdvanceNonceAccount" for ix in instructions)
+    if not has_nonce:
+        return True
+    
+    # Filter out Compute Budget instructions
+    exec_instructions = [
+        ix for ix in instructions 
+        if isinstance(ix, dict) and ix.get("instruction") not in ("SetComputeUnitPrice", "SetComputeUnitLimit")
+    ]
+    if not exec_instructions:
+        return True
+    return exec_instructions[0].get("instruction") == "AdvanceNonceAccount"
+
+

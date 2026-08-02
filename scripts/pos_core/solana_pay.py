@@ -113,11 +113,16 @@ def load_wasm_binary_ram_cache(wasm_path: str = "plugins/solana-pos-core/target/
 def get_required_commitment_level(amount_usdc: float, threshold_usdc: float = DEFAULT_COMMITMENT_THRESHOLD_USDC) -> str:
     return "finalized" if amount_usdc >= threshold_usdc else "confirmed"
 
-def generate_atomic_refund_instructions(payer_pubkey: str = "REFUND_SESSION_KEY", recipient_pubkey: str = "9xK2...Customer1", amount_usdc: float = 10.0, mint: str = USDC_MINT) -> List[Dict[str, Any]]:
-    return [
+def generate_atomic_refund_instructions(payer_pubkey: str = "REFUND_SESSION_KEY", recipient_pubkey: str = "9xK2...Customer1", amount_usdc: float = 10.0, mint: str = USDC_MINT, nonce_pubkey: Optional[str] = None) -> List[Dict[str, Any]]:
+    instructions = []
+    if nonce_pubkey:
+        instructions.append({"instruction": "AdvanceNonceAccount", "nonce_account": nonce_pubkey, "authority": payer_pubkey})
+    instructions.extend([
         {"instruction": "createAssociatedTokenAccountIdempotent", "payer": payer_pubkey, "owner": recipient_pubkey, "mint": mint},
         {"instruction": "splTokenTransfer", "from": payer_pubkey, "to": recipient_pubkey, "amount_usdc": amount_usdc}
-    ]
+    ])
+    return instructions
+
 
 def validate_squads_multisig_account(account_data: Optional[Dict[str, Any]]) -> int:
     """Squads v4 Null Account & Invalid State Defense."""
@@ -193,7 +198,7 @@ def verify_solana_transaction_payload(tx_json: Any, expected_merchant_ata: str, 
     deltas = _extract_token_balance_deltas(meta, expected_mint, debug_log=debug_log)
     transaction = tx_json.get("transaction") or {}
     message = (transaction.get("message") if isinstance(transaction, dict) else {}) or {}
-    account_keys = (message.get("accountKeys") if isinstance(message, dict) else []) or []
+    account_keys = (message.get("accountKeys") or message.get("staticAccountKeys") if isinstance(message, dict) else []) or []
     
     merchant_idx = next((i for i, k in enumerate(account_keys) if (k.get("pubkey") if isinstance(k, dict) else k) == expected_merchant_ata), None)
 
