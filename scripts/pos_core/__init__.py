@@ -36,7 +36,8 @@ from pos_core.formatters import (
     format_pubkey_short,
     get_solscan_tx_url,
     is_valid_base58,
-    generate_solana_pay_qr_image_url
+    generate_solana_pay_qr_image_url,
+    generate_telegram_photo_payload
 )
 from pos_core.verification import (
     _extract_token_balance_deltas,
@@ -70,7 +71,8 @@ from pos_core.i18n import (
     get_localized_message,
     t,
     format_itemized_receipt,
-    get_refund_checkpoint_inline_keyboard
+    get_refund_checkpoint_inline_keyboard,
+    get_cancel_invoice_inline_keyboard
 )
 
 from pos_core.pix_brl import (
@@ -132,6 +134,7 @@ __all__ = [
     "validate_squads_multisig_account",
     "verify_solana_transaction_payload",
     "generate_solana_pay_qr_image_url",
+    "generate_telegram_photo_payload",
     "generate_solana_pay_url",
     "generate_phantom_universal_link",
     "get_active_rpc_url",
@@ -142,6 +145,7 @@ __all__ = [
     "t",
     "format_itemized_receipt",
     "get_refund_checkpoint_inline_keyboard",
+    "get_cancel_invoice_inline_keyboard",
     "_extract_token_balance_deltas",
     "_inspect_instructions_for_transfer",
     "calculate_pix_crc16",
@@ -154,3 +158,4 @@ __all__ = [
     "dispatch_request",
     "send_json_response"
 ]
+

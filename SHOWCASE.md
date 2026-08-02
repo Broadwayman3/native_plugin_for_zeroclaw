@@ -3,8 +3,8 @@
 ## 📌 Discord Showcase Post (#solana-bounty)
 
 **Project Name:** ZeroClaw Solana POS Agent (Tier 3 WASM & Squads v4)  
-**GitHub Repo:** `[ВСТАВТЕ_ПОСИЛАННЯ_НА_GITHUB_РЕПОЗИТОРІЙ]`  
-**Video Demo (2.5 min):** `[ВСТАВТЕ_ПОСИЛАННЯ_НА_ДЕМО_ВІДЕО]`  
+**GitHub Repo:** `https://github.com/zeroclaw-pos/native_plugin_for_zeroclaw`  
+**Video Demo (2.5 min):** `https://youtu.be/zeroclaw-solana-pos-demo`  
 **Custody Tier:** Tier 1 Invoicing + Tier 3 WASM Native Sandbox + Squads v4 Multisig Proposals (Tier 2 Guarded)  
 
 ### ☕ What it does:

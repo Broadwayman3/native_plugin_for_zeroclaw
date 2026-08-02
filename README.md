@@ -151,10 +151,18 @@ The agent directly satisfies the hackathon priority requirement (*"Brazil-first 
 
 ## 🏬 Quickstart for Retail Merchants (15-Min Setup)
 
-1. **Create Telegram Bot**: Open Telegram, talk to [@BotFather](https://t.me/BotFather), send `/newbot`, and copy your bot token into `.env` (`TELEGRAM_BOT_TOKEN=...`).
+1. **Create & Configure Telegram Bot**:
+   - Open Telegram and chat with [@BotFather](https://t.me/BotFather).
+   - Send `/newbot`, follow prompts, and copy your token into `.env` (`TELEGRAM_BOT_TOKEN=...`).
+   - Set bot commands menu (`/setcommands`):
+     - `start` - Start cashier payment terminal session
+     - `sales` - View sales summary and daily revenue metrics
+     - `refund` - Initiate Squads v4 multisig customer refund
+     - `cancel` - Cancel / void active pending invoice
+   - Set bot profile avatar (`/setuserpic`) and description (`/setdescription` & `/setabouttext`).
 2. **Set Merchant Wallet**: Paste your Solana Store Wallet address in `.env` (`MERCHANT_WALLET_PUBKEY=...`).
 3. **Launch Terminal**: Run `docker-compose up -d` or `./scripts/setup.sh && python3 scripts/pos_backend.py`.
-4. **Start Cashier Session**: Send `/start` to your Telegram POS bot to accept instant payments in BRL, UAH, or USD!
+4. **Start Cashier Session**: Send `/start` to your Telegram POS bot to accept instant payments in BRL, UAH, or USD with 1-tap `[❌ Cancel Invoice]` cashier controls!
 
 ---
 

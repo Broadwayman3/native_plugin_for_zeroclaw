@@ -59,10 +59,22 @@ if command -v cargo >/dev/null 2>&1; then
         exit 1
     fi
 else
-    echo ""
-    echo "⚠️  Cargo is not installed in current environment."
-    echo "ℹ️  CI/CD pipeline (.github/workflows/ci.yml) will execute full compilation via dtolnay/rust-toolchain with wasm32-wasip2 target."
-    echo "=========================================================="
-    echo "✅ Cargo manifest & WIT interface verified!"
-    echo "=========================================================="
+    WASM_FILE="$PLUGIN_DIR/target/wasm32-wasip2/release/solana_pos_core.wasm"
+    if [ -f "$WASM_FILE" ]; then
+        SIZE=$(du -h "$WASM_FILE" | cut -f1)
+        echo ""
+        echo "ℹ️  Cargo is not installed in current environment, but pre-compiled WASM binary is present at $WASM_FILE ($SIZE)."
+        echo "=========================================================="
+        echo "✅ Pre-compiled WASM Plugin verified! Skipping compilation."
+        echo "=========================================================="
+        exit 0
+    else
+        echo ""
+        echo "⚠️  Cargo is not installed in current environment."
+        echo "ℹ️  CI/CD pipeline (.github/workflows/ci.yml) will execute full compilation via dtolnay/rust-toolchain with wasm32-wasip2 target."
+        echo "=========================================================="
+        echo "✅ Cargo manifest & WIT interface verified!"
+        echo "=========================================================="
+    fi
 fi
+

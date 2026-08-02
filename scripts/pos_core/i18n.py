@@ -239,7 +239,18 @@ def get_refund_checkpoint_inline_keyboard(proposal_idx: int) -> Dict[str, Any]:
         ]
     }
 
+def get_cancel_invoice_inline_keyboard(invoice_id: str) -> Dict[str, Any]:
+    """Generates Telegram Inline Keyboard payload for cashier invoice cancellation/voiding."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "❌ Скасувати чек / Void", "callback_data": f"cancel_invoice_{invoice_id}"}
+            ]
+        ]
+    }
+
 # Alias for backward compatibility
 get_localized_message = t
+
 
 

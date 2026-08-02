@@ -29,3 +29,16 @@ def generate_solana_pay_qr_image_url(solana_pay_url: str, size: int = 300) -> st
     """Generates direct QR code image rendering URL for instant visualization in chat."""
     encoded_url = urllib.parse.quote(solana_pay_url, safe="")
     return f"https://api.qrserver.com/v1/create-qr-code/?size={size}x{size}&data={encoded_url}"
+
+def generate_telegram_photo_payload(chat_id: str, qr_image_url: str, caption_text: str, reply_markup: Optional[dict] = None) -> dict:
+    """Generates Telegram Bot API sendPhoto JSON payload structure for sending receipts with scan-ready QR codes."""
+    payload = {
+        "chat_id": chat_id,
+        "photo": qr_image_url,
+        "caption": caption_text,
+        "parse_mode": "MarkdownV2"
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    return payload
+

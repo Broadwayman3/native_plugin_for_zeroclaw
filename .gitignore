@@ -1,6 +1,14 @@
 # Rust WASM build target & compiled WebAssembly modules
-target/
+/target/
 *.wasm
+!plugins/solana-pos-core/target/
+plugins/solana-pos-core/target/*
+!plugins/solana-pos-core/target/wasm32-wasip2/
+plugins/solana-pos-core/target/wasm32-wasip2/*
+!plugins/solana-pos-core/target/wasm32-wasip2/release/
+plugins/solana-pos-core/target/wasm32-wasip2/release/*
+!plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm
+
 
 # Environment and runtime configs
 .env
