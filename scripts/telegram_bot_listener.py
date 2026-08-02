@@ -45,7 +45,7 @@ USER_SESSIONS: Dict[int, Dict[str, Any]] = {}
 
 def get_session(chat_id: int) -> Dict[str, Any]:
     if chat_id not in USER_SESSIONS:
-        USER_SESSIONS[chat_id] = {"lang": "uk", "state": "idle", "user_set": False}
+        USER_SESSIONS[chat_id] = {"lang": "uk", "state": "idle", "user_set": False, "draft_items": None}
     return USER_SESSIONS[chat_id]
 
 LANG_KEYBOARD = {
@@ -78,8 +78,49 @@ def is_btn_click(text: str, key: str) -> bool:
                 return True
     return False
 
+def parse_pos_order_input(text: str, default_item_label: str = "Standard Order", draft_items: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Parses item descriptions, quantities, and fiat amounts from text.
+    Protects quantity multipliers like '8x Cappuccino' from being misidentified as fiat amounts.
+    """
+    text_clean = text.strip()
+    
+    # 1. Match money amount + currency code (e.g. "8x Cappuccino + 10x Croissant 500 UAH" or "500 UAH" or "150.50 USD")
+    m_curr = re.search(r'(\d+(?:\.\d+)?)\s*([a-zA-Z]{3}|₴|\$|€|R\$|zł|TL)\b', text_clean, re.IGNORECASE)
+    if m_curr:
+        amt = float(m_curr.group(1))
+        curr = m_curr.group(2).upper()
+        if curr == "₴": curr = "UAH"
+        elif curr == "$": curr = "USD"
+        elif curr == "€": curr = "EUR"
+        elif curr in ["R$", "REAL"]: curr = "BRL"
+        elif curr == "ZŁ": curr = "PLN"
+        
+        matched_str = m_curr.group(0)
+        items_part = text_clean.replace(matched_str, "").strip()
+        
+        if items_part:
+            final_item = items_part
+        elif draft_items:
+            final_item = draft_items
+        else:
+            final_item = f"{default_item_label} {amt} {curr}"
+            
+        return {"has_price": True, "items": final_item, "amount": amt, "currency": curr}
+        
+    # 2. Match standalone number without currency code (e.g. "500" when entered after draft items or in custom mode)
+    m_num = re.search(r'^\s*(\d+(?:\.\d+)?)\s*$', text_clean)
+    if m_num:
+        amt = float(m_num.group(1))
+        curr = "UAH"
+        final_item = draft_items if draft_items else f"{default_item_label} {amt} {curr}"
+        return {"has_price": True, "items": final_item, "amount": amt, "currency": curr}
+
+    # 3. Text without any price (e.g. "8x Cappuccino + 10x Croissant")
+    return {"has_price": False, "items": text_clean, "amount": None, "currency": None}
+
 def start_polling():
-    print("🤖 ZeroClaw POS Bot (Explicit Language Lock & Multi-Lang Keyboards) STARTED!")
+    print("🤖 ZeroClaw POS Bot (Smart Quantity & Multi-Lang Parser) STARTED!")
     offset = 0
 
     while True:
@@ -162,6 +203,7 @@ def start_polling():
                     # Command: /start or menu
                     if text_lower in ["/start", "меню", "menu"]:
                         session["state"] = "idle"
+                        session["draft_items"] = None
                         welcome_msg = t("welcome", user_lang, escape_markdown=False)
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
@@ -173,6 +215,7 @@ def start_polling():
                     # Button: Select Language
                     elif is_btn_click(text, "btn_lang") or "13 мов" in text_lower or "language" in text_lower or "idioma" in text_lower or "sprache" in text_lower or "langue" in text_lower or "lingua" in text_lower or "język" in text_lower or "dil" in text_lower or "言語" in text_lower or "语言" in text_lower or "भाषा" in text_lower or "لغة" in text_lower:
                         session["state"] = "idle"
+                        session["draft_items"] = None
                         select_lang_msg = t("select_lang", user_lang, escape_markdown=False)
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
@@ -184,6 +227,7 @@ def start_polling():
                     # Button: Enter custom amount
                     elif is_btn_click(text, "btn_custom") or "custom" in text_lower or "довільн" in text_lower or "personalizado" in text_lower or "eingeben" in text_lower or "montant" in text_lower or "importo" in text_lower or "kwotę" in text_lower or "tutar" in text_lower or "入力" in text_lower or "自定义" in text_lower or "दर्ज" in text_lower or "مخصص" in text_lower:
                         session["state"] = "awaiting_custom_amount"
+                        session["draft_items"] = None
                         custom_msg = t("custom_help", user_lang, escape_markdown=False)
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
@@ -195,6 +239,7 @@ def start_polling():
                     # Button: Quick receipt (200 UAH)
                     elif is_btn_click(text, "btn_quick_uah") or "quick" in text_lower or "200 uah" in text_lower or "швидкий" in text_lower or "szybki" in text_lower or "schnell" in text_lower or "rápido" in text_lower or "rapide" in text_lower or "rapido" in text_lower or "hızlı" in text_lower or "クイック" in text_lower or "快速" in text_lower or "त्वरित" in text_lower or "سريع" in text_lower:
                         session["state"] = "idle"
+                        session["draft_items"] = None
                         fiat_amt = 200.0
                         fiat_curr = "UAH"
                         rate_info = get_multitier_fiat_rate(fiat_curr)
@@ -234,6 +279,7 @@ def start_polling():
                     # Button: Sales Summary
                     elif is_btn_click(text, "btn_sales") or "звіт" in text_lower or "sales" in text_lower or "vendas" in text_lower or "resumen" in text_lower or "übersicht" in text_lower or "résumé" in text_lower or "riepilogo" in text_lower or "podsumowanie" in text_lower or "özeti" in text_lower or "売上" in text_lower or "销售" in text_lower or "बिक्री" in text_lower or "ملخص" in text_lower:
                         session["state"] = "idle"
+                        session["draft_items"] = None
                         stats = get_sales_summary_stats()
                         summary_msg = (
                             f"📊 *ZeroClaw POS Sales Summary ({user_lang.upper()})*\n"
@@ -255,6 +301,7 @@ def start_polling():
                     # Button: Refund
                     elif is_btn_click(text, "btn_refund") or "рефанд" in text_lower or "refund" in text_lower or "reembolso" in text_lower or "rückerstattung" in text_lower or "remboursement" in text_lower or "rimborso" in text_lower or "zwrot" in text_lower or "iade" in text_lower or "返金" in text_lower or "退款" in text_lower or "रिफंड" in text_lower or "استرداد" in text_lower:
                         session["state"] = "idle"
+                        session["draft_items"] = None
                         allocated_nonce = allocate_free_nonce_account() or "Nonce111111111111111111111111111111111111111"
                         refund_msg = (
                             "🏛️ *Squads v4 Multisig Proposal Initiated*\n"
@@ -281,37 +328,31 @@ def start_polling():
                             "reply_markup": keyboard
                         })
 
-                    # Dynamic Custom Amount or Arbitrary Input Parsing
+                    # Dynamic Custom Amount & POS Order Parser
                     else:
-                        match = re.search(r'(?:(\d+x?\s+[\w\s\+\-\&]+?)\s+)?(\d+(?:\.\d+)?)\s*([a-zA-Z]{3})', text, re.IGNORECASE)
-                        if match:
-                            items_typed = (match.group(1) or "").strip()
-                            fiat_amt = float(match.group(2))
-                            fiat_curr = match.group(3).upper()
-                            item_desc = items_typed if items_typed else f"{t('default_item', lang=user_lang, escape_markdown=False)} {fiat_amt} {fiat_curr}"
-                        else:
-                            # Try simple number match
-                            num_match = re.search(r'(\d+(?:\.\d+)?)', text)
-                            if num_match:
-                                fiat_amt = float(num_match.group(1))
-                                fiat_curr = "UAH"
-                                item_desc = f"{text.replace(num_match.group(1), '').strip() or t('default_item', lang=user_lang, escape_markdown=False)} {fiat_amt} {fiat_curr}".strip()
-                            else:
-                                if session.get("state") == "awaiting_custom_amount":
-                                    # Prompt for valid custom amount format
-                                    tg_request("sendMessage", {
-                                        "chat_id": chat_id,
-                                        "text": t("custom_help", user_lang, escape_markdown=False),
-                                        "parse_mode": "Markdown",
-                                        "reply_markup": get_main_reply_keyboard(user_lang)
-                                    })
-                                    continue
-                                else:
-                                    fiat_amt = 200.0
-                                    fiat_curr = "UAH"
-                                    item_desc = f"{text} ({fiat_amt} {fiat_curr})"
+                        def_label = t("default_item", lang=user_lang, escape_markdown=False)
+                        parsed = parse_pos_order_input(text, default_item_label=def_label, draft_items=session.get("draft_items"))
 
+                        if not parsed["has_price"]:
+                            # User entered item names like "8x Cappuccino + 10x Croissant" without a price!
+                            session["draft_items"] = parsed["items"]
+                            session["state"] = "awaiting_price"
+                            prompt_text = t("price_needed", user_lang, escape_markdown=False, items=parsed["items"])
+                            tg_request("sendMessage", {
+                                "chat_id": chat_id,
+                                "text": prompt_text,
+                                "parse_mode": "Markdown",
+                                "reply_markup": get_main_reply_keyboard(user_lang)
+                            })
+                            continue
+
+                        # Has price! Create invoice
                         session["state"] = "idle"
+                        session["draft_items"] = None
+                        fiat_amt = parsed["amount"]
+                        fiat_curr = parsed["currency"]
+                        item_desc = parsed["items"]
+
                         rate_info = get_multitier_fiat_rate(fiat_curr)
                         rate = rate_info.get("rate", 1.0)
                         usdc_amt = round(fiat_amt / rate, 2)
