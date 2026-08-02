@@ -2,6 +2,7 @@
 """
 ZeroClaw Solana POS Agent - Telegram Bot Listener Process
 Clean architecture listener using central pos_core domain logic & i18n engine.
+Features per-chat multi-language session state & dynamic custom amount parser.
 """
 
 import os
@@ -31,21 +32,21 @@ from pos_core import (
     generate_secure_reference_key,
     get_multitier_fiat_rate,
     LANG_META,
+    TRANSLATIONS,
     get_localized_confirmation,
+    get_main_reply_keyboard,
     t
 )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8861640052:AAHHIdIsgCNDGBym76X7yJcCM_EJN0NIspg")
 
-def get_main_keyboard(lang: str = "uk") -> Dict[str, Any]:
-    return {
-        "keyboard": [
-            [{"text": "✍️ Ввести довільну суму"}, {"text": "☕ Швидкий чек (200 UAH)"}],
-            [{"text": "📊 Звіт продажів"}, {"text": "🔄 Рефанд (Refund)"}],
-            [{"text": "🌐 13 Мов / Languages"}]
-        ],
-        "resize_keyboard": True
-    }
+# Per-chat user session store
+USER_SESSIONS: Dict[int, Dict[str, Any]] = {}
+
+def get_session(chat_id: int) -> Dict[str, Any]:
+    if chat_id not in USER_SESSIONS:
+        USER_SESSIONS[chat_id] = {"lang": "uk", "state": "idle"}
+    return USER_SESSIONS[chat_id]
 
 LANG_KEYBOARD = {
     "inline_keyboard": [
@@ -67,10 +68,19 @@ def tg_request(method: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]
         print(f"⚠️ TG API Error ({method}):", e)
         return None
 
+def is_btn_click(text: str, key: str) -> bool:
+    """Checks if incoming button text matches translation for 'key' in any language."""
+    text_clean = text.strip().lower()
+    for lang_code, trans_dict in TRANSLATIONS.items():
+        if key in trans_dict:
+            target = trans_dict[key].strip().lower()
+            if text_clean == target or target in text_clean:
+                return True
+    return False
+
 def start_polling():
-    print("🤖 ZeroClaw POS Bot (Architecturally Clean i18n Engine) STARTED!")
+    print("🤖 ZeroClaw POS Bot (Per-Chat Session & Multi-Lang Keyboards) STARTED!")
     offset = 0
-    current_lang = "uk"
 
     while True:
         try:
@@ -96,32 +106,36 @@ def start_polling():
                     cb_id = cb["id"]
                     data_str = cb.get("data", "")
                     chat_id = cb["message"]["chat"]["id"]
+                    session = get_session(chat_id)
 
                     if data_str.startswith("set_lang_"):
-                        current_lang = data_str.replace("set_lang_", "")
-                        conf_msg = get_localized_confirmation(current_lang)
+                        new_lang = data_str.replace("set_lang_", "")
+                        session["lang"] = new_lang
+                        conf_msg = get_localized_confirmation(new_lang)
                         tg_request("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Language Changed!"})
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
                             "text": conf_msg,
-                            "reply_markup": get_main_keyboard(current_lang)
+                            "reply_markup": get_main_reply_keyboard(new_lang)
                         })
                     elif data_str.startswith("cancel_invoice_"):
                         inv_id = data_str.replace("cancel_invoice_", "")
                         cancel_invoice_record(inv_id)
                         tg_request("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Voided!"})
+                        void_msg = t("void_confirmed", session["lang"], escape_markdown=False, invoice_id=inv_id)
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
-                            "text": f"❌ Чек #{inv_id} скасовано!",
-                            "reply_markup": get_main_keyboard(current_lang)
+                            "text": void_msg,
+                            "reply_markup": get_main_reply_keyboard(session["lang"])
                         })
                     elif data_str.startswith("approve_refund_"):
                         inv_id = data_str.replace("approve_refund_", "")
                         tg_request("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Approved!"})
+                        appr_msg = t("refund_approved", session["lang"], escape_markdown=False, invoice_id=inv_id)
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
-                            "text": f"✅ Пропозицію повернення коштів створено у Squads v4!\n• Чек: #{inv_id}",
-                            "reply_markup": get_main_keyboard(current_lang)
+                            "text": appr_msg,
+                            "reply_markup": get_main_reply_keyboard(session["lang"])
                         })
                     continue
 
@@ -129,36 +143,100 @@ def start_polling():
                 if "message" in update:
                     msg = update["message"]
                     chat_id = msg["chat"]["id"]
+                    session = get_session(chat_id)
+                    user_lang = session["lang"]
+
+                    # Auto-detect language from Telegram message user language_code if not explicitly set
+                    if session.get("state") == "idle" and "from" in msg and "language_code" in msg["from"]:
+                        tg_lang = msg["from"]["language_code"].lower().split("-")[0]
+                        if tg_lang in LANG_META and session.get("user_set") is not True:
+                            session["lang"] = tg_lang
+                            user_lang = tg_lang
+
                     text = (msg.get("text") or "").strip()
                     text_lower = text.lower()
 
                     if not text:
                         continue
 
+                    # Command: /start or menu
                     if text_lower in ["/start", "меню", "menu"]:
-                        welcome_msg = (
-                            "☕ *Вітаємо у ZeroClaw Solana POS Терміналі!*\n\n"
-                            "Оберіть дію на клавіатурі внизу або введіть суму текстом (наприклад: `150 UAH`, `35.5 BRL`, `12 USD`):"
-                        )
+                        session["state"] = "idle"
+                        welcome_msg = t("welcome", user_lang, escape_markdown=False)
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
                             "text": welcome_msg,
                             "parse_mode": "Markdown",
-                            "reply_markup": get_main_keyboard(current_lang)
+                            "reply_markup": get_main_reply_keyboard(user_lang)
                         })
 
-                    elif "13 мов" in text_lower or "мова" in text_lower or "language" in text_lower or "idiomas" in text_lower:
+                    # Button: Select Language
+                    elif is_btn_click(text, "btn_lang") or "13 мов" in text_lower or "language" in text_lower or "idioma" in text_lower or "sprache" in text_lower or "langue" in text_lower or "lingua" in text_lower or "język" in text_lower or "dil" in text_lower or "言語" in text_lower or "语言" in text_lower or "भाषा" in text_lower or "لغة" in text_lower:
+                        session["state"] = "idle"
+                        select_lang_msg = t("select_lang", user_lang, escape_markdown=False)
                         tg_request("sendMessage", {
                             "chat_id": chat_id,
-                            "text": "🌐 *Оберіть мову інтерфейсу з 13 доступних / Select Language:*",
+                            "text": select_lang_msg,
                             "parse_mode": "Markdown",
                             "reply_markup": LANG_KEYBOARD
                         })
 
-                    elif "звіт" in text_lower or "/sales" in text_lower or "summary" in text_lower or "vendas" in text_lower or "resumen" in text_lower:
+                    # Button: Enter custom amount
+                    elif is_btn_click(text, "btn_custom") or "custom" in text_lower or "довільн" in text_lower or "personalizado" in text_lower or "eingeben" in text_lower or "montant" in text_lower or "importo" in text_lower or "kwotę" in text_lower or "tutar" in text_lower or "入力" in text_lower or "自定义" in text_lower or "दर्ज" in text_lower or "مخصص" in text_lower:
+                        session["state"] = "awaiting_custom_amount"
+                        custom_msg = t("custom_help", user_lang, escape_markdown=False)
+                        tg_request("sendMessage", {
+                            "chat_id": chat_id,
+                            "text": custom_msg,
+                            "parse_mode": "Markdown",
+                            "reply_markup": get_main_reply_keyboard(user_lang)
+                        })
+
+                    # Button: Quick receipt (200 UAH)
+                    elif is_btn_click(text, "btn_quick_uah") or "quick" in text_lower or "200 uah" in text_lower or "швидкий" in text_lower:
+                        session["state"] = "idle"
+                        fiat_amt = 200.0
+                        fiat_curr = "UAH"
+                        rate_info = get_multitier_fiat_rate(fiat_curr)
+                        rate = rate_info.get("rate", 41.5)
+                        usdc_amt = round(fiat_amt / rate, 2)
+
+                        inv_id = f"INV-{random.randint(200, 999)}"
+                        ref_key = generate_secure_reference_key()
+
+                        create_invoice_record({
+                            "id": inv_id,
+                            "reference_pubkey": ref_key,
+                            "fiat_currency": fiat_curr,
+                            "fiat_amount": fiat_amt,
+                            "usdc_amount": usdc_amt
+                        })
+
+                        item_desc = t("default_item", lang=user_lang, escape_markdown=False) + f" {fiat_amt} {fiat_curr}"
+                        receipt_text = format_itemized_receipt(
+                            inv_id, item_desc, 0.0, usdc_amt,
+                            lang=user_lang, fiat_currency=fiat_curr,
+                            fiat_amount=fiat_amt, exchange_rate=rate
+                        )
+
+                        solana_url = generate_solana_pay_url("8xAZmQ1111111111111111111111111111111111111", usdc_amt, ref_key)
+                        qr_photo_url = generate_solana_pay_qr_image_url(solana_url, size=300)
+                        keyboard = get_cancel_invoice_inline_keyboard(inv_id, lang=user_lang)
+
+                        tg_request("sendPhoto", {
+                            "chat_id": chat_id,
+                            "photo": qr_photo_url,
+                            "caption": receipt_text,
+                            "parse_mode": "MarkdownV2",
+                            "reply_markup": keyboard
+                        })
+
+                    # Button: Sales Summary
+                    elif is_btn_click(text, "btn_sales") or "звіт" in text_lower or "sales" in text_lower or "vendas" in text_lower or "resumen" in text_lower or "übersicht" in text_lower or "résumé" in text_lower or "riepilogo" in text_lower or "podsumowanie" in text_lower or "özeti" in text_lower or "売上" in text_lower or "销售" in text_lower or "बिक्री" in text_lower or "ملخص" in text_lower:
+                        session["state"] = "idle"
                         stats = get_sales_summary_stats()
                         summary_msg = (
-                            "📊 *ZeroClaw POS Sales Summary*\n"
+                            f"📊 *ZeroClaw POS Sales Summary ({user_lang.upper()})*\n"
                             "───────────────────────────\n"
                             f"• Paid Invoices : *{stats.get('total_paid_invoices', 0)}*\n"
                             f"• Total Revenue : *${stats.get('total_sales_usdc', 0.0):.2f} USDC*\n"
@@ -171,10 +249,12 @@ def start_polling():
                             "chat_id": chat_id,
                             "text": summary_msg,
                             "parse_mode": "Markdown",
-                            "reply_markup": get_main_keyboard(current_lang)
+                            "reply_markup": get_main_reply_keyboard(user_lang)
                         })
 
-                    elif "рефанд" in text_lower or "refund" in text_lower or "reembolso" in text_lower:
+                    # Button: Refund
+                    elif is_btn_click(text, "btn_refund") or "рефанд" in text_lower or "refund" in text_lower or "reembolso" in text_lower or "rückerstattung" in text_lower or "remboursement" in text_lower or "rimborso" in text_lower or "zwrot" in text_lower or "iade" in text_lower or "返金" in text_lower or "退款" in text_lower or "रिफंड" in text_lower or "استرداد" in text_lower:
+                        session["state"] = "idle"
                         allocated_nonce = allocate_free_nonce_account() or "Nonce111111111111111111111111111111111111111"
                         refund_msg = (
                             "🏛️ *Squads v4 Multisig Proposal Initiated*\n"
@@ -201,15 +281,37 @@ def start_polling():
                             "reply_markup": keyboard
                         })
 
+                    # Dynamic Custom Amount or Arbitrary Input Parsing
                     else:
-                        match = re.search(r'(\d+(?:\.\d+)?)\s*([a-zA-Z]{3})', text)
+                        match = re.search(r'(?:(\d+x?\s+[\w\s\+\-\&]+?)\s+)?(\d+(?:\.\d+)?)\s*([a-zA-Z]{3})', text, re.IGNORECASE)
                         if match:
-                            fiat_amt = float(match.group(1))
-                            fiat_curr = match.group(2).upper()
+                            items_typed = (match.group(1) or "").strip()
+                            fiat_amt = float(match.group(2))
+                            fiat_curr = match.group(3).upper()
+                            item_desc = items_typed if items_typed else f"{t('default_item', lang=user_lang, escape_markdown=False)} {fiat_amt} {fiat_curr}"
                         else:
-                            fiat_amt = 200.0
-                            fiat_curr = "UAH"
+                            # Try simple number match
+                            num_match = re.search(r'(\d+(?:\.\d+)?)', text)
+                            if num_match:
+                                fiat_amt = float(num_match.group(1))
+                                fiat_curr = "UAH"
+                                item_desc = f"{text.replace(num_match.group(1), '').strip() or t('default_item', lang=user_lang, escape_markdown=False)} {fiat_amt} {fiat_curr}".strip()
+                            else:
+                                if session.get("state") == "awaiting_custom_amount":
+                                    # Prompt for valid custom amount format
+                                    tg_request("sendMessage", {
+                                        "chat_id": chat_id,
+                                        "text": t("custom_help", user_lang, escape_markdown=False),
+                                        "parse_mode": "Markdown",
+                                        "reply_markup": get_main_reply_keyboard(user_lang)
+                                    })
+                                    continue
+                                else:
+                                    fiat_amt = 200.0
+                                    fiat_curr = "UAH"
+                                    item_desc = f"{text} ({fiat_amt} {fiat_curr})"
 
+                        session["state"] = "idle"
                         rate_info = get_multitier_fiat_rate(fiat_curr)
                         rate = rate_info.get("rate", 1.0)
                         usdc_amt = round(fiat_amt / rate, 2)
@@ -225,16 +327,15 @@ def start_polling():
                             "usdc_amount": usdc_amt
                         })
 
-                        item_desc = text if match else f"{t('default_item', lang=current_lang, escape_markdown=False)} {fiat_amt} {fiat_curr}"
                         receipt_text = format_itemized_receipt(
                             inv_id, item_desc, 0.0, usdc_amt,
-                            lang=current_lang, fiat_currency=fiat_curr,
+                            lang=user_lang, fiat_currency=fiat_curr,
                             fiat_amount=fiat_amt, exchange_rate=rate
                         )
 
                         solana_url = generate_solana_pay_url("8xAZmQ1111111111111111111111111111111111111", usdc_amt, ref_key)
                         qr_photo_url = generate_solana_pay_qr_image_url(solana_url, size=300)
-                        keyboard = get_cancel_invoice_inline_keyboard(inv_id)
+                        keyboard = get_cancel_invoice_inline_keyboard(inv_id, lang=user_lang)
 
                         tg_request("sendPhoto", {
                             "chat_id": chat_id,
