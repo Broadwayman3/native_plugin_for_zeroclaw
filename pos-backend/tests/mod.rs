@@ -29,6 +29,7 @@ pub fn run_suite() -> usize {
     suites::test_telegram_handlers::run_suite();
     suites::test_prompt_injection::run_suite();
     suites::test_qa_red_team::run_suite();
+    suites::test_zeroclaw_integration::run_suite();
 
     let total = TEST_COUNT.load(Ordering::SeqCst);
     let passed = PASS_COUNT.load(Ordering::SeqCst);

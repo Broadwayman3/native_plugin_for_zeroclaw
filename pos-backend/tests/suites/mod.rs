@@ -14,3 +14,4 @@ pub mod test_squads_multisig;
 pub mod test_telegram_handlers;
 pub mod test_token2022;
 pub mod test_verification;
+pub mod test_zeroclaw_integration;
