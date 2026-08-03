@@ -33,7 +33,9 @@ fn test_031_solana_pay_url_with_token() {
         "ZeroClaw POS",
         "POS Payment",
     );
-    if url.starts_with("solana:") && url.contains("spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v") {
+    if url.starts_with("solana:")
+        && url.contains("spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+    {
         test_pass("031: Solana Pay URL with SPL token");
     } else {
         test_fail("031", &format!("URL: {}", url));
@@ -99,7 +101,9 @@ fn test_035_reference_key_length() {
 
 fn test_036_reference_key_charset() {
     let key = pos_core_logic::generate_secure_reference_key();
-    let valid = key.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
+    let valid = key
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
     if valid {
         test_pass("036: reference key charset is valid");
     } else {
@@ -117,7 +121,10 @@ fn test_037_phantom_link_format() {
 }
 
 fn test_038_get_active_rpc_url_primary() {
-    let url = pos_core_logic::get_active_rpc_url(Some("https://primary.com"), Some("https://fallback.com"));
+    let url = pos_core_logic::get_active_rpc_url(
+        Some("https://primary.com"),
+        Some("https://fallback.com"),
+    );
     if url == "https://primary.com" {
         test_pass("038: primary URL preferred");
     } else {
@@ -145,7 +152,9 @@ fn test_040_get_active_rpc_url_default() {
 
 fn test_041_refund_instructions_with_nonce() {
     let ix = pos_core_logic::generate_atomic_refund_instructions(
-        "payer111", "recipient111", 10.0,
+        "payer111",
+        "recipient111",
+        10.0,
         "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         Some("nonce111"),
     );
@@ -158,7 +167,9 @@ fn test_041_refund_instructions_with_nonce() {
 
 fn test_042_refund_instructions_without_nonce() {
     let ix = pos_core_logic::generate_atomic_refund_instructions(
-        "payer111", "recipient111", 10.0,
+        "payer111",
+        "recipient111",
+        10.0,
         "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         None,
     );
@@ -247,7 +258,8 @@ fn test_048_solana_pay_url_long_label() {
 }
 
 fn test_049_phantom_link_encoding() {
-    let link = pos_core_logic::generate_phantom_universal_link("solana:pubkey?amount=10.00&label=Café");
+    let link =
+        pos_core_logic::generate_phantom_universal_link("solana:pubkey?amount=10.00&label=Café");
     if link.contains("Caf") || link.contains("Caf%C3%A9") {
         test_pass("049: Phantom link encodes special chars");
     } else {

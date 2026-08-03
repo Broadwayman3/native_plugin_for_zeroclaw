@@ -86,9 +86,10 @@ pub fn update_invoice_status(
     tx_signature: Option<&str>,
 ) -> Result<usize, rusqlite::Error> {
     if !ALLOWED_INVOICE_STATUSES.contains(&status) {
-        return Err(rusqlite::Error::InvalidParameterName(
-            format!("Invalid status: {}", status),
-        ));
+        return Err(rusqlite::Error::InvalidParameterName(format!(
+            "Invalid status: {}",
+            status
+        )));
     }
 
     let updated = conn.execute(

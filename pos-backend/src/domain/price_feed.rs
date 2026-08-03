@@ -1,6 +1,5 @@
 /// Multi-tier price feed fallback circuit breaker.
 /// 4 tiers: Switchboard primary, Pyth secondary, cache tertiary, static offline quaternary.
-
 use std::collections::HashMap;
 
 /// Default static fiat rates for offline fallback.
@@ -67,7 +66,7 @@ pub fn get_multitier_fiat_rate(
                 data_ts
             };
             let diff = ts - data_ts;
-            if rate > 0.0 && diff >= -15 && diff <= 300 {
+            if rate > 0.0 && (-15..=300).contains(&diff) {
                 return Ok(serde_json::json!({
                     "rate": rate,
                     "tier": "primary_switchboard",
@@ -87,7 +86,7 @@ pub fn get_multitier_fiat_rate(
                 data_ts
             };
             let diff = ts - data_ts;
-            if rate > 0.0 && diff >= -15 && diff <= 300 {
+            if rate > 0.0 && (-15..=300).contains(&diff) {
                 return Ok(serde_json::json!({
                     "rate": rate,
                     "tier": "secondary_pyth_hermes",
@@ -107,7 +106,7 @@ pub fn get_multitier_fiat_rate(
                 data_ts
             };
             let diff = ts - data_ts;
-            if rate > 0.0 && diff >= -15 && diff <= 900 {
+            if rate > 0.0 && (-15..=900).contains(&diff) {
                 return Ok(serde_json::json!({
                     "rate": rate,
                     "tier": "tertiary_cache",

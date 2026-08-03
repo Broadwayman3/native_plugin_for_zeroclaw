@@ -1,5 +1,4 @@
 /// Brazil EMV QRCPS PIX QR Code Generator
-
 /// Calculates EMV QRCPS CRC16 (CCITT-FALSE, polynomial 0x1021, init 0xFFFF).
 pub fn calculate_pix_crc16(payload_without_crc: &str) -> String {
     let data_to_hash = format!("{}6304", payload_without_crc);
@@ -22,11 +21,7 @@ pub fn calculate_pix_crc16(payload_without_crc: &str) -> String {
 }
 
 /// Generates Brazil EMV QRCPS PIX payload with valid CRC16 checksum.
-pub fn generate_pix_emv_payload(
-    pix_key: &str,
-    amount_brl: f64,
-    merchant_name: &str,
-) -> String {
+pub fn generate_pix_emv_payload(pix_key: &str, amount_brl: f64, merchant_name: &str) -> String {
     let amount_str = format!("{:.2}", amount_brl);
     let merchant_name = if merchant_name.is_empty() {
         "ZeroClaw POS"
@@ -52,9 +47,12 @@ pub fn generate_pix_emv_payload(
          59{:02}{}\
          6009SAO PAULO\
          62070503***",
-        pix_key_len, pix_key_truncated,
-        amount_str.len(), amount_str,
-        merchant_len, merchant_truncated
+        pix_key_len,
+        pix_key_truncated,
+        amount_str.len(),
+        amount_str,
+        merchant_len,
+        merchant_truncated
     );
 
     let crc_hex = calculate_pix_crc16(&payload_base);

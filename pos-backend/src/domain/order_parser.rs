@@ -2,9 +2,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 
-static RE_CURRENCY: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)(\d+(?:\.\d+)?)\s*([a-zA-Z]{3}|₴|\$|€|R\$|zł|TL)\b").unwrap()
-});
+static RE_CURRENCY: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)(\d+(?:\.\d+)?)\s*([a-zA-Z]{3}|₴|\$|€|R\$|zł|TL)\b").unwrap());
 
 static RE_PLAIN_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*(\d+(?:\.\d+)?)\s*$").unwrap());
 
@@ -44,15 +43,9 @@ pub fn parse_pos_order_input(
         };
 
         result.insert("has_price".to_string(), serde_json::Value::Bool(true));
-        result.insert(
-            "items".to_string(),
-            serde_json::Value::String(final_item),
-        );
+        result.insert("items".to_string(), serde_json::Value::String(final_item));
         result.insert("amount".to_string(), serde_json::json!(amt));
-        result.insert(
-            "currency".to_string(),
-            serde_json::Value::String(curr),
-        );
+        result.insert("currency".to_string(), serde_json::Value::String(curr));
         return result;
     }
 
@@ -66,10 +59,7 @@ pub fn parse_pos_order_input(
         };
 
         result.insert("has_price".to_string(), serde_json::Value::Bool(true));
-        result.insert(
-            "items".to_string(),
-            serde_json::Value::String(final_item),
-        );
+        result.insert("items".to_string(), serde_json::Value::String(final_item));
         result.insert("amount".to_string(), serde_json::json!(amt));
         result.insert(
             "currency".to_string(),

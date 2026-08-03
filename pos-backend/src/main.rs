@@ -31,12 +31,7 @@ async fn main() -> anyhow::Result<()> {
     println!("=================================================================");
 
     // Port fallback logic
-    match axum::serve(
-        tokio::net::TcpListener::bind(addr).await?,
-        app,
-    )
-    .await
-    {
+    match axum::serve(tokio::net::TcpListener::bind(addr).await?, app).await {
         Ok(_) => Ok(()),
         Err(e) if e.raw_os_error() == Some(98) => {
             let fallback_port = port + 1;
@@ -44,14 +39,9 @@ async fn main() -> anyhow::Result<()> {
                 "⚠️ [POS Server] Port {} is busy. Retrying on PORT={}...",
                 port, fallback_port
             );
-            let fallback_addr =
-                std::net::SocketAddr::new(config.host.parse()?, fallback_port);
+            let fallback_addr = std::net::SocketAddr::new(config.host.parse()?, fallback_port);
             let app = pos_backend::api::build_router(&config).await;
-            axum::serve(
-                tokio::net::TcpListener::bind(fallback_addr).await?,
-                app,
-            )
-            .await?;
+            axum::serve(tokio::net::TcpListener::bind(fallback_addr).await?, app).await?;
             Ok(())
         }
         Err(e) => Err(e.into()),

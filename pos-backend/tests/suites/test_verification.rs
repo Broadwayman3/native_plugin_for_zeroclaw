@@ -19,7 +19,12 @@ fn test_091_verify_valid_transaction() {
         "meta": {"err": null, "postTokenBalances": [], "preTokenBalances": [], "innerInstructions": []},
         "transaction": {"message": {"accountKeys": [], "instructions": []}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant_ata", 1000000, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    let r = pos_backend::domain::verification::verify_solana_transaction(
+        &tx,
+        "merchant_ata",
+        1000000,
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    );
     if !r["is_valid"].as_bool().unwrap_or(true) {
         test_pass("091: valid payload structure parsed");
     } else {
@@ -28,7 +33,12 @@ fn test_091_verify_valid_transaction() {
 }
 
 fn test_092_verify_invalid_payload() {
-    let r = pos_backend::domain::verification::verify_solana_transaction(&serde_json::Value::Null, "merchant", 100, "mint");
+    let r = pos_backend::domain::verification::verify_solana_transaction(
+        &serde_json::Value::Null,
+        "merchant",
+        100,
+        "mint",
+    );
     if r["is_valid"] == false {
         test_pass("092: null payload rejected");
     } else {
@@ -38,7 +48,8 @@ fn test_092_verify_invalid_payload() {
 
 fn test_093_verify_no_meta() {
     let tx = serde_json::json!({"transaction": {"message": {}}});
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
+    let r =
+        pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
     if r["is_valid"] == false {
         test_pass("093: missing meta rejected");
     } else {
@@ -51,7 +62,8 @@ fn test_094_verify_reverted_tx() {
         "meta": {"err": "InstructionError"},
         "transaction": {"message": {"accountKeys": [], "instructions": []}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
+    let r =
+        pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
     if r["is_valid"] == false {
         test_pass("094: reverted transaction rejected");
     } else {
@@ -64,7 +76,8 @@ fn test_095_verify_no_transfer() {
         "meta": {"err": null, "postTokenBalances": [], "preTokenBalances": [], "innerInstructions": []},
         "transaction": {"message": {"accountKeys": [], "instructions": [{"parsed": {"type": "unknown"}}]}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
+    let r =
+        pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
     if r["is_valid"] == false {
         test_pass("095: no transfer instruction rejected");
     } else {
@@ -80,7 +93,12 @@ fn test_096_verify_inner_instruction() {
                  ]}]},
         "transaction": {"message": {"accountKeys": [], "instructions": []}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant_ata", 5000000, "mint");
+    let r = pos_backend::domain::verification::verify_solana_transaction(
+        &tx,
+        "merchant_ata",
+        5000000,
+        "mint",
+    );
     if r["is_valid"] == true {
         test_pass("096: inner instruction transfer verified");
     } else {
@@ -96,7 +114,12 @@ fn test_097_verify_balance_delta() {
                  "innerInstructions": []},
         "transaction": {"message": {"accountKeys": [{"pubkey": "other"}, {"pubkey": "merchant_ata"}], "instructions": []}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant_ata", 1000000, "mint");
+    let r = pos_backend::domain::verification::verify_solana_transaction(
+        &tx,
+        "merchant_ata",
+        1000000,
+        "mint",
+    );
     if r["is_valid"] == true && r["verification_method"] == "balance_delta" {
         test_pass("097: balance delta verified");
     } else {
@@ -112,7 +135,12 @@ fn test_098_verify_wrong_mint() {
                  "innerInstructions": []},
         "transaction": {"message": {"accountKeys": ["other", "merchant_ata"], "instructions": []}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant_ata", 1000000, "correct_mint");
+    let r = pos_backend::domain::verification::verify_solana_transaction(
+        &tx,
+        "merchant_ata",
+        1000000,
+        "correct_mint",
+    );
     if r["is_valid"] == false {
         test_pass("098: wrong mint rejected");
     } else {
@@ -128,7 +156,12 @@ fn test_099_verify_missing_account() {
                  "innerInstructions": []},
         "transaction": {"message": {"accountKeys": ["only_one"], "instructions": []}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant_ata", 1000000, "mint");
+    let r = pos_backend::domain::verification::verify_solana_transaction(
+        &tx,
+        "merchant_ata",
+        1000000,
+        "mint",
+    );
     if r["is_valid"] == false {
         test_pass("099: missing merchant account rejected");
     } else {
@@ -141,7 +174,8 @@ fn test_100_verify_empty_instructions() {
         "meta": {"err": null, "postTokenBalances": [], "preTokenBalances": [], "innerInstructions": []},
         "transaction": {"message": {"accountKeys": [], "instructions": []}}
     });
-    let r = pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
+    let r =
+        pos_backend::domain::verification::verify_solana_transaction(&tx, "merchant", 100, "mint");
     if r["is_valid"] == false {
         test_pass("100: empty instructions rejected");
     } else {

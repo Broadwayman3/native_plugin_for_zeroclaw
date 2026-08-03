@@ -1,9 +1,11 @@
 /// Triple Payment Verification for Solana transactions.
-
 use serde_json::Value;
 
 /// Extracts token balance deltas from transaction metadata.
-fn extract_token_balance_deltas(meta: &Value, expected_mint: &str) -> std::collections::HashMap<i64, i64> {
+fn extract_token_balance_deltas(
+    meta: &Value,
+    expected_mint: &str,
+) -> std::collections::HashMap<i64, i64> {
     let mut pre_balances = std::collections::HashMap::new();
     let mut post_balances = std::collections::HashMap::new();
 
@@ -87,9 +89,11 @@ fn inspect_instructions_for_transfer(
 
         // Check nested instructions
         if let Some(nested) = inst.get("instructions").and_then(|v| v.as_array()) {
-            if let Some(result) =
-                inspect_instructions_for_transfer(nested, expected_merchant_ata, expected_usdc_atomic)
-            {
+            if let Some(result) = inspect_instructions_for_transfer(
+                nested,
+                expected_merchant_ata,
+                expected_usdc_atomic,
+            ) {
                 return Some(result);
             }
         }
@@ -147,10 +151,7 @@ pub fn verify_solana_transaction(
 
         // Find merchant ATA index
         for (i, key) in account_keys.iter().enumerate() {
-            let pubkey = key
-                .get("pubkey")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let pubkey = key.get("pubkey").and_then(|v| v.as_str()).unwrap_or("");
             if pubkey == expected_merchant_ata {
                 if let Some(&delta) = deltas.get(&(i as i64)) {
                     if delta >= expected_usdc_atomic {
@@ -167,9 +168,11 @@ pub fn verify_solana_transaction(
 
         // Top-level instruction inspection
         if let Some(instructions) = msg.get("instructions").and_then(|v| v.as_array()) {
-            if let Some(paid) =
-                inspect_instructions_for_transfer(instructions, expected_merchant_ata, expected_usdc_atomic)
-            {
+            if let Some(paid) = inspect_instructions_for_transfer(
+                instructions,
+                expected_merchant_ata,
+                expected_usdc_atomic,
+            ) {
                 return serde_json::json!({
                     "is_valid": true,
                     "paid_atomic": paid,
@@ -183,9 +186,11 @@ pub fn verify_solana_transaction(
     if let Some(inner_instructions) = meta.get("innerInstructions").and_then(|v| v.as_array()) {
         for group in inner_instructions {
             if let Some(instructions) = group.get("instructions").and_then(|v| v.as_array()) {
-                if let Some(paid) =
-                    inspect_instructions_for_transfer(instructions, expected_merchant_ata, expected_usdc_atomic)
-                {
+                if let Some(paid) = inspect_instructions_for_transfer(
+                    instructions,
+                    expected_merchant_ata,
+                    expected_usdc_atomic,
+                ) {
                     return serde_json::json!({
                         "is_valid": true,
                         "paid_atomic": paid,

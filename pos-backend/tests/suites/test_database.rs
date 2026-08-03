@@ -200,7 +200,9 @@ fn test_123_telegram_update_dedup() {
 fn test_124_sop_checkpoint() {
     let db_path = "data/test_boundary.db";
     let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::sop_checkpoints::create_checkpoint(&conn, "cp-1", "sop-1", "step-1", None) {
+    match pos_backend::db::sop_checkpoints::create_checkpoint(
+        &conn, "cp-1", "sop-1", "step-1", None,
+    ) {
         Ok(_) => test_pass("124: SOP checkpoint created"),
         Err(e) => test_fail("124", &format!("error: {}", e)),
     }
@@ -234,7 +236,12 @@ fn test_126_invoice_not_found() {
 fn test_127_invalid_status() {
     let db_path = "data/test_boundary.db";
     let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::invoices::update_invoice_status(&conn, "TEST-101", "invalid_status", None) {
+    match pos_backend::db::invoices::update_invoice_status(
+        &conn,
+        "TEST-101",
+        "invalid_status",
+        None,
+    ) {
         Err(_) => test_pass("127: invalid status rejected"),
         Ok(_) => test_fail("127", "invalid status accepted"),
     }

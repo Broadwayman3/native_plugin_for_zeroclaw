@@ -54,16 +54,12 @@ pub async fn build_router(config: &AppConfig) -> Router {
         .route("/actions.json", get(actions::handle_actions_spec))
         .route(
             "/api/v1/actions/pay_invoice",
-            get(actions::handle_action_get)
-                .post(actions::handle_action_post),
+            get(actions::handle_action_get).post(actions::handle_action_post),
         )
         // Sales endpoints
         .route("/api/v1/sales/summary", get(sales::handle_sales_summary))
         // Invoice endpoints
-        .route(
-            "/api/v1/invoices",
-            get(invoices::handle_get_invoices),
-        )
+        .route("/api/v1/invoices", get(invoices::handle_get_invoices))
         .route(
             "/api/v1/invoices/create",
             post(invoices::handle_create_invoice),
@@ -77,14 +73,8 @@ pub async fn build_router(config: &AppConfig) -> Router {
             post(invoices::handle_cancel_invoice),
         )
         // Nonce endpoints
-        .route(
-            "/api/v1/nonce/allocate",
-            post(nonce::handle_nonce_allocate),
-        )
-        .route(
-            "/api/v1/nonce/release",
-            post(nonce::handle_nonce_release),
-        )
+        .route("/api/v1/nonce/allocate", post(nonce::handle_nonce_allocate))
+        .route("/api/v1/nonce/release", post(nonce::handle_nonce_release))
         // POS flow (create from order - replaces handle_text_message)
         .route(
             "/api/v1/pos/create-order",

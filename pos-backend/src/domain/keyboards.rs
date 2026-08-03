@@ -36,7 +36,7 @@ pub fn is_btn_click(text: &str, key: &str) -> bool {
     let text_clean = text.trim().to_lowercase();
     use crate::domain::i18n_strings::TRANSLATIONS;
 
-    for (_, trans_dict) in TRANSLATIONS.iter() {
+    for trans_dict in TRANSLATIONS.values() {
         if let Some(target) = trans_dict.get(key) {
             let target_clean = target.trim().to_lowercase();
             if text_clean == target_clean || text_clean.contains(&target_clean) {

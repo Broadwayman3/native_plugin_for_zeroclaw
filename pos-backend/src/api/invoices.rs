@@ -47,7 +47,8 @@ pub async fn handle_update_invoice_status(
     if !db::invoices::ALLOWED_INVOICE_STATUSES.contains(&data.status.as_str()) {
         return Err(AppError::BadRequest(format!(
             "Invalid status '{}'. Must be one of {:?}",
-            data.status, db::invoices::ALLOWED_INVOICE_STATUSES
+            data.status,
+            db::invoices::ALLOWED_INVOICE_STATUSES
         )));
     }
 
@@ -59,17 +60,23 @@ pub async fn handle_update_invoice_status(
     )?;
 
     if updated == 0 {
-        return Ok((StatusCode::CONFLICT, Json(serde_json::json!({
-            "success": false,
-            "error": "Conflict: Invoice state already finalized or invalid transition",
-            "updated": 0
-        }))));
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Conflict: Invoice state already finalized or invalid transition",
+                "updated": 0
+            })),
+        ));
     }
 
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "success": true,
-        "updated": updated
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "updated": updated
+        })),
+    ))
 }
 
 /// POST /api/v1/invoices/cancel - Cancel/void a pending invoice
@@ -82,15 +89,21 @@ pub async fn handle_cancel_invoice(
     let cancelled = db::invoices::cancel_invoice(&conn, &data.invoice_id)?;
 
     if cancelled == 0 {
-        return Ok((StatusCode::CONFLICT, Json(serde_json::json!({
-            "success": false,
-            "error": "Conflict: Invoice not found or already finalized"
-        }))));
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Conflict: Invoice not found or already finalized"
+            })),
+        ));
     }
 
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "success": true,
-        "cancelled_id": data.invoice_id,
-        "status": "cancelled"
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "cancelled_id": data.invoice_id,
+            "status": "cancelled"
+        })),
+    ))
 }

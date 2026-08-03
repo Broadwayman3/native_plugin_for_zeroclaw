@@ -42,15 +42,8 @@ pub async fn handle_create_order(
 
     if !has_price {
         // Need price - return prompt
-        let items = parsed
-            .get("items")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let prompt_text = domain::i18n::t(
-            "price_needed",
-            Some(lang),
-            &[("items", items)],
-        );
+        let items = parsed.get("items").and_then(|v| v.as_str()).unwrap_or("");
+        let prompt_text = domain::i18n::t("price_needed", Some(lang), &[("items", items)]);
 
         return Ok(Json(serde_json::json!({
             "action": "prompt_price",
@@ -60,24 +53,17 @@ pub async fn handle_create_order(
         })));
     }
 
-    let fiat_amt = parsed
-        .get("amount")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
+    let fiat_amt = parsed.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let fiat_curr = parsed
         .get("currency")
         .and_then(|v| v.as_str())
         .unwrap_or("UAH");
-    let item_desc = parsed
-        .get("items")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let item_desc = parsed.get("items").and_then(|v| v.as_str()).unwrap_or("");
 
     // Get fiat rate
-    let rate_info = domain::price_feed::get_multitier_fiat_rate(
-        fiat_curr, None, None, None, None, true,
-    )
-    .unwrap_or_else(|_| serde_json::json!({"rate": 1.0}));
+    let rate_info =
+        domain::price_feed::get_multitier_fiat_rate(fiat_curr, None, None, None, None, true)
+            .unwrap_or_else(|_| serde_json::json!({"rate": 1.0}));
     let rate = rate_info
         .get("rate")
         .and_then(|v| v.as_f64())

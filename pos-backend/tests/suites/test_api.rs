@@ -15,7 +15,9 @@ pub fn run_suite() {
 }
 
 fn test_131_formatters_pubkey_short() {
-    let r = pos_backend::domain::formatters::format_pubkey_short("8xAZmQ1111111111111111111111111111111111111");
+    let r = pos_backend::domain::formatters::format_pubkey_short(
+        "8xAZmQ1111111111111111111111111111111111111",
+    );
     if r.starts_with("8xAZ") && r.ends_with("1111") {
         test_pass("131: pubkey formatted correctly");
     } else {
@@ -33,7 +35,9 @@ fn test_132_formatters_solscan_url() {
 }
 
 fn test_133_formatters_base58_valid() {
-    let r = pos_backend::domain::formatters::is_valid_base58("8xAZmQ1111111111111111111111111111111111111");
+    let r = pos_backend::domain::formatters::is_valid_base58(
+        "8xAZmQ1111111111111111111111111111111111111",
+    );
     if r {
         test_pass("133: valid Base58 accepted");
     } else {
@@ -51,7 +55,11 @@ fn test_134_formatters_base58_invalid() {
 }
 
 fn test_135_order_parser_with_currency() {
-    let result = pos_backend::domain::order_parser::parse_pos_order_input("2x Cappuccino 200 UAH", "Order", None);
+    let result = pos_backend::domain::order_parser::parse_pos_order_input(
+        "2x Cappuccino 200 UAH",
+        "Order",
+        None,
+    );
     if result.get("has_price").and_then(|v| v.as_bool()) == Some(true) {
         test_pass("135: order with currency parsed");
     } else {
@@ -69,7 +77,8 @@ fn test_136_order_parser_bare_number() {
 }
 
 fn test_137_order_parser_no_price() {
-    let result = pos_backend::domain::order_parser::parse_pos_order_input("Coffee please", "Order", None);
+    let result =
+        pos_backend::domain::order_parser::parse_pos_order_input("Coffee please", "Order", None);
     if result.get("has_price").and_then(|v| v.as_bool()) == Some(false) {
         test_pass("137: text without price detected");
     } else {
@@ -96,7 +105,12 @@ fn test_139_squads_discriminator() {
 
 fn test_140_build_solana_pay_url_params() {
     let url = pos_core_logic::build_solana_pay_url(
-        "merchant_key", 10.0, "ref_key", None, "My Label", "My Message",
+        "merchant_key",
+        10.0,
+        "ref_key",
+        None,
+        "My Label",
+        "My Message",
     );
     if url.contains("label=My%20Label") && url.contains("message=My%20Message") {
         test_pass("140: custom label/message in URL");

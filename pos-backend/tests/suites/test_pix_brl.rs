@@ -33,7 +33,8 @@ fn test_052_crc16_empty_string() {
 }
 
 fn test_053_pix_payload_format() {
-    let payload = pos_backend::domain::pix_brl::generate_pix_emv_payload("key123", 100.0, "Test Merchant");
+    let payload =
+        pos_backend::domain::pix_brl::generate_pix_emv_payload("key123", 100.0, "Test Merchant");
     if payload.starts_with("00020126580014br.gov.bcb.pix") {
         test_pass("053: PIX payload starts with EMV header");
     } else {
@@ -43,7 +44,8 @@ fn test_053_pix_payload_format() {
 
 fn test_054_pix_payload_truncation() {
     let long_name = "A".repeat(200);
-    let payload = pos_backend::domain::pix_brl::generate_pix_emv_payload("key123", 100.0, &long_name);
+    let payload =
+        pos_backend::domain::pix_brl::generate_pix_emv_payload("key123", 100.0, &long_name);
     if payload.len() > 0 {
         test_pass("054: long merchant name truncated");
     } else {
@@ -56,7 +58,10 @@ fn test_055_pix_payload_amount() {
     if payload.contains("5406250.50") {
         test_pass("055: amount 250.50 in payload");
     } else {
-        test_fail("055", &format!("payload: {}", &payload[..100.min(payload.len())]));
+        test_fail(
+            "055",
+            &format!("payload: {}", &payload[..100.min(payload.len())]),
+        );
     }
 }
 
@@ -65,7 +70,10 @@ fn test_056_pix_payload_empty_merchant() {
     if payload.contains("ZeroClaw POS") {
         test_pass("056: empty merchant defaults to ZeroClaw POS");
     } else {
-        test_fail("056", &format!("payload: {}", &payload[..100.min(payload.len())]));
+        test_fail(
+            "056",
+            &format!("payload: {}", &payload[..100.min(payload.len())]),
+        );
     }
 }
 
@@ -102,6 +110,9 @@ fn test_060_pix_payload_checksum_prefix() {
     if payload.ends_with("6304") || payload.contains("6304") {
         test_pass("060: payload contains CRC16 tag 6304");
     } else {
-        test_fail("060", &format!("payload: {}", &payload[payload.len()-20..]));
+        test_fail(
+            "060",
+            &format!("payload: {}", &payload[payload.len() - 20..]),
+        );
     }
 }

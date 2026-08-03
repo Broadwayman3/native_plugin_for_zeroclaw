@@ -97,7 +97,13 @@ fn test_078_redact_token() {
 }
 
 fn test_079_redact_byte_array() {
-    let kp = format!("[{}]", (0..64).map(|i| i.to_string()).collect::<Vec<_>>().join(", "));
+    let kp = format!(
+        "[{}]",
+        (0..64)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     let r = pos_backend::domain::sanitizer::redact_api_key(&format!("key: {}", kp));
     if r.contains("REDACTED_BYTE_KEYPAIR") {
         test_pass("079: byte array keypair redacted");
@@ -143,7 +149,9 @@ fn test_083_escape_markdown_v2_special() {
 }
 
 fn test_084_validate_rpc_url_valid() {
-    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("https://api.mainnet-beta.solana.com");
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url(
+        "https://api.mainnet-beta.solana.com",
+    );
     if r {
         test_pass("084: valid RPC URL accepted");
     } else {
@@ -170,7 +178,9 @@ fn test_086_validate_rpc_url_private_ip() {
 }
 
 fn test_087_validate_rpc_url_metadata() {
-    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("http://169.254.169.254/latest/meta-data");
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url(
+        "http://169.254.169.254/latest/meta-data",
+    );
     if !r {
         test_pass("087: cloud metadata rejected");
     } else {

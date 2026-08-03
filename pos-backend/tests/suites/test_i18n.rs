@@ -90,7 +90,9 @@ fn test_108_get_main_reply_keyboard() {
 
 fn test_109_get_cancel_invoice_keyboard() {
     let kb = pos_backend::domain::i18n::get_cancel_invoice_inline_keyboard("INV-101", "en");
-    let callback = kb["inline_keyboard"][0][0]["callback_data"].as_str().unwrap_or("");
+    let callback = kb["inline_keyboard"][0][0]["callback_data"]
+        .as_str()
+        .unwrap_or("");
     if callback.contains("cancel_invoice_INV-101") {
         test_pass("109: cancel keyboard callback data correct");
     } else {
@@ -100,8 +102,12 @@ fn test_109_get_cancel_invoice_keyboard() {
 
 fn test_110_get_refund_checkpoint_keyboard() {
     let kb = pos_backend::domain::i18n::get_refund_checkpoint_inline_keyboard(42);
-    let approve = kb["inline_keyboard"][0][0]["callback_data"].as_str().unwrap_or("");
-    let reject = kb["inline_keyboard"][0][1]["callback_data"].as_str().unwrap_or("");
+    let approve = kb["inline_keyboard"][0][0]["callback_data"]
+        .as_str()
+        .unwrap_or("");
+    let reject = kb["inline_keyboard"][0][1]["callback_data"]
+        .as_str()
+        .unwrap_or("");
     if approve.contains("approve_refund_42") && reject.contains("reject_refund_42") {
         test_pass("110: refund keyboard approve/reject correct");
     } else {

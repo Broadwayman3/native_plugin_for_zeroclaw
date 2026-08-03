@@ -85,18 +85,25 @@ pub fn validate_llm_json_output(
                                 return Err(format!("Invalid type for {}: expected string", key));
                             }
                             let s = value.as_str().unwrap_or("");
-                            if let Some(min_len) = prop_schema.get("minLength").and_then(|v| v.as_u64()) {
+                            if let Some(min_len) =
+                                prop_schema.get("minLength").and_then(|v| v.as_u64())
+                            {
                                 if s.len() < min_len as usize {
                                     return Err(format!("{} length must be >= {}", key, min_len));
                                 }
                             }
-                            if let Some(max_len) = prop_schema.get("maxLength").and_then(|v| v.as_u64()) {
+                            if let Some(max_len) =
+                                prop_schema.get("maxLength").and_then(|v| v.as_u64())
+                            {
                                 if s.len() > max_len as usize {
                                     return Err(format!("{} length must be <= {}", key, max_len));
                                 }
                             }
-                            if let Some(enum_values) = prop_schema.get("enum").and_then(|v| v.as_array()) {
-                                let valid: Vec<&str> = enum_values.iter().filter_map(|v| v.as_str()).collect();
+                            if let Some(enum_values) =
+                                prop_schema.get("enum").and_then(|v| v.as_array())
+                            {
+                                let valid: Vec<&str> =
+                                    enum_values.iter().filter_map(|v| v.as_str()).collect();
                                 if !valid.contains(&s) {
                                     return Err(format!("Invalid enum value for {}: {}", key, s));
                                 }
@@ -122,8 +129,13 @@ pub fn truncate_for_context(data: &serde_json::Value, max_tokens: usize) -> serd
     }
 
     let essential_keys = [
-        "status", "verified", "usdc_amount", "paid_amount",
-        "reference_pubkey", "signature", "proposal_index",
+        "status",
+        "verified",
+        "usdc_amount",
+        "paid_amount",
+        "reference_pubkey",
+        "signature",
+        "proposal_index",
     ];
 
     let mut pruned = serde_json::Map::new();

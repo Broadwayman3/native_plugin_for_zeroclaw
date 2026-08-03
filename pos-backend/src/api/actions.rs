@@ -18,7 +18,10 @@ pub async fn handle_actions_spec() -> Json<serde_json::Value> {
 pub async fn handle_action_get(
     Query(params): Query<HashMap<String, String>>,
 ) -> (StatusCode, HeaderMap, Json<serde_json::Value>) {
-    let invoice_id = params.get("invoice_id").map(|s| s.as_str()).unwrap_or("INV-101");
+    let invoice_id = params
+        .get("invoice_id")
+        .map(|s| s.as_str())
+        .unwrap_or("INV-101");
 
     let payload = serde_json::json!({
         "icon": "https://raw.githubusercontent.com/solana-developers/branding/main/assets/solana-pay-logo.png",
@@ -34,7 +37,12 @@ pub async fn handle_action_get(
 
     let mut headers = HeaderMap::new();
     headers.insert("X-Action-Version", "2.1.3".parse().unwrap());
-    headers.insert("X-Blockchain-Ids", "solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ".parse().unwrap());
+    headers.insert(
+        "X-Blockchain-Ids",
+        "solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ"
+            .parse()
+            .unwrap(),
+    );
 
     (StatusCode::OK, headers, Json(payload))
 }
@@ -54,12 +62,18 @@ pub async fn handle_action_post(
 
             let mut headers = HeaderMap::new();
             headers.insert("X-Action-Version", "2.1.3".parse().unwrap());
-            headers.insert("X-Blockchain-Ids", "solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ".parse().unwrap());
+            headers.insert(
+                "X-Blockchain-Ids",
+                "solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ"
+                    .parse()
+                    .unwrap(),
+            );
 
             Ok((StatusCode::OK, headers, Json(payload)))
         }
         _ => Err(AppError::BadRequest(
-            "Invalid or missing 'account' Base58 public key field in Blink POST request".to_string(),
+            "Invalid or missing 'account' Base58 public key field in Blink POST request"
+                .to_string(),
         )),
     }
 }

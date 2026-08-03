@@ -42,7 +42,9 @@ fn test_063_static_rates_brl() {
 }
 
 fn test_064_fallback_to_static() {
-    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate("UAH", None, None, None, None, true);
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "UAH", None, None, None, None, true,
+    );
     match result {
         Ok(r) if r.get("tier").and_then(|v| v.as_str()) == Some("quaternary_static_fallback") => {
             test_pass("064: fallback to static rate");
@@ -53,7 +55,9 @@ fn test_064_fallback_to_static() {
 }
 
 fn test_065_unmapped_currency_fails() {
-    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate("XYZ", None, None, None, None, true);
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "XYZ", None, None, None, None, true,
+    );
     if result.is_err() {
         test_pass("065: unmapped currency fails");
     } else {
@@ -72,7 +76,14 @@ fn test_066_static_rates_count() {
 
 fn test_067_rate_tier_primary() {
     let data = serde_json::json!({"rate": 41.5, "timestamp": 1700000000});
-    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate("UAH", Some(&data), None, None, Some(1700000050), true);
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "UAH",
+        Some(&data),
+        None,
+        None,
+        Some(1700000050),
+        true,
+    );
     match result {
         Ok(r) if r.get("tier").and_then(|v| v.as_str()) == Some("primary_switchboard") => {
             test_pass("067: primary tier selected");
@@ -84,7 +95,14 @@ fn test_067_rate_tier_primary() {
 
 fn test_068_rate_tier_secondary() {
     let data = serde_json::json!({"rate": 41.5, "timestamp": 1700000000});
-    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate("UAH", None, Some(&data), None, Some(1700000050), true);
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "UAH",
+        None,
+        Some(&data),
+        None,
+        Some(1700000050),
+        true,
+    );
     match result {
         Ok(r) if r.get("tier").and_then(|v| v.as_str()) == Some("secondary_pyth_hermes") => {
             test_pass("068: secondary tier selected");
@@ -96,7 +114,14 @@ fn test_068_rate_tier_secondary() {
 
 fn test_069_rate_tier_cache() {
     let data = serde_json::json!({"rate": 41.5, "timestamp": 1700000000});
-    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate("UAH", None, None, Some(&data), Some(1700000050), true);
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "UAH",
+        None,
+        None,
+        Some(&data),
+        Some(1700000050),
+        true,
+    );
     match result {
         Ok(r) if r.get("tier").and_then(|v| v.as_str()) == Some("tertiary_cache") => {
             test_pass("069: tertiary cache tier selected");
@@ -107,7 +132,9 @@ fn test_069_rate_tier_cache() {
 }
 
 fn test_070_rate_tier_static() {
-    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate("EUR", None, None, None, None, true);
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "EUR", None, None, None, None, true,
+    );
     match result {
         Ok(r) if r.get("tier").and_then(|v| v.as_str()) == Some("quaternary_static_fallback") => {
             test_pass("070: quaternary static tier selected");

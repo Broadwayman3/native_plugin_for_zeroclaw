@@ -37,8 +37,7 @@ impl AppConfig {
             ),
             nonce_account_pubkey: env_or_default("NONCE_ACCOUNT_PUBKEY", ""),
             host: env_or_default("HOST", env_or_default("POS_HOST", "0.0.0.0").as_str()),
-            port: env_or_default("PORT", env_or_default("POS_PORT", "8080").as_str())
-                .parse()?,
+            port: env_or_default("PORT", env_or_default("POS_PORT", "8080").as_str()).parse()?,
             db_path: env_or_default("DB_PATH", "data/pos_store.db"),
         })
     }

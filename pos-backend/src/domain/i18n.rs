@@ -11,7 +11,10 @@ fn normalize_lang(lang: &str) -> String {
 /// Retrieves (flag_emoji, native_name) tuple for a language code.
 pub fn get_lang_meta(lang_code: &str) -> (&'static str, &'static str) {
     let clean = normalize_lang(lang_code);
-    LANG_META.get(clean.as_str()).copied().unwrap_or_else(|| *LANG_META.get("en").unwrap())
+    LANG_META
+        .get(clean.as_str())
+        .copied()
+        .unwrap_or_else(|| *LANG_META.get("en").unwrap())
 }
 
 /// Returns localized language change confirmation message.
@@ -101,6 +104,7 @@ pub fn get_refund_checkpoint_inline_keyboard(refund_id: i64) -> serde_json::Valu
 }
 
 /// Formats an itemized POS receipt with MarkdownV2 escaping.
+#[allow(clippy::too_many_arguments)]
 pub fn format_itemized_receipt(
     invoice_id: &str,
     items: &str,
@@ -142,20 +146,22 @@ pub fn format_itemized_receipt(
         format!("• {}", items_formatted)
     };
 
-    let fiat_conversion_line = if let (Some(curr), Some(amt), Some(rate)) =
-        (fiat_currency, fiat_amount, exchange_rate)
-    {
-        if rate > 0.0 {
-            let curr_escaped = escape_telegram_markdown_v2(curr);
-            let amt_escaped = escape_telegram_markdown_v2(&format!("{:.2}", amt));
-            let rate_escaped = escape_telegram_markdown_v2(&format!("{:.2}", rate));
-            format!("• Charged: {} {} \\(Rate: {}\\)\n", amt_escaped, curr_escaped, rate_escaped)
+    let fiat_conversion_line =
+        if let (Some(curr), Some(amt), Some(rate)) = (fiat_currency, fiat_amount, exchange_rate) {
+            if rate > 0.0 {
+                let curr_escaped = escape_telegram_markdown_v2(curr);
+                let amt_escaped = escape_telegram_markdown_v2(&format!("{:.2}", amt));
+                let rate_escaped = escape_telegram_markdown_v2(&format!("{:.2}", rate));
+                format!(
+                    "• Charged: {} {} \\(Rate: {}\\)\n",
+                    amt_escaped, curr_escaped, rate_escaped
+                )
+            } else {
+                String::new()
+            }
         } else {
             String::new()
-        }
-    } else {
-        String::new()
-    };
+        };
 
     format!(
         "*{}*\n\

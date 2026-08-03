@@ -70,8 +70,7 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
     }
 
     // Seed nonce accounts if empty
-    let count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM nonce_accounts", [], |row| row.get(0))?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM nonce_accounts", [], |row| row.get(0))?;
     if count == 0 {
         conn.execute_batch(
             "INSERT INTO nonce_accounts (pubkey, status) VALUES
