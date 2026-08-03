@@ -41,6 +41,8 @@ pub async fn build_router(config: &AppConfig) -> Router {
             header::AUTHORIZATION,
             "X-ACCEPT-PAYMENT".parse().unwrap(),
             "X-Telegram-Bot-Api-Secret-Token".parse().unwrap(),
+            "Content-Encoding".parse().unwrap(),
+            "Accept-Encoding".parse().unwrap(),
         ])
         .max_age(std::time::Duration::from_secs(86400));
 

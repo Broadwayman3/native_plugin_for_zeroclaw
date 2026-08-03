@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use once_cell::sync::Lazy;
 
-pub static LANG_META: Lazy<HashMap<&'static str, (&'static str, &'static str)>> =
+pub static LANG_META: Lazy<BTreeMap<&'static str, (&'static str, &'static str)>> =
     Lazy::new(|| {
-        let mut m = HashMap::new();
+        let mut m = BTreeMap::new();
         m.insert("uk", ("\u{1f1fa}\u{1f1e6}", "Українська"));
         m.insert("en", ("\u{1f1fa}\u{1f1f8}", "English"));
         m.insert("pt", ("\u{1f1e7}\u{1f1f7}", "Português"));
