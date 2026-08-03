@@ -1,10 +1,16 @@
 pub mod test_api;
 pub mod test_database;
+pub mod test_edge_storage;
 pub mod test_i18n;
+pub mod test_nonce_pools;
 pub mod test_pix_brl;
 pub mod test_price_feed;
+pub mod test_prompt_injection;
+pub mod test_qa_red_team;
 pub mod test_sanitizer;
 pub mod test_security;
 pub mod test_solana_pay;
+pub mod test_squads_multisig;
+pub mod test_telegram_handlers;
 pub mod test_token2022;
 pub mod test_verification;
