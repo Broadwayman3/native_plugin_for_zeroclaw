@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::db;
 use crate::error::AppError;
 
-/// GET /api/v1/invoices - List all invoices or filter by ID
+/// GET /api/v1/invoices - List all invoices or filter by ID/status
 pub async fn handle_get_invoices(
     State(state): State<crate::api::AppState>,
     Query(params): Query<HashMap<String, String>>,
@@ -14,7 +14,8 @@ pub async fn handle_get_invoices(
     let conn = db::get_db_connection(&state.config.db_path)?;
 
     let invoice_id = params.get("id").map(|s| s.as_str());
-    let invoices = db::invoices::get_invoices_list(&conn, invoice_id)?;
+    let status = params.get("status").map(|s| s.as_str());
+    let invoices = db::invoices::get_invoices_list(&conn, invoice_id, status)?;
 
     Ok(Json(serde_json::json!(invoices)))
 }

@@ -65,7 +65,7 @@ fn test_113_create_invoice() {
 fn test_114_get_invoices_list() {
     let db_path = "data/test_boundary.db";
     let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::invoices::get_invoices_list(&conn, None) {
+    match pos_backend::db::invoices::get_invoices_list(&conn, None, None) {
         Ok(list) if !list.is_empty() => test_pass("114: invoices list not empty"),
         Ok(_) => test_fail("114", "empty list"),
         Err(e) => test_fail("114", &format!("error: {}", e)),

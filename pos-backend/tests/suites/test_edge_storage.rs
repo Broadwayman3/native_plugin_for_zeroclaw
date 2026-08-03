@@ -424,7 +424,7 @@ fn test_231_sales_summary_timestamp() {
 
 fn test_232_get_invoices_list_empty() {
     let conn = setup_test_db();
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, None).unwrap();
+    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, None, None).unwrap();
     if invoices.is_empty() {
         test_pass("232: empty invoices list");
     } else {
@@ -446,7 +446,7 @@ fn test_233_get_invoices_list_with_data() {
     )
     .unwrap();
 
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, None).unwrap();
+    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, None, None).unwrap();
     if invoices.len() == 1 {
         test_pass("233: invoices list with data");
     } else {
@@ -468,7 +468,7 @@ fn test_234_get_invoices_by_id() {
     )
     .unwrap();
 
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-FIND")).unwrap();
+    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-FIND"), None).unwrap();
     if invoices.len() == 1 && invoices[0].id == "INV-FIND" {
         test_pass("234: get invoice by ID");
     } else {
@@ -478,7 +478,7 @@ fn test_234_get_invoices_by_id() {
 
 fn test_235_get_invoices_by_id_not_found() {
     let conn = setup_test_db();
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, Some("NONEXISTENT")).unwrap();
+    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, Some("NONEXISTENT"), None).unwrap();
     if invoices.is_empty() {
         test_pass("235: nonexistent invoice returns empty");
     } else {

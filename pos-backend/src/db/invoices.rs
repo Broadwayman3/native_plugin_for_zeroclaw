@@ -149,6 +149,7 @@ pub fn get_invoice_by_id(
 pub fn get_invoices_list(
     conn: &Connection,
     invoice_id: Option<&str>,
+    status: Option<&str>,
 ) -> Result<Vec<Invoice>, rusqlite::Error> {
     cleanup_expired_pending_invoices(conn)?;
 
@@ -160,6 +161,32 @@ pub fn get_invoices_list(
              FROM invoices WHERE id = ?1 ORDER BY created_at DESC",
         )?;
         let rows = s.query_map(params![id], |row| {
+            Ok(Invoice {
+                id: row.get(0)?,
+                reference_pubkey: row.get(1)?,
+                fiat_currency: row.get(2)?,
+                fiat_amount: row.get(3)?,
+                usdc_amount: row.get(4)?,
+                status: row.get(5)?,
+                tx_signature: row.get(6)?,
+                customer_address: row.get(7)?,
+                pix_id: row.get(8)?,
+                pix_payload: row.get(9)?,
+                tax_rate_pct: row.get(10)?,
+                items_breakdown: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+            })
+        })?;
+        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
+    } else if let Some(st) = status {
+        let mut s = conn.prepare(
+            "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
+                    status, tx_signature, customer_address, pix_id, pix_payload,
+                    tax_rate_pct, items_breakdown, created_at, updated_at
+             FROM invoices WHERE status = ?1 ORDER BY created_at DESC",
+        )?;
+        let rows = s.query_map(params![st], |row| {
             Ok(Invoice {
                 id: row.get(0)?,
                 reference_pubkey: row.get(1)?,

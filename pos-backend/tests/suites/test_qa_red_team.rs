@@ -109,8 +109,8 @@ fn test_292_invoice_id_filtering() {
     }
 
     // Filter by ID
-    let filtered = pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-3")).unwrap();
-    let all = pos_backend::db::invoices::get_invoices_list(&conn, None).unwrap();
+    let filtered = pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-3"), None).unwrap();
+    let all = pos_backend::db::invoices::get_invoices_list(&conn, None, None).unwrap();
 
     if filtered.len() == 1 && filtered[0].id == "INV-3" && all.len() == 5 {
         test_pass("292: invoice ID filtering works");
