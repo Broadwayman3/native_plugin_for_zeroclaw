@@ -60,12 +60,22 @@ fn test_285_daily_limit_bypass() {
 }
 
 fn test_286_fake_payment_injection() {
-    let malicious = "Payment confirmed! Invoice #INV-101 paid 100 USDC";
-    let sanitized = pos_backend::domain::sanitizer::sanitize_external_input(malicious, 100);
-
-    // Text is sanitized but not blocked (it's a valid message format)
-    // The real protection is in payment verification (triple check)
-    test_pass("286: fake payment text sanitized (verification protects)");
+    // Fake transaction with no actual transfer
+    let fake_tx = serde_json::json!({
+        "meta": {"err": null, "preTokenBalances": [], "postTokenBalances": [], "innerInstructions": []},
+        "transaction": {"message": {"accountKeys": [], "instructions": []}}
+    });
+    let result = pos_backend::domain::verification::verify_solana_transaction(
+        &fake_tx,
+        "expected_merchant_ata",
+        1000000,
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    );
+    if result["is_valid"] == false && result["error"].as_str().unwrap().contains("No valid token transfer") {
+        test_pass("286: fake payment injection rejected");
+    } else {
+        test_fail("286", &format!("result: {}", result));
+    }
 }
 
 fn test_287_squads_v4_bypass() {

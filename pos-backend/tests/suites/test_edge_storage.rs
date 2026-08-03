@@ -589,17 +589,21 @@ fn test_242_processed_updates_dedup() {
 }
 
 fn test_243_db_cleanup_files() {
-    let db_path = "data/test_cleanup.db";
-    let _ = std::fs::remove_file(db_path);
-    let _ = std::fs::remove_file(format!("{}-wal", db_path));
-    let _ = std::fs::remove_file(format!("{}-shm", db_path));
-
-    // Create and cleanup
+    let db_path = "data/test_cleanup_243.db";
+    // Create DB
     let _conn = pos_backend::db::get_db_connection(db_path).unwrap();
+    pos_backend::db::schema::init_db(&_conn, false).unwrap();
     drop(_conn);
+    assert!(std::path::Path::new(db_path).exists());
+
+    // Cleanup
     let _ = std::fs::remove_file(db_path);
     let _ = std::fs::remove_file(format!("{}-wal", db_path));
     let _ = std::fs::remove_file(format!("{}-shm", db_path));
 
-    test_pass("243: DB cleanup files works");
+    // Verify cleanup
+    assert!(!std::path::Path::new(db_path).exists());
+    assert!(!std::path::Path::new(&format!("{}-wal", db_path)).exists());
+    assert!(!std::path::Path::new(&format!("{}-shm", db_path)).exists());
+    test_pass("243: DB cleanup files verified");
 }

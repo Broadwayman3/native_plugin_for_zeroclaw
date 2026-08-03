@@ -280,9 +280,19 @@ fn test_129_concurrent_access() {
 }
 
 fn test_130_db_cleanup() {
-    let db_path = "data/test_boundary.db";
-    std::fs::remove_file(db_path).ok();
-    std::fs::remove_file(format!("{}-wal", db_path)).ok();
-    std::fs::remove_file(format!("{}-shm", db_path)).ok();
-    test_pass("130: test DB cleaned up");
+    let test_db = "data/test_cleanup_130.db";
+    // Create DB files
+    let _conn = pos_backend::db::get_db_connection(test_db).unwrap();
+    pos_backend::db::schema::init_db(&_conn, false).unwrap();
+    drop(_conn);
+    assert!(std::path::Path::new(test_db).exists());
+
+    // Cleanup
+    let _ = std::fs::remove_file(test_db);
+    let _ = std::fs::remove_file(format!("{}-wal", test_db));
+    let _ = std::fs::remove_file(format!("{}-shm", test_db));
+
+    // Verify main DB file is removed
+    assert!(!std::path::Path::new(test_db).exists());
+    test_pass("130: test DB cleaned up and verified");
 }

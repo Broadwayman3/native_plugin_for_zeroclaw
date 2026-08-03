@@ -342,9 +342,12 @@ fn test_161_nonce_pubkey_format() {
 }
 
 fn test_162_ttl_constants() {
-    // Verify the TTL is 15 minutes as per design
-    // This is a compile-time check - if it compiles, the constant exists
-    test_pass("162: TTL constant exists and is 15 minutes");
+    // Verify runtime values match design spec
+    assert_eq!(pos_core_logic::USDC_DECIMALS, 6);
+    assert_eq!(pos_core_logic::SOL_DECIMALS, 9);
+    assert_eq!(pos_core_logic::NONCE_TTL_MINUTES, 15);
+    assert_eq!(pos_core_logic::DEFAULT_SLIPPAGE_TOLERANCE_PCT, 1.0);
+    test_pass("162: constants match design spec");
 }
 
 fn test_163_release_after_stale() {
