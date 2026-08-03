@@ -95,7 +95,7 @@ pub fn update_invoice_status(
     let updated = conn.execute(
         "UPDATE invoices
          SET status = ?1, tx_signature = ?2, updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?3 AND (status = 'pending' OR status = 'partially_paid' OR status = 'refunding' OR status = ?1)",
+         WHERE id = ?3 AND (status = 'pending' OR status = 'partially_paid' OR status = ?1)",
         params![status, tx_signature, invoice_id],
     )?;
     Ok(updated)
@@ -311,6 +311,18 @@ pub fn initiate_refund(conn: &Connection, invoice_id: &str) -> Result<bool, rusq
     let updated = conn.execute(
         "UPDATE invoices SET status = 'refunding', updated_at = CURRENT_TIMESTAMP
          WHERE id = ?1 AND status = 'paid'",
+        params![invoice_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// Proposes refund via Squads v4 (refunding → refund_proposed_squads_v4).
+/// NOTE: Python original had no status check (fail-open). Rust adds this check
+/// for safety — prevents invalid state transitions from cancelled/paid/etc.
+pub fn propose_refund(conn: &Connection, invoice_id: &str) -> Result<bool, rusqlite::Error> {
+    let updated = conn.execute(
+        "UPDATE invoices SET status = 'refund_proposed_squads_v4', updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?1 AND status = 'refunding'",
         params![invoice_id],
     )?;
     Ok(updated > 0)

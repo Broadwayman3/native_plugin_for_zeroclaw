@@ -268,14 +268,9 @@ fn test_300_sop_invoice_lifecycle() {
     pos_backend::db::invoices::initiate_refund(&conn, "INV-LIFECYCLE-300")
         .unwrap();
 
-    // refunding -> refund_proposed_squads_v4
-    pos_backend::db::invoices::update_invoice_status(
-        &conn,
-        "INV-LIFECYCLE-300",
-        "refund_proposed_squads_v4",
-        None,
-    )
-    .unwrap();
+    // refunding -> refund_proposed_squads_v4 (using propose_refund)
+    pos_backend::db::invoices::propose_refund(&conn, "INV-LIFECYCLE-300")
+        .unwrap();
 
     let status: String = conn
         .query_row(

@@ -31,7 +31,8 @@ pub fn run_suite() {
     test_240_squads_proposal_create();
     test_241_squads_proposal_update();
     test_242_processed_updates_dedup();
-    test_243_db_cleanup_files();
+    test_243_propose_refund_rejects_non_refunding();
+    test_244_db_cleanup_files();
 }
 
 fn setup_test_db() -> rusqlite::Connection {
@@ -588,7 +589,34 @@ fn test_242_processed_updates_dedup() {
     }
 }
 
-fn test_243_db_cleanup_files() {
+fn test_243_propose_refund_rejects_non_refunding() {
+    let conn = setup_test_db();
+
+    // Create invoice with status 'cancelled'
+    pos_backend::db::invoices::create_invoice(
+        &conn,
+        &pos_backend::db::invoices::CreateInvoiceRequest {
+            id: "INV-243".to_string(),
+            reference_pubkey: "ref243".to_string(),
+            fiat_currency: Some("UAH".to_string()),
+            fiat_amount: Some(100.0),
+            usdc_amount: 2.41,
+        },
+    )
+    .unwrap();
+    pos_backend::db::invoices::cancel_invoice(&conn, "INV-243").unwrap();
+
+    // Try to propose refund on cancelled invoice (should fail)
+    let result = pos_backend::db::invoices::propose_refund(&conn, "INV-243").unwrap();
+
+    if !result {
+        test_pass("243: propose_refund rejects non-refunding status");
+    } else {
+        test_fail("243", "propose_refund should have returned false");
+    }
+}
+
+fn test_244_db_cleanup_files() {
     let db_path = "data/test_cleanup_243.db";
     // Create DB
     let _conn = pos_backend::db::get_db_connection(db_path).unwrap();
