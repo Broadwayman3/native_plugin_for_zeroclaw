@@ -22,6 +22,7 @@ pub fn run_suite() -> usize {
     suites::test_i18n::run_suite();
     suites::test_database::run_suite();
     suites::test_api::run_suite();
+    suites::test_security::run_suite();
 
     let total = TEST_COUNT.load(Ordering::SeqCst);
     let passed = PASS_COUNT.load(Ordering::SeqCst);
