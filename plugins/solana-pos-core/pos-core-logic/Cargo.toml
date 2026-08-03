@@ -1,0 +1,13 @@
+[package]
+name = "pos-core-logic"
+version = "1.0.0"
+edition = "2021"
+description = "Shared business logic for ZeroClaw Solana POS (used by WASM plugin and backend)"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+
+[dev-dependencies]
+proptest = "1.4"

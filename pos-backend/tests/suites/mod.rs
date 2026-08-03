@@ -1,0 +1,9 @@
+pub mod test_token2022;
+pub mod test_solana_pay;
+pub mod test_pix_brl;
+pub mod test_price_feed;
+pub mod test_sanitizer;
+pub mod test_verification;
+pub mod test_i18n;
+pub mod test_database;
+pub mod test_api;

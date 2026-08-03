@@ -1,6 +1,5 @@
-# Rust build artifacts (ALL target directories)
-/target/
-**/target/
+# Rust build artifacts
+target/
 
 # Compiled WASM (keep only the final release binary)
 *.wasm
