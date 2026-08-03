@@ -1,35 +1,53 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 /// Nonce account TTL in minutes
 const NONCE_TTL_MINUTES: i64 = 15;
 
 /// Atomically allocates a free Nonce account with TTL auto-release.
+/// Supports SQLite >= 3.35.0 (RETURNING) with fallback for older versions.
 pub fn allocate_free_nonce(conn: &Connection) -> Result<Option<String>, rusqlite::Error> {
     // 1. Auto-release locks hanging for >15 minutes
+    let interval = format!("-{} minutes", NONCE_TTL_MINUTES);
     conn.execute(
         "UPDATE nonce_accounts SET status = 'free', locked_at = NULL
-         WHERE status = 'locked' AND locked_at < datetime('now', '-' || ?1 || ' minutes')",
-        params![NONCE_TTL_MINUTES.to_string()],
+         WHERE status = 'locked' AND locked_at < datetime('now', ?1)",
+        params![interval],
     )?;
 
-    // 2. Try to atomically allocate a free nonce using subquery
-    let updated = conn.execute(
-        "UPDATE nonce_accounts
-         SET status = 'locked', locked_at = CURRENT_TIMESTAMP
-         WHERE pubkey = (SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1)",
+    // 2. Try RETURNING (SQLite >= 3.35.0)
+    let result = conn.query_row(
+        "UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP
+         WHERE pubkey = (SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1)
+         RETURNING pubkey",
         [],
-    )?;
+        |row| row.get::<_, String>(0),
+    );
 
-    if updated > 0 {
-        // Get the pubkey we just locked
-        let pubkey: String = conn.query_row(
-            "SELECT pubkey FROM nonce_accounts WHERE status = 'locked' ORDER BY locked_at DESC LIMIT 1",
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(Some(pubkey))
-    } else {
-        Ok(None)
+    match result {
+        Ok(pubkey) => Ok(Some(pubkey)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(_) => {
+            // Fallback: SELECT + UPDATE (SQLite < 3.35.0)
+            let pubkey: Option<String> = conn
+                .query_row(
+                    "SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?;
+
+            if let Some(pk) = pubkey {
+                let updated = conn.execute(
+                    "UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP
+                     WHERE pubkey = ?1 AND status = 'free'",
+                    params![pk],
+                )?;
+                if updated > 0 {
+                    return Ok(Some(pk));
+                }
+            }
+            Ok(None)
+        }
     }
 }
 

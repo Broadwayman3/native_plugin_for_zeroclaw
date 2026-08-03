@@ -5,7 +5,7 @@ pub mod pos_flow;
 pub mod sales;
 pub mod x402;
 
-use axum::http::{Method, StatusCode};
+use axum::http::{header, Method, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
@@ -36,7 +36,10 @@ pub async fn build_router(config: &AppConfig) -> Router {
             Method::PUT,
             Method::DELETE,
         ])
-        .allow_headers(Any)
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+        ])
         .max_age(std::time::Duration::from_secs(86400));
 
     // Payload limit middleware (1MB)

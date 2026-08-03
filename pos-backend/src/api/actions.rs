@@ -1,5 +1,5 @@
 use axum::extract::Query;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use std::collections::HashMap;
 
@@ -17,7 +17,7 @@ pub async fn handle_actions_spec() -> Json<serde_json::Value> {
 /// GET /api/v1/actions/pay_invoice - Blink action GET
 pub async fn handle_action_get(
     Query(params): Query<HashMap<String, String>>,
-) -> (StatusCode, Json<serde_json::Value>) {
+) -> (StatusCode, HeaderMap, Json<serde_json::Value>) {
     let invoice_id = params.get("invoice_id").map(|s| s.as_str()).unwrap_or("INV-101");
 
     let payload = serde_json::json!({
@@ -32,17 +32,17 @@ pub async fn handle_action_get(
         }
     });
 
-    let mut headers = axum::http::HeaderMap::new();
+    let mut headers = HeaderMap::new();
     headers.insert("X-Action-Version", "2.1.3".parse().unwrap());
     headers.insert("X-Blockchain-Ids", "solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ".parse().unwrap());
 
-    (StatusCode::OK, Json(payload))
+    (StatusCode::OK, headers, Json(payload))
 }
 
 /// POST /api/v1/actions/pay_invoice - Blink action POST
 pub async fn handle_action_post(
     Json(data): Json<serde_json::Value>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+) -> Result<(StatusCode, HeaderMap, Json<serde_json::Value>), AppError> {
     let account = data.get("account").and_then(|v| v.as_str());
 
     match account {
@@ -51,7 +51,12 @@ pub async fn handle_action_post(
                 "transaction": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
                 "message": "ZeroClaw POS Invoice Payment Transaction"
             });
-            Ok((StatusCode::OK, Json(payload)))
+
+            let mut headers = HeaderMap::new();
+            headers.insert("X-Action-Version", "2.1.3".parse().unwrap());
+            headers.insert("X-Blockchain-Ids", "solana:EtWTRABZaYqXxicM2Tz2fSpo5nszvh6wT9D3gYqH1cQ".parse().unwrap());
+
+            Ok((StatusCode::OK, headers, Json(payload)))
         }
         _ => Err(AppError::BadRequest(
             "Invalid or missing 'account' Base58 public key field in Blink POST request".to_string(),

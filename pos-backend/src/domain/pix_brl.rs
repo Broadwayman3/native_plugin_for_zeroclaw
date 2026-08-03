@@ -34,22 +34,11 @@ pub fn generate_pix_emv_payload(
         merchant_name
     };
 
-    // Truncate merchant name to 99 bytes
-    let merchant_bytes = merchant_name.as_bytes();
-    let merchant_truncated = if merchant_bytes.len() > 99 {
-        std::str::from_utf8(&merchant_bytes[..99])
-            .unwrap_or("ZeroClaw POS")
-    } else {
-        merchant_name
-    };
+    // Truncate merchant name to 99 chars (UTF-8 safe)
+    let merchant_truncated: String = merchant_name.chars().take(99).collect();
 
-    // Truncate pix key to 99 bytes
-    let pix_key_bytes = pix_key.as_bytes();
-    let pix_key_truncated = if pix_key_bytes.len() > 99 {
-        std::str::from_utf8(&pix_key_bytes[..99]).unwrap_or("")
-    } else {
-        pix_key
-    };
+    // Truncate pix key to 99 chars (UTF-8 safe)
+    let pix_key_truncated: String = pix_key.chars().take(99).collect();
 
     let merchant_len = merchant_truncated.len();
     let pix_key_len = pix_key_truncated.len();

@@ -41,7 +41,7 @@ pub async fn handle_create_invoice(
 pub async fn handle_update_invoice_status(
     State(state): State<crate::api::AppState>,
     Json(data): Json<db::invoices::UpdateInvoiceStatusRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let conn = db::get_db_connection(&state.config.db_path)?;
 
     if !db::invoices::ALLOWED_INVOICE_STATUSES.contains(&data.status.as_str()) {
@@ -59,38 +59,38 @@ pub async fn handle_update_invoice_status(
     )?;
 
     if updated == 0 {
-        return Ok(Json(serde_json::json!({
+        return Ok((StatusCode::CONFLICT, Json(serde_json::json!({
             "success": false,
             "error": "Conflict: Invoice state already finalized or invalid transition",
             "updated": 0
-        })));
+        }))));
     }
 
-    Ok(Json(serde_json::json!({
+    Ok((StatusCode::OK, Json(serde_json::json!({
         "success": true,
         "updated": updated
-    })))
+    }))))
 }
 
 /// POST /api/v1/invoices/cancel - Cancel/void a pending invoice
 pub async fn handle_cancel_invoice(
     State(state): State<crate::api::AppState>,
     Json(data): Json<db::invoices::CancelInvoiceRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let conn = db::get_db_connection(&state.config.db_path)?;
 
     let cancelled = db::invoices::cancel_invoice(&conn, &data.invoice_id)?;
 
     if cancelled == 0 {
-        return Ok(Json(serde_json::json!({
+        return Ok((StatusCode::CONFLICT, Json(serde_json::json!({
             "success": false,
             "error": "Conflict: Invoice not found or already finalized"
-        })));
+        }))));
     }
 
-    Ok(Json(serde_json::json!({
+    Ok((StatusCode::OK, Json(serde_json::json!({
         "success": true,
         "cancelled_id": data.invoice_id,
         "status": "cancelled"
-    })))
+    }))))
 }

@@ -14,6 +14,10 @@ pub fn check_and_register(conn: &Connection, update_id: i64) -> Result<bool, rus
         params![update_id],
     ) {
         Ok(_) => Ok(true),
-        Err(_) => Ok(false), // UNIQUE constraint violation = already processed
+        Err(rusqlite::Error::SqliteFailure(_, _)) => {
+            // UNIQUE constraint violation = already processed
+            Ok(false)
+        }
+        Err(e) => Err(e), // Propagate real DB errors
     }
 }

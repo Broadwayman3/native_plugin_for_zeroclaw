@@ -9,8 +9,16 @@ pub fn format_pubkey_short(pubkey: &str) -> String {
 }
 
 /// Generates direct transaction link to Solscan Explorer.
+/// Auto-detects network from SOLANA_RPC_URL env var if not specified.
 pub fn get_solscan_tx_url(signature: &str, network: Option<&str>) -> String {
-    let net = network.unwrap_or("devnet");
+    let net = network.unwrap_or_else(|| {
+        let rpc_url = std::env::var("SOLANA_RPC_URL").unwrap_or_default();
+        if rpc_url.contains("mainnet") || rpc_url.contains("helius") {
+            "mainnet"
+        } else {
+            "devnet"
+        }
+    });
     let cluster_param = if net == "devnet" || net == "testnet" {
         format!("?cluster={}", net)
     } else {

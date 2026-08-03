@@ -201,7 +201,19 @@ pub fn build_raw_squads_v4_instruction_data(proposal_index: u64, execution_type:
 }
 
 fn url_encode(s: &str) -> String {
-    s.replace(' ', "%20")
+    let mut result = String::with_capacity(s.len() * 3);
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(byte as char);
+            }
+            _ => {
+                result.push('%');
+                result.push_str(&format!("{:02X}", byte));
+            }
+        }
+    }
+    result
 }
 
 fn hex_encode(bytes: &[u8]) -> String {

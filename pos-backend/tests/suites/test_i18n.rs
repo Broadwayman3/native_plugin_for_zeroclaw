@@ -15,7 +15,7 @@ pub fn run_suite() {
 }
 
 fn test_101_t_function_basic() {
-    let r = pos_backend::domain::i18n::t("welcome", Some("en"), false, &[]);
+    let r = pos_backend::domain::i18n::t("welcome", Some("en"), &[]);
     if r.contains("ZeroClaw") {
         test_pass("101: welcome message contains ZeroClaw");
     } else {
@@ -24,7 +24,7 @@ fn test_101_t_function_basic() {
 }
 
 fn test_102_t_function_with_kwargs() {
-    let r = pos_backend::domain::i18n::t("receipt_title", Some("en"), false, &[("invoice_id", "123")]);
+    let r = pos_backend::domain::i18n::t("receipt_title", Some("en"), &[("invoice_id", "123")]);
     if r.contains("123") {
         test_pass("102: kwargs substituted in template");
     } else {
@@ -33,7 +33,7 @@ fn test_102_t_function_with_kwargs() {
 }
 
 fn test_103_t_function_escape_markdown() {
-    let r = pos_backend::domain::i18n::t("welcome", Some("en"), true, &[]);
+    let r = pos_backend::domain::i18n::t("welcome", Some("en"), &[]);
     // MarkdownV2 escaping should add backslashes
     if r.contains("\\") || !r.contains("*") {
         test_pass("103: MarkdownV2 escaping applied");
@@ -43,8 +43,8 @@ fn test_103_t_function_escape_markdown() {
 }
 
 fn test_104_t_function_fallback_to_english() {
-    let r = pos_backend::domain::i18n::t("welcome", Some("xx"), false, &[]);
-    let en = pos_backend::domain::i18n::t("welcome", Some("en"), false, &[]);
+    let r = pos_backend::domain::i18n::t("welcome", Some("xx"), &[]);
+    let en = pos_backend::domain::i18n::t("welcome", Some("en"), &[]);
     if r == en {
         test_pass("104: unknown lang falls back to English");
     } else {

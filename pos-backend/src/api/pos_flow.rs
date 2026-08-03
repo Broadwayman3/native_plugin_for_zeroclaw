@@ -28,7 +28,7 @@ pub async fn handle_create_order(
     }
 
     // Parse order
-    let def_label = domain::i18n::t("default_item", Some(lang), false, &[]);
+    let def_label = domain::i18n::t_raw("default_item", Some(lang), &[]);
     let parsed = domain::order_parser::parse_pos_order_input(
         &sanitized,
         &def_label,
@@ -46,10 +46,9 @@ pub async fn handle_create_order(
             .get("items")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let prompt_text = domain::i18n::t(
+        let prompt_text = domain::i18n::t_raw(
             "price_needed",
             Some(lang),
-            false,
             &[("items", items)],
         );
 

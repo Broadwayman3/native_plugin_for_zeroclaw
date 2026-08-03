@@ -34,7 +34,7 @@ pub fn is_btn_click(text: &str, key: &str) -> bool {
     for (_, trans_dict) in TRANSLATIONS.iter() {
         if let Some(target) = trans_dict.get(key) {
             let target_clean = target.trim().to_lowercase();
-            if text_clean == target_clean || target_clean.contains(&text_clean) {
+            if text_clean == target_clean || text_clean.contains(&target_clean) {
                 return true;
             }
         }

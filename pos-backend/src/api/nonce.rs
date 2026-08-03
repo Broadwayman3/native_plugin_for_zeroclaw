@@ -1,4 +1,5 @@
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::Json;
 
 use crate::db;
@@ -7,18 +8,18 @@ use crate::error::AppError;
 /// POST /api/v1/nonce/allocate - Allocate a free nonce account
 pub async fn handle_nonce_allocate(
     State(state): State<crate::api::AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let conn = db::get_db_connection(&state.config.db_path)?;
 
     match db::nonce::allocate_free_nonce(&conn)? {
-        Some(pubkey) => Ok(Json(serde_json::json!({
+        Some(pubkey) => Ok((StatusCode::OK, Json(serde_json::json!({
             "success": true,
             "nonce_pubkey": pubkey
-        }))),
-        None => Ok(Json(serde_json::json!({
+        })))),
+        None => Ok((StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
             "success": false,
             "error": "No free durable nonce account available in pool"
-        }))),
+        })))),
     }
 }
 

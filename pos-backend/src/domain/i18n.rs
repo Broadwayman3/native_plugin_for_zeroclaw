@@ -28,8 +28,18 @@ pub fn get_localized_confirmation(lang_code: &str) -> String {
         .replace("{lang_name}", name)
 }
 
-/// Retrieves localized message template and formats dynamic variables.
-pub fn t(key: &str, lang: Option<&str>, escape_markdown: bool, kwargs: &[(&str, &str)]) -> String {
+/// Retrieves localized message with MarkdownV2 escaping (default for Telegram output).
+pub fn t(key: &str, lang: Option<&str>, kwargs: &[(&str, &str)]) -> String {
+    t_impl(key, lang, true, kwargs)
+}
+
+/// Retrieves localized message WITHOUT escaping (for internal use, keyboards, etc.).
+pub fn t_raw(key: &str, lang: Option<&str>, kwargs: &[(&str, &str)]) -> String {
+    t_impl(key, lang, false, kwargs)
+}
+
+/// Internal implementation for localized message retrieval.
+fn t_impl(key: &str, lang: Option<&str>, escape_markdown: bool, kwargs: &[(&str, &str)]) -> String {
     let clean = normalize_lang(lang.unwrap_or("en"));
     let template = TRANSLATIONS
         .get(clean.as_str())
@@ -55,9 +65,9 @@ pub fn get_main_reply_keyboard(lang: &str) -> serde_json::Value {
     let clean = normalize_lang(lang);
     serde_json::json!({
         "keyboard": [
-            [{"text": t("btn_custom", Some(&clean), false, &[])}, {"text": t("btn_quick_uah", Some(&clean), false, &[])}],
-            [{"text": t("btn_sales", Some(&clean), false, &[])}, {"text": t("btn_refund", Some(&clean), false, &[])}],
-            [{"text": t("btn_lang", Some(&clean), false, &[])}]
+            [{"text": t_raw("btn_custom", Some(&clean), &[])}, {"text": t_raw("btn_quick_uah", Some(&clean), &[])}],
+            [{"text": t_raw("btn_sales", Some(&clean), &[])}, {"text": t_raw("btn_refund", Some(&clean), &[])}],
+            [{"text": t_raw("btn_lang", Some(&clean), &[])}]
         ],
         "resize_keyboard": true
     })
@@ -66,7 +76,7 @@ pub fn get_main_reply_keyboard(lang: &str) -> serde_json::Value {
 /// Generates inline keyboard for invoice cancellation.
 pub fn get_cancel_invoice_inline_keyboard(invoice_id: &str, lang: &str) -> serde_json::Value {
     let clean = normalize_lang(lang);
-    let btn_label = t("cancel_btn_text", Some(&clean), false, &[]);
+    let btn_label = t_raw("cancel_btn_text", Some(&clean), &[]);
     serde_json::json!({
         "inline_keyboard": [[
             {"text": btn_label, "callback_data": format!("cancel_invoice_{}", invoice_id)}
@@ -96,13 +106,12 @@ pub fn format_itemized_receipt(
     exchange_rate: Option<f64>,
 ) -> String {
     let tax_amount = (amount_usdc * (tax_rate_pct / 100.0) * 100.0).round() / 100.0;
-    let default_item = t("default_item", Some(lang), false, &[]);
+    let default_item = t_raw("default_item", Some(lang), &[]);
 
-    let title_escaped = t("receipt_title", Some(lang), true, &[("invoice_id", invoice_id)]);
+    let title_escaped = t("receipt_title", Some(lang), &[("invoice_id", invoice_id)]);
     let tax_escaped = t(
         "receipt_tax",
         Some(lang),
-        true,
         &[
             ("tax_rate_pct", &format!("{:.0}", tax_rate_pct)),
             ("tax_amount", &format!("{:.2}", tax_amount)),
@@ -111,7 +120,6 @@ pub fn format_itemized_receipt(
     let total_escaped = t(
         "receipt_total",
         Some(lang),
-        true,
         &[("amount_usdc", &format!("{:.2}", amount_usdc))],
     );
 

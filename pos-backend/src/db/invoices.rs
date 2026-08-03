@@ -52,16 +52,6 @@ pub const ALLOWED_INVOICE_STATUSES: &[&str] = &[
     "failed",
 ];
 
-/// Gets the current timestamp in ISO format.
-fn now_iso() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    // Simple ISO format without chrono dependency
-    format!("{}T00:00:00+00:00", secs)
-}
-
 /// Cleans up expired pending invoices (older than 24 hours).
 pub fn cleanup_expired_pending_invoices(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute(
@@ -252,19 +242,29 @@ pub fn get_sales_summary(conn: &Connection) -> Result<serde_json::Value, rusqlit
         entry.insert("count".to_string(), serde_json::json!(row.1));
         entry.insert(
             "total_fiat".to_string(),
-            serde_json::json!(row.2.unwrap_or(0.0).round()),
+            serde_json::json!((row.2.unwrap_or(0.0) * 100.0).round() / 100.0),
         );
         entry.insert(
             "total_usdc".to_string(),
-            serde_json::json!(row.3.unwrap_or(0.0).round()),
+            serde_json::json!((row.3.unwrap_or(0.0) * 100.0).round() / 100.0),
         );
         by_currency.insert(row.0, serde_json::Value::Object(entry));
     }
 
-    let now = SystemTime::now()
+    // Generate proper ISO timestamp
+    let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
+    let timestamp = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
+        (now_secs / 31536000) + 1970,
+        ((now_secs % 31536000) / 2592000) + 1,
+        ((now_secs % 2592000) / 86400) + 1,
+        (now_secs % 86400) / 3600,
+        (now_secs % 3600) / 60,
+        now_secs % 60
+    );
 
     Ok(serde_json::json!({
         "business_name": "ZeroClaw Coffee POS",
@@ -274,36 +274,8 @@ pub fn get_sales_summary(conn: &Connection) -> Result<serde_json::Value, rusqlit
         "total_pending_invoices": pending_count,
         "sales_by_currency": by_currency,
         "journal_mode": "WAL",
-        "timestamp": format!("{}T00:00:00+00:00", now)
+        "timestamp": timestamp
     }))
-}
-
-/// Creates a Squads v4 multisig refund proposal.
-pub fn create_squads_proposal(
-    conn: &Connection,
-    invoice_id: &str,
-    recipient_pubkey: &str,
-    amount_usdc: f64,
-) -> Result<i64, rusqlite::Error> {
-    conn.execute(
-        "INSERT INTO squads_proposals (invoice_id, recipient_pubkey, amount_usdc, status)
-         VALUES (?1, ?2, ?3, 'created')",
-        params![invoice_id, recipient_pubkey, amount_usdc],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
-/// Updates Squads v4 proposal status.
-pub fn update_squads_proposal_status(
-    conn: &Connection,
-    proposal_index: i64,
-    status: &str,
-) -> Result<bool, rusqlite::Error> {
-    let updated = conn.execute(
-        "UPDATE squads_proposals SET status = ?1 WHERE proposal_index = ?2",
-        params![status, proposal_index],
-    )?;
-    Ok(updated > 0)
 }
 
 /// Initiates refund request (re-entrancy guard).
@@ -314,28 +286,4 @@ pub fn initiate_refund(conn: &Connection, invoice_id: &str) -> Result<bool, rusq
         params![invoice_id],
     )?;
     Ok(updated > 0)
-}
-
-/// Checks and registers a Telegram update ID for deduplication.
-pub fn check_and_register_telegram_update(
-    conn: &Connection,
-    update_id: i64,
-) -> Result<bool, rusqlite::Error> {
-    // Cleanup old updates
-    conn.execute(
-        "DELETE FROM processed_updates WHERE processed_at < datetime('now', '-1 day')",
-        [],
-    )?;
-
-    match conn.execute(
-        "INSERT INTO processed_updates (update_id) VALUES (?1)",
-        params![update_id],
-    ) {
-        Ok(_) => Ok(true),
-        Err(rusqlite::Error::SqliteFailure(_, _)) => {
-            // UNIQUE constraint violation = already processed
-            Ok(false)
-        }
-        Err(e) => Err(e),
-    }
 }

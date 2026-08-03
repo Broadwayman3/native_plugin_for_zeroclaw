@@ -2,12 +2,6 @@ use rusqlite::Connection;
 
 /// Creates all database tables and runs migrations.
 pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite::Error> {
-    // Enable WAL mode
-    let _ = conn.execute_batch("PRAGMA journal_mode=WAL;");
-    conn.execute_batch("PRAGMA busy_timeout=5000;")?;
-    conn.execute_batch("PRAGMA synchronous=NORMAL;")?;
-    conn.execute_batch("PRAGMA cache_size=-64000;")?;
-
     // Create tables
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS invoices (

@@ -66,7 +66,8 @@ pub fn get_multitier_fiat_rate(
             } else {
                 data_ts
             };
-            if rate > 0.0 && (ts - data_ts).abs() <= 300 {
+            let diff = ts - data_ts;
+            if rate > 0.0 && diff >= -15 && diff <= 300 {
                 return Ok(serde_json::json!({
                     "rate": rate,
                     "tier": "primary_switchboard",
@@ -85,7 +86,8 @@ pub fn get_multitier_fiat_rate(
             } else {
                 data_ts
             };
-            if rate > 0.0 && (ts - data_ts).abs() <= 300 {
+            let diff = ts - data_ts;
+            if rate > 0.0 && diff >= -15 && diff <= 300 {
                 return Ok(serde_json::json!({
                     "rate": rate,
                     "tier": "secondary_pyth_hermes",
@@ -104,7 +106,8 @@ pub fn get_multitier_fiat_rate(
             } else {
                 data_ts
             };
-            if rate > 0.0 && (ts - data_ts).abs() <= 900 {
+            let diff = ts - data_ts;
+            if rate > 0.0 && diff >= -15 && diff <= 900 {
                 return Ok(serde_json::json!({
                     "rate": rate,
                     "tier": "tertiary_cache",
