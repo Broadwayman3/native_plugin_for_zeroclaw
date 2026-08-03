@@ -13,9 +13,10 @@ import shutil
 WASM_PATH = "plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm"
 WIT_CONTRACT_PATH = "wit/v0/pos_core.wit"
 
+
 def test_wasm_component_execution():
     print("📋 [WASM Host Test] Validating WASM Component Boundary & Execution...")
-    
+
     if not os.path.exists(WASM_PATH):
         if not shutil.which("cargo"):
             print("  ℹ️ Rust/Cargo not found in PATH and WASM binary is missing.")
@@ -57,12 +58,13 @@ def test_wasm_component_execution():
     wasm_executed = False
     try:
         import wasmtime
+
         engine = wasmtime.Engine()
         store = wasmtime.Store(engine)
         module = wasmtime.Module.from_file(engine, WASM_PATH)
         print("  ✅ WASM Component loaded via wasmtime Python SDK successfully.")
         wasm_executed = True
-    except Exception as e:
+    except Exception:
         pass
 
     if not wasm_executed:
@@ -81,10 +83,11 @@ def test_wasm_component_execution():
     print("  🧪 Running 10,000 Continuous WASM Calls String Heap Memory Stress Test...")
     try:
         import wasmtime
+
         engine = wasmtime.Engine()
         store = wasmtime.Store(engine)
         module = wasmtime.Module.from_file(engine, WASM_PATH)
-        instance = wasmtime.Instance(store, module, [])
+        wasmtime.Instance(store, module, [])
         # Execute 10,000 continuous WASM calls with dynamic string inputs to exercise Canonical ABI realloc
         for i in range(10000):
             merchant = f"8xAZmQ1111111111111111111111111111111111{i % 10}"
@@ -93,14 +96,14 @@ def test_wasm_component_execution():
         print("  ✅ 10,000 Continuous WASM String Heap Stress Test PASSED (Zero Heap Leaks).")
     except Exception as e:
         from pos_core.solana_pay import calculate_token2022_fee
+
         for i in range(10000):
             _ = calculate_token2022_fee(10.0 + (i % 5), 100, 500000, 6)
         print(f"  ✅ 10,000 Continuous Component Math Stress Test PASSED ({e}).")
 
-
     print("✅ All WASM Host Component Execution tests PASSED!")
     return True
 
+
 if __name__ == "__main__":
     test_wasm_component_execution()
-

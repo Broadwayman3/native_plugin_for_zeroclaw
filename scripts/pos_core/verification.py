@@ -1,31 +1,35 @@
 #!/usr/bin/env python3
 """ZeroClaw Solana POS Agent - Solana Transaction Verification Module"""
+
 import sys
 from typing import Dict, List, Optional, Any
 from pos_core.constants import USDC_MINT
+
 
 def _extract_token_balance_deltas(meta: Dict[str, Any], expected_mint: str, debug_log: bool = False) -> Dict[int, int]:
     """Extracts balance differences (post - pre) for specified mint indexed by account index."""
     pre_balances: Dict[int, int] = {}
     post_balances: Dict[int, int] = {}
-    
-    for b in (meta.get("preTokenBalances") or []):
+
+    for b in meta.get("preTokenBalances") or []:
         if isinstance(b, dict) and b.get("mint") == expected_mint:
             try:
                 ui_amt = b.get("uiTokenAmount") or {}
                 amt_val = int((ui_amt.get("amount") if isinstance(ui_amt, dict) else None) or "0")
-                idx = int(b.get("accountIndex"))
+                idx_val = b.get("accountIndex")
+                idx = int(idx_val) if idx_val is not None else 0
                 pre_balances[idx] = amt_val
             except (ValueError, TypeError, AttributeError) as e:
                 if debug_log:
                     print(f"[DEBUG][verification] Suppressed preTokenBalance parsing error: {e}", file=sys.stderr)
 
-    for b in (meta.get("postTokenBalances") or []):
+    for b in meta.get("postTokenBalances") or []:
         if isinstance(b, dict) and b.get("mint") == expected_mint:
             try:
                 ui_amt = b.get("uiTokenAmount") or {}
                 amt_val = int((ui_amt.get("amount") if isinstance(ui_amt, dict) else None) or "0")
-                idx = int(b.get("accountIndex"))
+                idx_val = b.get("accountIndex")
+                idx = int(idx_val) if idx_val is not None else 0
                 post_balances[idx] = amt_val
             except (ValueError, TypeError, AttributeError) as e:
                 if debug_log:
@@ -37,9 +41,12 @@ def _extract_token_balance_deltas(meta: Dict[str, Any], expected_mint: str, debu
         deltas[idx] = post_balances.get(idx, 0) - pre_balances.get(idx, 0)
     return deltas
 
-def _inspect_instructions_for_transfer(instructions: Optional[List[Any]], expected_merchant_ata: str, expected_usdc_atomic: int, debug_log: bool = False) -> Optional[int]:
+
+def _inspect_instructions_for_transfer(
+    instructions: Optional[List[Any]], expected_merchant_ata: str, expected_usdc_atomic: int, debug_log: bool = False
+) -> Optional[int]:
     """Recursively inspects instructions for token transfers matching Merchant ATA and expected amount."""
-    for inst in (instructions or []):
+    for inst in instructions or []:
         if not isinstance(inst, dict):
             continue
         parsed = inst.get("parsed")
@@ -63,7 +70,10 @@ def _inspect_instructions_for_transfer(instructions: Optional[List[Any]], expect
                 return res
     return None
 
-def verify_solana_transaction_payload(tx_json: Any, expected_merchant_ata: str, expected_usdc_atomic: int, expected_mint: str = USDC_MINT, debug_log: bool = False) -> Dict[str, Any]:
+
+def verify_solana_transaction_payload(
+    tx_json: Any, expected_merchant_ata: str, expected_usdc_atomic: int, expected_mint: str = USDC_MINT, debug_log: bool = False
+) -> Dict[str, Any]:
     """Triple Payment Protection: Reverted Tx Guard, Balance Delta Verification, Recursive Instruction Inspection."""
     if not tx_json or not isinstance(tx_json, dict):
         return {"is_valid": False, "error": "Invalid transaction JSON payload"}
@@ -75,7 +85,7 @@ def verify_solana_transaction_payload(tx_json: Any, expected_merchant_ata: str, 
     transaction = tx_json.get("transaction") or {}
     message = (transaction.get("message") if isinstance(transaction, dict) else {}) or {}
     account_keys = (message.get("accountKeys") or message.get("staticAccountKeys") if isinstance(message, dict) else []) or []
-    
+
     merchant_idx = next((i for i, k in enumerate(account_keys) if (k.get("pubkey") if isinstance(k, dict) else k) == expected_merchant_ata), None)
 
     if merchant_idx is not None:

@@ -17,9 +17,9 @@ SOLANA_PAY_RESPONSE_SCHEMA = {
     "properties": {
         "status": {"type": "string", "enum": ["pending", "confirmed", "failed"]},
         "usdc_amount": {"type": "number", "minimum": 0.01, "maximum": 5000.0},
-        "reference_pubkey": {"type": "string", "minLength": 32, "maxLength": 44}
+        "reference_pubkey": {"type": "string", "minLength": 32, "maxLength": 44},
     },
-    "required": ["status", "usdc_amount", "reference_pubkey"]
+    "required": ["status", "usdc_amount", "reference_pubkey"],
 }
 
 SQUADS_PROPOSAL_SCHEMA = {
@@ -28,9 +28,9 @@ SQUADS_PROPOSAL_SCHEMA = {
         "status": {"type": "string", "enum": ["created", "rejected", "approved"]},
         "proposal_index": {"type": "integer", "minimum": 1},
         "amount_usdc": {"type": "number", "minimum": 0.01, "maximum": 50.0},
-        "multisig_pubkey": {"type": "string", "minLength": 32, "maxLength": 44}
+        "multisig_pubkey": {"type": "string", "minLength": 32, "maxLength": 44},
     },
-    "required": ["status", "proposal_index", "amount_usdc", "multisig_pubkey"]
+    "required": ["status", "proposal_index", "amount_usdc", "multisig_pubkey"],
 }
 
 PAYMENT_VERIFICATION_SCHEMA = {
@@ -38,10 +38,11 @@ PAYMENT_VERIFICATION_SCHEMA = {
     "properties": {
         "verified": {"type": "boolean"},
         "signature": {"type": "string", "minLength": 32, "maxLength": 90},
-        "paid_amount": {"type": "number", "minimum": 0.0}
+        "paid_amount": {"type": "number", "minimum": 0.0},
     },
-    "required": ["verified", "signature", "paid_amount"]
+    "required": ["verified", "signature", "paid_amount"],
 }
+
 
 def validate_llm_json_output(raw_output: str, schema: dict = SOLANA_PAY_RESPONSE_SCHEMA) -> dict:
     """
@@ -84,6 +85,7 @@ def validate_llm_json_output(raw_output: str, schema: dict = SOLANA_PAY_RESPONSE
     except Exception as e:
         raise ValueError(f"🚨 FAIL-CLOSED: Output violated structural schema constraints: {e}")
 
+
 def truncate_for_context(data_dict: dict, max_tokens: int = 150) -> dict:
     """
     Trims non-essential metadata fields from dictionaries to keep tokens < max_tokens (~200 limit).
@@ -91,18 +93,19 @@ def truncate_for_context(data_dict: dict, max_tokens: int = 150) -> dict:
     """
     json_str = json.dumps(data_dict)
     max_chars = max_tokens * 4
-    
+
     if len(json_str) <= max_chars:
         return data_dict
-    
+
     essential_keys = {"status", "verified", "usdc_amount", "paid_amount", "reference_pubkey", "signature", "proposal_index"}
     pruned = {k: v for k, v in data_dict.items() if k in essential_keys}
-    
+
     for k, v in pruned.items():
         if isinstance(v, str) and len(v) > 44:
             pruned[k] = v[:41] + "..."
-            
+
     return pruned
+
 
 if __name__ == "__main__":
     sample_valid = '{"status": "confirmed", "usdc_amount": 10.5, "reference_pubkey": "8xAZmQ1111111111111111111111111111111111111"}'

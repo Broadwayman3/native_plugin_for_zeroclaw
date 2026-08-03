@@ -8,6 +8,7 @@ from typing import Optional
 from pos_core.db import DB_PATH, get_db_cursor
 from pos_core.constants import NONCE_TTL_MINUTES
 
+
 def allocate_free_nonce_account(conn: Optional[sqlite3.Connection] = None, db_path: str = DB_PATH) -> Optional[str]:
     """
     Atomically allocates a free Nonce account with TTL auto-release.
@@ -22,14 +23,17 @@ def allocate_free_nonce_account(conn: Optional[sqlite3.Connection] = None, db_pa
             )
         """)
         # 1. Auto-release locks hanging for >15 minutes
-        cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE status = 'locked' AND locked_at < datetime('now', '-' || ? || ' minutes')", (str(NONCE_TTL_MINUTES),))
+        cursor.execute(
+            "UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE status = 'locked' AND locked_at < datetime('now', '-' || ? || ' minutes')",
+            (str(NONCE_TTL_MINUTES),),
+        )
 
         # 2. Check for RETURNING support (SQLite >= 3.35.0)
         sqlite_version = sqlite3.sqlite_version_info
         if sqlite_version >= (3, 35, 0):
             cursor.execute("""
-                UPDATE nonce_accounts 
-                SET status = 'locked', locked_at = CURRENT_TIMESTAMP 
+                UPDATE nonce_accounts
+                SET status = 'locked', locked_at = CURRENT_TIMESTAMP
                 WHERE pubkey = (
                     SELECT pubkey FROM nonce_accounts WHERE status = 'free' LIMIT 1
                 )
@@ -61,6 +65,7 @@ def release_nonce_account(conn: Optional[sqlite3.Connection] = None, pubkey: Opt
     with get_db_cursor(conn, db_path) as cursor:
         cursor.execute("UPDATE nonce_accounts SET status = 'free', locked_at = NULL WHERE pubkey = ?", (pubkey,))
 
+
 def mark_nonce_account_stale(conn: Optional[sqlite3.Connection] = None, pubkey: Optional[str] = None, db_path: str = DB_PATH) -> None:
     """
     Marks a nonce account as stale_needs_refresh when an on-chain transaction reverts.
@@ -68,24 +73,33 @@ def mark_nonce_account_stale(conn: Optional[sqlite3.Connection] = None, pubkey: 
     if not pubkey:
         return
     with get_db_cursor(conn, db_path) as cursor:
-        cursor.execute("""
-            UPDATE nonce_accounts 
-            SET status = 'stale_needs_refresh', locked_at = CURRENT_TIMESTAMP 
+        cursor.execute(
+            """
+            UPDATE nonce_accounts
+            SET status = 'stale_needs_refresh', locked_at = CURRENT_TIMESTAMP
             WHERE pubkey = ?
-        """, (pubkey,))
+        """,
+            (pubkey,),
+        )
 
-def refresh_stale_nonce_account(conn: Optional[sqlite3.Connection] = None, pubkey: Optional[str] = None, new_nonce_hash: Optional[str] = None, db_path: str = DB_PATH) -> None:
+
+def refresh_stale_nonce_account(
+    conn: Optional[sqlite3.Connection] = None, pubkey: Optional[str] = None, new_nonce_hash: Optional[str] = None, db_path: str = DB_PATH
+) -> None:
     """
     Refreshes a stale nonce account after on-chain RPC getAccountInfo state fetch.
     """
     if not pubkey:
         return
     with get_db_cursor(conn, db_path) as cursor:
-        cursor.execute("""
-            UPDATE nonce_accounts 
-            SET status = 'free', locked_at = NULL 
+        cursor.execute(
+            """
+            UPDATE nonce_accounts
+            SET status = 'free', locked_at = NULL
             WHERE pubkey = ?
-        """, (pubkey,))
+        """,
+            (pubkey,),
+        )
 
 
 def verify_nonce_instruction_ordering(instructions: list) -> bool:
@@ -98,14 +112,9 @@ def verify_nonce_instruction_ordering(instructions: list) -> bool:
     has_nonce = any(isinstance(ix, dict) and ix.get("instruction") == "AdvanceNonceAccount" for ix in instructions)
     if not has_nonce:
         return True
-    
+
     # Filter out Compute Budget instructions
-    exec_instructions = [
-        ix for ix in instructions 
-        if isinstance(ix, dict) and ix.get("instruction") not in ("SetComputeUnitPrice", "SetComputeUnitLimit")
-    ]
+    exec_instructions = [ix for ix in instructions if isinstance(ix, dict) and ix.get("instruction") not in ("SetComputeUnitPrice", "SetComputeUnitLimit")]
     if not exec_instructions:
         return True
     return exec_instructions[0].get("instruction") == "AdvanceNonceAccount"
-
-

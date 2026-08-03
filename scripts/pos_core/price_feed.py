@@ -8,37 +8,38 @@ from typing import Dict, Optional, Any
 
 DEFAULT_STATIC_FIAT_RATES: Dict[str, float] = {
     # Major Global Currencies & Regional Markets
-    "USD": 1.00,    # US Dollar
-    "EUR": 0.92,    # Euro
-    "BRL": 5.45,    # Brazilian Real (Bounty Primary Focus!)
-    "UAH": 41.50,   # Ukrainian Hryvnia
-    "GBP": 0.78,    # British Pound
-    "CAD": 1.37,    # Canadian Dollar
+    "USD": 1.00,  # US Dollar
+    "EUR": 0.92,  # Euro
+    "BRL": 5.45,  # Brazilian Real (Bounty Primary Focus!)
+    "UAH": 41.50,  # Ukrainian Hryvnia
+    "GBP": 0.78,  # British Pound
+    "CAD": 1.37,  # Canadian Dollar
     "JPY": 152.50,  # Japanese Yen
-    "MXN": 19.80,   # Mexican Peso
-    "PLN": 3.98,    # Polish Zloty
-    "CHF": 0.88,    # Swiss Franc
-    "AUD": 1.52,    # Australian Dollar
-    "SEK": 10.45,   # Swedish Krona
-    "NOK": 10.85,   # Norwegian Krone
-    "DKK": 6.88,    # Danish Krone
-    "NZD": 1.65,    # New Zealand Dollar
-    "SGD": 1.34,    # Singapore Dollar
-    "HKD": 7.81,    # Hong Kong Dollar
-    "INR": 83.70,   # Indian Rupee
-    "TRY": 33.10,   # Turkish Lira
-    "ZAR": 18.20,   # South African Rand
-    "AED": 3.67,    # UAE Dirham
-    "CZK": 23.20,   # Czech Koruna
+    "MXN": 19.80,  # Mexican Peso
+    "PLN": 3.98,  # Polish Zloty
+    "CHF": 0.88,  # Swiss Franc
+    "AUD": 1.52,  # Australian Dollar
+    "SEK": 10.45,  # Swedish Krona
+    "NOK": 10.85,  # Norwegian Krone
+    "DKK": 6.88,  # Danish Krone
+    "NZD": 1.65,  # New Zealand Dollar
+    "SGD": 1.34,  # Singapore Dollar
+    "HKD": 7.81,  # Hong Kong Dollar
+    "INR": 83.70,  # Indian Rupee
+    "TRY": 33.10,  # Turkish Lira
+    "ZAR": 18.20,  # South African Rand
+    "AED": 3.67,  # UAE Dirham
+    "CZK": 23.20,  # Czech Koruna
     "HUF": 365.00,  # Hungarian Forint
-    "THB": 35.80,   # Thai Baht
-    "PHP": 58.40,   # Philippine Peso
-    "IDR": 16250.0, # Indonesian Rupiah
-    "ILS": 3.72,    # Israeli New Shekel
+    "THB": 35.80,  # Thai Baht
+    "PHP": 58.40,  # Philippine Peso
+    "IDR": 16250.0,  # Indonesian Rupiah
+    "ILS": 3.72,  # Israeli New Shekel
     "CLP": 940.00,  # Chilean Peso
-    "COP": 4050.00, # Colombian Peso
+    "COP": 4050.00,  # Colombian Peso
     "ARS": 930.00,  # Argentine Peso
 }
+
 
 def get_multitier_fiat_rate(
     fiat_currency: str,
@@ -46,7 +47,7 @@ def get_multitier_fiat_rate(
     secondary_data: Optional[Dict[str, Any]] = None,
     cached_data: Optional[Dict[str, Any]] = None,
     current_ts: Optional[int] = None,
-    allow_static_fallback: bool = True
+    allow_static_fallback: bool = True,
 ) -> Dict[str, Any]:
     """
     Multi-Tier Price Feed Fallback Circuit Breaker:
@@ -90,11 +91,7 @@ def get_multitier_fiat_rate(
     # Tier 4: Quaternary Static Offline Fallback (only for mapped currencies)
     if allow_static_fallback:
         if curr in DEFAULT_STATIC_FIAT_RATES:
-            return {
-                "rate": float(DEFAULT_STATIC_FIAT_RATES[curr]),
-                "tier": "quaternary_static_fallback",
-                "status": "OFFLINE_STATIC_FALLBACK"
-            }
+            return {"rate": float(DEFAULT_STATIC_FIAT_RATES[curr]), "tier": "quaternary_static_fallback", "status": "OFFLINE_STATIC_FALLBACK"}
 
     # Tier 5: Fail-Closed Guard (prevents 1.0 default fallback for unmapped currencies like JPY/MXN)
     raise ValueError(f"FAIL_CLOSED: Unsupported or unmapped fiat currency '{curr}'")

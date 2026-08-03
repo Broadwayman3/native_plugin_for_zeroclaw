@@ -15,7 +15,7 @@ from pos_core.constants import (
     DEFAULT_SLIPPAGE_TOLERANCE_PCT,
     DEFAULT_COMMITMENT_THRESHOLD_USDC,
     NONCE_TTL_MINUTES,
-    DEFAULT_SOCKET_TIMEOUT
+    DEFAULT_SOCKET_TIMEOUT,
 )
 from pos_core.db import (
     DB_PATH,
@@ -30,26 +30,13 @@ from pos_core.db import (
     get_invoices_list,
     create_invoice_record,
     update_invoice_status_record,
-    cancel_invoice_record
+    cancel_invoice_record,
+    create_squads_proposal,
+    update_squads_proposal_status,
 )
-from pos_core.formatters import (
-    format_pubkey_short,
-    get_solscan_tx_url,
-    is_valid_base58,
-    generate_solana_pay_qr_image_url,
-    generate_telegram_photo_payload
-)
-from pos_core.verification import (
-    _extract_token_balance_deltas,
-    _inspect_instructions_for_transfer,
-    verify_solana_transaction_payload
-)
-from pos_core.nonce_pool import (
-    allocate_free_nonce_account,
-    release_nonce_account,
-    mark_nonce_account_stale,
-    refresh_stale_nonce_account
-)
+from pos_core.formatters import format_pubkey_short, get_solscan_tx_url, is_valid_base58, generate_solana_pay_qr_image_url, generate_telegram_photo_payload
+from pos_core.verification import _extract_token_balance_deltas, _inspect_instructions_for_transfer, verify_solana_transaction_payload
+from pos_core.nonce_pool import allocate_free_nonce_account, release_nonce_account, mark_nonce_account_stale, refresh_stale_nonce_account
 from pos_core.solana_pay import (
     token_to_atomic_units,
     usdc_to_atomic_units,
@@ -64,7 +51,7 @@ from pos_core.solana_pay import (
     validate_squads_multisig_account,
     generate_solana_pay_url,
     generate_phantom_universal_link,
-    get_active_rpc_url
+    get_active_rpc_url,
 )
 from pos_core.i18n import (
     LANG_META,
@@ -76,24 +63,21 @@ from pos_core.i18n import (
     t,
     format_itemized_receipt,
     get_refund_checkpoint_inline_keyboard,
-    get_cancel_invoice_inline_keyboard
+    get_cancel_invoice_inline_keyboard,
+)
+from pos_core.bot_ui_handlers import (
+    handle_callback_query,
+    handle_text_message,
+)
+from pos_core.bot_ui_utils import (
+    parse_pos_order_input,
+    build_answer_callback_payload,
+    build_get_updates_payload,
 )
 
-from pos_core.pix_brl import (
-    calculate_pix_crc16,
-    generate_pix_emv_payload
-)
-from pos_core.price_feed import (
-    DEFAULT_STATIC_FIAT_RATES,
-    get_multitier_fiat_rate
-)
-from pos_core.router import (
-    route_get,
-    route_post,
-    handle_options_request,
-    dispatch_request,
-    send_json_response
-)
+from pos_core.pix_brl import calculate_pix_crc16, generate_pix_emv_payload
+from pos_core.price_feed import DEFAULT_STATIC_FIAT_RATES, get_multitier_fiat_rate
+from pos_core.router import route_get, route_post, handle_options_request, dispatch_request, send_json_response
 
 __all__ = [
     "USDC_DECIMALS",
@@ -160,10 +144,16 @@ __all__ = [
     "generate_pix_emv_payload",
     "DEFAULT_STATIC_FIAT_RATES",
     "get_multitier_fiat_rate",
+    "handle_callback_query",
+    "handle_text_message",
+    "build_get_updates_payload",
+    "build_answer_callback_payload",
+    "parse_pos_order_input",
+    "create_squads_proposal",
+    "update_squads_proposal_status",
     "route_get",
     "route_post",
     "handle_options_request",
     "dispatch_request",
-    "send_json_response"
+    "send_json_response",
 ]
-

@@ -22,9 +22,13 @@ from tests import (
     test_edge_solana,
     test_edge_storage,
     test_edge_math_and_blinks,
-    test_telegram_listener_flow
+    test_telegram_listener_flow,
+    test_telegram_bot,
+    test_telegram_bot_security,
+    test_telegram_bot_refund,
 )
-from pos_core import init_db, cleanup_db_files, DB_PATH
+from pos_core import init_db, cleanup_db_files
+
 
 def run_boundary_tests():
     init_db()
@@ -44,22 +48,22 @@ def run_boundary_tests():
     tests_passed += test_edge_storage.run_suite()
     tests_passed += test_edge_math_and_blinks.run_suite()
     tests_passed += test_telegram_listener_flow.run_suite()
+    tests_passed += test_telegram_bot.run_suite()
+    tests_passed += test_telegram_bot_security.run_suite()
+    tests_passed += test_telegram_bot_refund.run_suite()
 
-    total_tests = 321
+    total_tests = 358
     cleanup_db_files("data/test_boundary.db")
 
     print("\n-----------------------------------------------------------------")
     print(f"📊 Summary: {tests_passed}/{total_tests} Boundary & Edge Case Tests PASSED (100% Rate)")
     return tests_passed
 
+
 def test_boundary_suite():
     """Pytest entrypoint to execute full boundary test suite."""
     passed = run_boundary_tests()
-    assert passed == 321
-
-
-
-
+    assert passed == 358
 
 
 if __name__ == "__main__":

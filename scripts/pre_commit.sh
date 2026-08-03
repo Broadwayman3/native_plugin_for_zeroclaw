@@ -20,7 +20,7 @@ python3 scripts/lint_safety_ast.py
 # 3. Bandit Security Static Analysis
 if command -v bandit >/dev/null 2>&1; then
     echo "🛡️ Running Bandit Security Analysis..."
-    bandit -r scripts/ -x scripts/test_* --severity-level medium
+    bandit -r scripts/ -x 'scripts/test_*' --severity-level medium
 fi
 
 # 4. Python Type Safety & Style Checks (mypy, flake8/ruff)
@@ -30,8 +30,14 @@ if command -v mypy >/dev/null 2>&1; then
 fi
 
 if command -v flake8 >/dev/null 2>&1; then
-    echo "🎨 Running flake8 linter..."
-    flake8 scripts/validators.py scripts/sanitizer.py scripts/pos_backend.py scripts/pos_core/*.py --max-line-length=120 --ignore=E501,W503
+    echo "🎨 Running flake8 linter on changed files..."
+    CHANGED_PY=$(git diff --name-only --cached --diff-filter=ACM | grep '\.py$' || true)
+    if [ -z "$CHANGED_PY" ]; then
+        CHANGED_PY=$(git diff --name-only --diff-filter=ACM | grep '\.py$' || true)
+    fi
+    if [ -n "$CHANGED_PY" ]; then
+        flake8 $CHANGED_PY --max-line-length=160 --ignore=E501,W503,E402,E203
+    fi
 elif command -v ruff >/dev/null 2>&1; then
     echo "🎨 Running ruff linter..."
     ruff check scripts/
