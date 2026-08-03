@@ -5,7 +5,12 @@ pub fn generate_lang_inline_keyboard() -> serde_json::Value {
     let mut rows = Vec::new();
     let mut row = Vec::new();
 
-    for (code, (flag, _)) in LANG_META.iter() {
+    // Use sorted keys for deterministic button order
+    let mut sorted_keys: Vec<&str> = LANG_META.keys().copied().collect();
+    sorted_keys.sort();
+
+    for code in sorted_keys {
+        let (flag, _) = LANG_META[code];
         row.push(serde_json::json!({
             "text": format!("{} {}", flag, code.to_uppercase()),
             "callback_data": format!("set_lang_{}", code)
@@ -81,4 +86,12 @@ pub fn build_answer_callback_payload(
     }
 
     payload
+}
+
+/// Builds a Telegram getUpdates JSON payload for long-polling.
+pub fn build_get_updates_payload(offset: i64, timeout: i64) -> serde_json::Value {
+    serde_json::json!({
+        "offset": offset,
+        "timeout": timeout
+    })
 }

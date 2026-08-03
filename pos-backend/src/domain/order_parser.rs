@@ -1,4 +1,12 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashMap;
+
+static RE_CURRENCY: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(\d+(?:\.\d+)?)\s*([a-zA-Z]{3}|₴|\$|€|R\$|zł|TL)\b").unwrap()
+});
+
+static RE_PLAIN_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*(\d+(?:\.\d+)?)\s*$").unwrap());
 
 /// Parses POS order input text to extract amount, currency, and items.
 pub fn parse_pos_order_input(
@@ -10,11 +18,7 @@ pub fn parse_pos_order_input(
     let mut result = HashMap::new();
 
     // Try to match currency patterns: "150 UAH", "35.50 BRL", "12 USD", "$100", "€50", etc.
-    let re_curr = regex::Regex::new(
-        r"(?i)(\d+(?:\.\d+)?)\s*([a-zA-Z]{3}|₴|\$|€|R\$|zł|TL)\b"
-    ).unwrap();
-
-    if let Some(caps) = re_curr.captures(text_clean) {
+    if let Some(caps) = RE_CURRENCY.captures(text_clean) {
         let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or(0.0);
         let curr_str = caps.get(2).unwrap().as_str();
 
@@ -25,7 +29,8 @@ pub fn parse_pos_order_input(
             "R$" | "REAL" => "BRL",
             "ZŁ" => "PLN",
             _ => curr_str,
-        }.to_uppercase();
+        }
+        .to_uppercase();
 
         let matched_str = caps.get(0).unwrap().as_str();
         let items_part = text_clean.replace(matched_str, "").trim().to_string();
@@ -39,15 +44,20 @@ pub fn parse_pos_order_input(
         };
 
         result.insert("has_price".to_string(), serde_json::Value::Bool(true));
-        result.insert("items".to_string(), serde_json::Value::String(final_item));
+        result.insert(
+            "items".to_string(),
+            serde_json::Value::String(final_item),
+        );
         result.insert("amount".to_string(), serde_json::json!(amt));
-        result.insert("currency".to_string(), serde_json::Value::String(curr));
+        result.insert(
+            "currency".to_string(),
+            serde_json::Value::String(curr),
+        );
         return result;
     }
 
     // Try bare number (defaults to UAH)
-    let re_num = regex::Regex::new(r"^\s*(\d+(?:\.\d+)?)\s*$").unwrap();
-    if let Some(caps) = re_num.captures(text_clean) {
+    if let Some(caps) = RE_PLAIN_NUMBER.captures(text_clean) {
         let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or(0.0);
         let final_item = if let Some(draft) = draft_items {
             draft.to_string()
@@ -56,15 +66,24 @@ pub fn parse_pos_order_input(
         };
 
         result.insert("has_price".to_string(), serde_json::Value::Bool(true));
-        result.insert("items".to_string(), serde_json::Value::String(final_item));
+        result.insert(
+            "items".to_string(),
+            serde_json::Value::String(final_item),
+        );
         result.insert("amount".to_string(), serde_json::json!(amt));
-        result.insert("currency".to_string(), serde_json::Value::String("UAH".to_string()));
+        result.insert(
+            "currency".to_string(),
+            serde_json::Value::String("UAH".to_string()),
+        );
         return result;
     }
 
     // No price found
     result.insert("has_price".to_string(), serde_json::Value::Bool(false));
-    result.insert("items".to_string(), serde_json::Value::String(text_clean.to_string()));
+    result.insert(
+        "items".to_string(),
+        serde_json::Value::String(text_clean.to_string()),
+    );
     result.insert("amount".to_string(), serde_json::Value::Null);
     result.insert("currency".to_string(), serde_json::Value::Null);
     result

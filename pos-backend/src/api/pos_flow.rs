@@ -46,7 +46,7 @@ pub async fn handle_create_order(
             .get("items")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let prompt_text = domain::i18n::t_raw(
+        let prompt_text = domain::i18n::t(
             "price_needed",
             Some(lang),
             &[("items", items)],
@@ -56,7 +56,7 @@ pub async fn handle_create_order(
             "action": "prompt_price",
             "message": prompt_text,
             "items": items,
-            "parse_mode": "Markdown"
+            "parse_mode": "MarkdownV2"
         })));
     }
 

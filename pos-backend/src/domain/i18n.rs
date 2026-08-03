@@ -38,6 +38,12 @@ pub fn t_raw(key: &str, lang: Option<&str>, kwargs: &[(&str, &str)]) -> String {
     t_impl(key, lang, false, kwargs)
 }
 
+/// Backward-compatible alias for t() (Python's get_localized_message).
+/// Returns escaped message by default (safe for Telegram output).
+pub fn get_localized_message(key: &str, lang: &str, kwargs: &[(&str, &str)]) -> String {
+    t(key, Some(lang), kwargs)
+}
+
 /// Internal implementation for localized message retrieval.
 fn t_impl(key: &str, lang: Option<&str>, escape_markdown: bool, kwargs: &[(&str, &str)]) -> String {
     let clean = normalize_lang(lang.unwrap_or("en"));

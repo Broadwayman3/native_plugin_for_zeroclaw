@@ -36,6 +36,7 @@ pub fn is_valid_base58(pubkey_str: &str) -> bool {
 }
 
 /// Generates QR code image URL for Solana Pay.
+/// Default size is 300x300 pixels.
 pub fn generate_solana_pay_qr_image_url(solana_pay_url: &str, size: u32) -> String {
     let encoded = urlencoding::encode(solana_pay_url);
     format!(
