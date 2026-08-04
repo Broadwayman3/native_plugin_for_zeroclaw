@@ -4,16 +4,6 @@ Base URL: `http://localhost:8080`
 
 ## Endpoints
 
-### Health Check
-
-```
-GET /health
-```
-
-Returns `200 OK`.
-
----
-
 ### Actions / Blinks
 
 #### Get Actions Spec
