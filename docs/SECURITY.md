@@ -55,4 +55,4 @@ All external input (customer names, memos, merchant tags) is sanitized via:
 - Fake payment confirmation injection
 - Squads v4 direct transfer bypass
 
-Full audit log: see git history for `PROMPT_INJECTION_TEST.md`.
+Full audit log: 6/6 prompt injection tests passed (SEC-01 through SEC-06).
