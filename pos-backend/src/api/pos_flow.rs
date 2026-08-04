@@ -60,19 +60,30 @@ pub async fn handle_create_order(
         .unwrap_or("UAH");
     let item_desc = parsed.get("items").and_then(|v| v.as_str()).unwrap_or("");
 
-    // Get fiat rate
+    // Get fiat rate — return error if unavailable (no fallback to 1.0)
     let rate_info =
         domain::price_feed::get_multitier_fiat_rate(fiat_curr, None, None, None, None, true)
-            .unwrap_or_else(|_| serde_json::json!({"rate": 1.0}));
+            .map_err(|e| {
+                eprintln!(
+                    "⚠️ Price feed unavailable for {}: {}. Invoice not created.",
+                    fiat_curr, e
+                );
+                AppError::BadRequest(format!(
+                    "Price feed unavailable for {}. Cannot create invoice.",
+                    fiat_curr
+                ))
+            })?;
     let rate = rate_info
         .get("rate")
         .and_then(|v| v.as_f64())
-        .unwrap_or(1.0);
+        .ok_or_else(|| AppError::BadRequest("Invalid rate data from price feed".into()))?;
 
-    let usdc_amt = (fiat_amt / rate * 100.0).round() / 100.0;
+    // USDC amount via u128 atomic units (6 decimals)
+    let usdc_atomic = pos_core_logic::safe_f64_to_u64_atomic(fiat_amt / rate, 6);
+    let usdc_amt = usdc_atomic as f64 / 1_000_000.0;
 
     // Generate invoice
-    let inv_id = format!("INV-{}", rand::random::<u32>() % 800 + 200);
+    let inv_id = format!("INV-{}", uuid::Uuid::new_v4());
     let ref_key = pos_core_logic::generate_secure_reference_key();
 
     let conn = db::get_db_connection(&state.config.db_path)?;

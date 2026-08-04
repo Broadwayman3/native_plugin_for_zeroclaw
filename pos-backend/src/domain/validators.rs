@@ -144,9 +144,10 @@ pub fn truncate_for_context(data: &serde_json::Value, max_tokens: usize) -> serd
             if let Some(value) = obj.get(*key) {
                 if let Some(s) = value.as_str() {
                     if s.len() > 44 {
+                        let truncated: String = s.chars().take(41).collect();
                         pruned.insert(
                             key.to_string(),
-                            serde_json::Value::String(format!("{}...", &s[..41])),
+                            serde_json::Value::String(format!("{}...", truncated)),
                         );
                     } else {
                         pruned.insert(key.to_string(), value.clone());

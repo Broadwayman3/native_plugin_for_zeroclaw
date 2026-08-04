@@ -2,6 +2,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
+use crate::domain::sanitizer::redact_api_key;
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("Database error: {0}")]
@@ -54,14 +56,4 @@ impl IntoResponse for AppError {
 
         (status, axum::Json(body)).into_response()
     }
-}
-
-/// Redacts API keys, tokens, and secrets from error messages.
-pub fn redact_api_key(msg: &str) -> String {
-    let re_api_key = regex::Regex::new(r"(?i)(api[_-]?key|token|secret)=[^&\s]+").unwrap();
-    let re_byte_array = regex::Regex::new(r"\[\s*\d{1,3}\s*(?:,\s*\d{1,3}\s*){31,}\]").unwrap();
-
-    let masked = re_api_key.replace_all(msg, "$1=REDACTED");
-    let masked = re_byte_array.replace_all(&masked, "[REDACTED_BYTE_KEYPAIR]");
-    masked.to_string()
 }

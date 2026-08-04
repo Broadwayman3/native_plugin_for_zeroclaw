@@ -14,7 +14,7 @@ pub fn get_lang_meta(lang_code: &str) -> (&'static str, &'static str) {
     LANG_META
         .get(clean.as_str())
         .copied()
-        .unwrap_or_else(|| *LANG_META.get("en").unwrap())
+        .unwrap_or(("\u{1F1FA}\u{1F1F3}", "English"))
 }
 
 /// Returns localized language change confirmation message.
@@ -24,7 +24,7 @@ pub fn get_localized_confirmation(lang_code: &str) -> String {
     let template = TRANSLATIONS
         .get(clean.as_str())
         .and_then(|d| d.get("lang_confirm"))
-        .unwrap_or_else(|| TRANSLATIONS["en"].get("lang_confirm").unwrap());
+        .unwrap_or(&"🌐 Interface language successfully changed to {flag} {lang_name}!");
 
     template
         .replace("{flag}", flag)
@@ -94,11 +94,13 @@ pub fn get_cancel_invoice_inline_keyboard(invoice_id: &str, lang: &str) -> serde
 }
 
 /// Builds inline keyboard for Squads v4 refund approve/reject.
-pub fn get_refund_checkpoint_inline_keyboard(refund_id: i64) -> serde_json::Value {
+pub fn get_refund_checkpoint_inline_keyboard(refund_id: i64, lang: &str) -> serde_json::Value {
+    let approve_label = t_raw("btn_approve", Some(lang), &[]);
+    let reject_label = t_raw("btn_reject", Some(lang), &[]);
     serde_json::json!({
         "inline_keyboard": [[
-            {"text": "✅ Approve", "callback_data": format!("approve_refund_{}", refund_id)},
-            {"text": "🚫 Reject", "callback_data": format!("reject_refund_{}", refund_id)}
+            {"text": approve_label, "callback_data": format!("approve_refund_{}", refund_id)},
+            {"text": reject_label, "callback_data": format!("reject_refund_{}", refund_id)}
         ]]
     })
 }

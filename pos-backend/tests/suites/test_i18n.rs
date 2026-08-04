@@ -101,7 +101,7 @@ fn test_109_get_cancel_invoice_keyboard() {
 }
 
 fn test_110_get_refund_checkpoint_keyboard() {
-    let kb = pos_backend::domain::i18n::get_refund_checkpoint_inline_keyboard(42);
+    let kb = pos_backend::domain::i18n::get_refund_checkpoint_inline_keyboard(42, "en");
     let approve = kb["inline_keyboard"][0][0]["callback_data"]
         .as_str()
         .unwrap_or("");

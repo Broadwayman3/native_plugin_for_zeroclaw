@@ -62,6 +62,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Sales Summary");
             m.insert("btn_refund", "🔄 Refund");
             m.insert("btn_lang", "🌐 Languages (13)");
+            m.insert("btn_approve", "✅ Approve");
+            m.insert("btn_reject", "🚫 Reject");
             m.insert("cancel_btn_text", "❌ Cancel Invoice / Void");
             m.insert("void_confirmed", "❌ Invoice #{invoice_id} voided!");
             m.insert(
@@ -134,6 +136,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Звіт продажів");
             m.insert("btn_refund", "🔄 Рефанд (Refund)");
             m.insert("btn_lang", "🌐 13 Мов / Languages");
+            m.insert("btn_approve", "✅ Схвалити");
+            m.insert("btn_reject", "🚫 Відхилити");
             m.insert("cancel_btn_text", "❌ Скасувати чек / Void");
             m.insert("void_confirmed", "❌ Чек #{invoice_id} скасовано!");
             m.insert(
@@ -191,6 +195,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Resumo de vendas");
             m.insert("btn_refund", "🔄 Reembolso");
             m.insert("btn_lang", "🌐 Idiomas (13)");
+            m.insert("btn_approve", "✅ Aprovar");
+            m.insert("btn_reject", "🚫 Rejeitar");
             m.insert("cancel_btn_text", "❌ Cancelar fatura / Void");
             m.insert("void_confirmed", "❌ Fatura #{invoice_id} cancelada!");
             m.insert(
@@ -251,6 +257,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Resumen de ventas");
             m.insert("btn_refund", "🔄 Reembolso");
             m.insert("btn_lang", "🌐 Idiomas (13)");
+            m.insert("btn_approve", "✅ Aprobar");
+            m.insert("btn_reject", "🚫 Rechazar");
             m.insert("cancel_btn_text", "❌ Cancelar factura / Void");
             m.insert("void_confirmed", "❌ ¡Factura #{invoice_id} cancelada!");
             m.insert(
@@ -311,6 +319,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Verkaufsübersicht");
             m.insert("btn_refund", "🔄 Rückerstattung");
             m.insert("btn_lang", "🌐 Sprachen (13)");
+            m.insert("btn_approve", "✅ Genehmigen");
+            m.insert("btn_reject", "🚫 Ablehnen");
             m.insert("cancel_btn_text", "❌ Beleg stornieren / Void");
             m.insert("void_confirmed", "❌ Beleg #{invoice_id} storniert!");
             m.insert(
@@ -374,6 +384,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Résumé des ventes");
             m.insert("btn_refund", "🔄 Remboursement");
             m.insert("btn_lang", "🌐 Langues (13)");
+            m.insert("btn_approve", "✅ Approuver");
+            m.insert("btn_reject", "🚫 Rejeter");
             m.insert("cancel_btn_text", "❌ Annuler la facture / Void");
             m.insert("void_confirmed", "❌ Facture #{invoice_id} annulée !");
             m.insert(
@@ -434,6 +446,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Riepilogo vendite");
             m.insert("btn_refund", "🔄 Rimborso");
             m.insert("btn_lang", "🌐 Lingue (13)");
+            m.insert("btn_approve", "✅ Approva");
+            m.insert("btn_reject", "🚫 Rifiuta");
             m.insert("cancel_btn_text", "❌ Annulla scontrino / Void");
             m.insert("void_confirmed", "❌ Scontrino #{invoice_id} annullato!");
             m.insert(
@@ -500,6 +514,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Podsumowanie sprzedaży");
             m.insert("btn_refund", "🔄 Zwrot");
             m.insert("btn_lang", "🌐 Języki (13)");
+            m.insert("btn_approve", "✅ Zatwierdzić");
+            m.insert("btn_reject", "🚫 Odrzucić");
             m.insert("cancel_btn_text", "❌ Anuluj paragon / Void");
             m.insert("void_confirmed", "❌ Paragon #{invoice_id} anulowany!");
             m.insert(
@@ -560,6 +576,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 Satış Özeti");
             m.insert("btn_refund", "🔄 İade");
             m.insert("btn_lang", "🌐 Diller (13)");
+            m.insert("btn_approve", "✅ Onayla");
+            m.insert("btn_reject", "🚫 Reddet");
             m.insert("cancel_btn_text", "❌ Fişi İptal Et / Void");
             m.insert("void_confirmed", "❌ Fiş #{invoice_id} iptal edildi!");
             m.insert(
@@ -629,6 +647,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 売上概要");
             m.insert("btn_refund", "🔄 返金");
             m.insert("btn_lang", "🌐 言語 (13)");
+            m.insert("btn_approve", "✅ 承認");
+            m.insert("btn_reject", "🚫 拒否");
             m.insert("cancel_btn_text", "❌ レシートをキャンセル / Void");
             m.insert(
                 "void_confirmed",
@@ -701,6 +721,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 销售摘要");
             m.insert("btn_refund", "🔄 退款");
             m.insert("btn_lang", "🌐 语言 (13)");
+            m.insert("btn_approve", "✅ 批准");
+            m.insert("btn_reject", "🚫 拒绝");
             m.insert("cancel_btn_text", "❌ 取消收据 / Void");
             m.insert("void_confirmed", "❌ 收据 #{invoice_id} 已取消！");
             m.insert(
@@ -773,6 +795,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 ملخص المبيعات");
             m.insert("btn_refund", "🔄 استرداد");
             m.insert("btn_lang", "🌐 اللغات (13)");
+            m.insert("btn_approve", "✅ موافقة");
+            m.insert("btn_reject", "🚫 رفض");
             m.insert("cancel_btn_text", "❌ إلغاء الإيصال / Void");
             m.insert("void_confirmed", "❌ تم إلغاء الإيصال #{invoice_id}!");
             m.insert(
@@ -839,6 +863,8 @@ pub static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<&'static str, &'stat
             m.insert("btn_sales", "📊 बिक्री सारांश");
             m.insert("btn_refund", "🔄 रिफंड");
             m.insert("btn_lang", "🌐 भाषाएँ (13)");
+            m.insert("btn_approve", "✅ मंजूरी");
+            m.insert("btn_reject", "🚫 अस्वीकृति");
             m.insert("cancel_btn_text", "❌ रसीद रद्द करें / Void");
             m.insert("void_confirmed", "❌ रसीद #{invoice_id} रद्द कर दी गई!");
             m.insert(

@@ -14,14 +14,14 @@ pub async fn handle_actions_spec() -> Json<serde_json::Value> {
     }))
 }
 
-/// GET /api/v1/actions/pay_invoice - Blink action GET
+/// GET /api/v1/actions/pay_invoice - Blink action GET (stub)
 pub async fn handle_action_get(
     Query(params): Query<HashMap<String, String>>,
 ) -> (StatusCode, HeaderMap, Json<serde_json::Value>) {
     let invoice_id = params
         .get("invoice_id")
         .map(|s| s.as_str())
-        .unwrap_or("INV-101");
+        .unwrap_or("unknown");
 
     let payload = serde_json::json!({
         "icon": "https://raw.githubusercontent.com/solana-developers/branding/main/assets/solana-pay-logo.png",
@@ -47,7 +47,7 @@ pub async fn handle_action_get(
     (StatusCode::OK, headers, Json(payload))
 }
 
-/// POST /api/v1/actions/pay_invoice - Blink action POST
+/// POST /api/v1/actions/pay_invoice - Blink action POST (not yet implemented)
 pub async fn handle_action_post(
     Json(data): Json<serde_json::Value>,
 ) -> Result<(StatusCode, HeaderMap, Json<serde_json::Value>), AppError> {
@@ -56,8 +56,7 @@ pub async fn handle_action_post(
     match account {
         Some(acc) if crate::domain::formatters::is_valid_base58(acc) => {
             let payload = serde_json::json!({
-                "transaction": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-                "message": "ZeroClaw POS Invoice Payment Transaction"
+                "error": "Solana Actions transaction building not yet implemented"
             });
 
             let mut headers = HeaderMap::new();
@@ -69,7 +68,7 @@ pub async fn handle_action_post(
                     .unwrap(),
             );
 
-            Ok((StatusCode::OK, headers, Json(payload)))
+            Ok((StatusCode::NOT_IMPLEMENTED, headers, Json(payload)))
         }
         _ => Err(AppError::BadRequest(
             "Invalid or missing 'account' Base58 public key field in Blink POST request"
