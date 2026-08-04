@@ -36,7 +36,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     );
     m.insert("select_lang", "🌐 *インターフェース言語を選択:*");
     m.insert("btn_custom", "✍️ 金額を入力");
-    m.insert("btn_quick_uah", "☕ クイックレシート (200 UAH)");
+    m.insert("btn_quick_uah", "☕ クイックレシート ({amount} {currency})");
     m.insert("btn_sales", "📊 売上概要");
     m.insert("btn_refund", "🔄 返金");
     m.insert("btn_lang", "🌐 言語 (13)");

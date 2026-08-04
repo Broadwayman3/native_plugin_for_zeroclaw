@@ -18,6 +18,10 @@ pub struct AppConfig {
     pub telegram_bot_secret_token: Option<String>,
     /// API keys for external client auth (comma-separated in env).
     pub api_keys: Vec<String>,
+    /// Quick receipt button amount (default: 200.0).
+    pub quick_receipt_amount: f64,
+    /// Quick receipt button currency (default: "UAH").
+    pub quick_receipt_currency: String,
 }
 
 impl AppConfig {
@@ -53,6 +57,11 @@ impl AppConfig {
             .filter(|s| !s.is_empty())
             .collect();
 
+        let quick_receipt_amount: f64 = env_or_default("QUICK_RECEIPT_AMOUNT", "200.0")
+            .parse()
+            .unwrap_or(200.0);
+        let quick_receipt_currency = env_or_default("QUICK_RECEIPT_CURRENCY", "UAH");
+
         Ok(Self {
             manager_telegram_id,
             merchant_wallet_pubkey,
@@ -75,6 +84,8 @@ impl AppConfig {
             rate_limit_rps,
             telegram_bot_secret_token,
             api_keys,
+            quick_receipt_amount,
+            quick_receipt_currency,
         })
     }
 }

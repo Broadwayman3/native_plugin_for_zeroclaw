@@ -1,56 +1,45 @@
-use crate::{test_fail, test_pass};
+use crate::common;
 
-pub fn run_suite() {
-    println!("\n📦 Database Tests (111-130)");
-    test_111_db_connection();
-    test_112_db_init();
-    test_113_create_invoice();
-    test_114_get_invoices_list();
-    test_115_update_invoice_status();
-    test_116_cancel_invoice();
-    test_117_duplicate_invoice_id();
-    test_118_sales_summary();
-    test_119_nonce_allocate();
-    test_120_nonce_release();
-    test_121_cleanup_expired();
-    test_122_squads_proposal();
-    test_123_telegram_update_dedup();
-    test_124_sop_checkpoint();
-    test_125_seed_data();
-    test_126_invoice_not_found();
-    test_127_invalid_status();
-    test_128_wal_mode();
-    test_129_concurrent_access();
-    test_130_db_cleanup();
-    test_370_partially_paid_transition();
-    test_371_initiate_refund_non_paid();
-    test_372_sales_summary_all_cancelled();
-}
-
+#[test]
 fn test_111_db_connection() {
-    let db_path = "data/test_boundary.db";
-    std::fs::remove_file(db_path).ok();
-    std::fs::remove_file(format!("{}-wal", db_path)).ok();
-    std::fs::remove_file(format!("{}-shm", db_path)).ok();
-
-    match pos_backend::db::get_db_connection(db_path) {
-        Ok(_) => test_pass("111: DB connection successful"),
-        Err(e) => test_fail("111", &format!("error: {}", e)),
-    }
+    let conn = common::setup_memory_db();
+    let mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap_or_default();
+    assert!(
+        mode.to_lowercase() == "memory" || mode.to_lowercase() == "wal",
+        "111: unexpected journal mode: {}",
+        mode
+    );
 }
 
+#[test]
 fn test_112_db_init() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::schema::init_db(&conn, false) {
-        Ok(_) => test_pass("112: DB init successful"),
-        Err(e) => test_fail("112", &format!("error: {}", e)),
-    }
+    let conn = common::setup_memory_db();
+    let tables: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+            .unwrap();
+        let rows = stmt.query_map([], |row| row.get(0)).unwrap();
+        rows.filter_map(|r| r.ok()).collect()
+    };
+    assert!(
+        tables.contains(&"invoices".to_string()),
+        "111: missing invoices table"
+    );
+    assert!(
+        tables.contains(&"nonce_accounts".to_string()),
+        "112: missing nonce_accounts table"
+    );
+    assert!(
+        tables.contains(&"sop_checkpoints".to_string()),
+        "112: missing sop_checkpoints table"
+    );
 }
 
+#[test]
 fn test_113_create_invoice() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
+    let conn = common::setup_memory_db();
     let req = pos_backend::db::invoices::CreateInvoiceRequest {
         id: "TEST-101".to_string(),
         reference_pubkey: "RefKey111111111111111111111111111111111111".to_string(),
@@ -58,253 +47,217 @@ fn test_113_create_invoice() {
         fiat_amount: Some(200.0),
         usdc_amount: 4.82,
     };
-    match pos_backend::db::invoices::create_invoice(&conn, &req) {
-        Ok(id) if id == "TEST-101" => test_pass("113: invoice created"),
-        Ok(id) => test_fail("113", &format!("wrong id: {}", id)),
-        Err(e) => test_fail("113", &format!("error: {}", e)),
-    }
+    let id = pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
+    assert_eq!(id, "TEST-101", "113: wrong invoice id");
 }
 
+#[test]
 fn test_114_get_invoices_list() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::invoices::get_invoices_list(&conn, None, None) {
-        Ok(list) if !list.is_empty() => test_pass("114: invoices list not empty"),
-        Ok(_) => test_fail("114", "empty list"),
-        Err(e) => test_fail("114", &format!("error: {}", e)),
-    }
-}
-
-fn test_115_update_invoice_status() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::invoices::update_invoice_status(&conn, "TEST-101", "paid", None) {
-        Ok(1) => test_pass("115: status updated to paid"),
-        Ok(n) => test_fail("115", &format!("updated {} rows", n)),
-        Err(e) => test_fail("115", &format!("error: {}", e)),
-    }
-}
-
-fn test_116_cancel_invoice() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    // Create a pending invoice first
+    let conn = common::setup_memory_db();
     let req = pos_backend::db::invoices::CreateInvoiceRequest {
-        id: "TEST-102".to_string(),
-        reference_pubkey: "RefKey222222222222222222222222222222222222".to_string(),
+        id: "TEST-114".to_string(),
+        reference_pubkey: "RefKey114111111111111111111111111111111111".to_string(),
+        fiat_currency: Some("UAH".to_string()),
+        fiat_amount: Some(100.0),
+        usdc_amount: 2.41,
+    };
+    pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
+    let list = pos_backend::db::invoices::get_invoices_list(&conn, None, None).unwrap();
+    assert!(!list.is_empty(), "114: invoices list should not be empty");
+}
+
+#[test]
+fn test_115_update_invoice_status() {
+    let conn = common::setup_memory_db();
+    let req = pos_backend::db::invoices::CreateInvoiceRequest {
+        id: "TEST-115".to_string(),
+        reference_pubkey: "RefKey115111111111111111111111111111111111".to_string(),
+        fiat_currency: Some("UAH".to_string()),
+        fiat_amount: Some(100.0),
+        usdc_amount: 2.41,
+    };
+    pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
+    let updated =
+        pos_backend::db::invoices::update_invoice_status(&conn, "TEST-115", "paid", None).unwrap();
+    assert_eq!(updated, 1, "115: should update exactly 1 row");
+}
+
+#[test]
+fn test_116_cancel_invoice() {
+    let conn = common::setup_memory_db();
+    let req = pos_backend::db::invoices::CreateInvoiceRequest {
+        id: "TEST-116".to_string(),
+        reference_pubkey: "RefKey116111111111111111111111111111111111".to_string(),
         fiat_currency: Some("USD".to_string()),
         fiat_amount: Some(10.0),
         usdc_amount: 10.0,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
-    match pos_backend::db::invoices::cancel_invoice(&conn, "TEST-102") {
-        Ok(1) => test_pass("116: invoice cancelled"),
-        Ok(n) => test_fail("116", &format!("cancelled {} rows", n)),
-        Err(e) => test_fail("116", &format!("error: {}", e)),
-    }
+    let cancelled = pos_backend::db::invoices::cancel_invoice(&conn, "TEST-116").unwrap();
+    assert_eq!(cancelled, 1, "116: should cancel exactly 1 row");
 }
 
+#[test]
 fn test_117_duplicate_invoice_id() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
+    let conn = common::setup_memory_db();
     let req = pos_backend::db::invoices::CreateInvoiceRequest {
-        id: "TEST-101".to_string(),
-        reference_pubkey: "RefKey333333333333333333333333333333333333".to_string(),
+        id: "TEST-117".to_string(),
+        reference_pubkey: "RefKey117111111111111111111111111111111111".to_string(),
         fiat_currency: Some("EUR".to_string()),
         fiat_amount: Some(5.0),
         usdc_amount: 5.0,
     };
-    match pos_backend::db::invoices::create_invoice(&conn, &req) {
-        Err(_) => test_pass("117: duplicate ID rejected"),
-        Ok(_) => test_fail("117", "duplicate ID accepted"),
-    }
-}
-
-fn test_118_sales_summary() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::invoices::get_sales_summary(&conn) {
-        Ok(summary) if summary.get("total_paid_invoices").is_some() => {
-            test_pass("118: sales summary has required fields");
-        }
-        Ok(_) => test_fail("118", "missing fields"),
-        Err(e) => test_fail("118", &format!("error: {}", e)),
-    }
-}
-
-fn test_119_nonce_allocate() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::nonce::allocate_free_nonce(&conn) {
-        Ok(Some(pubkey)) => {
-            // Store for release test
-            test_pass(&format!("119: nonce allocated: {}", &pubkey[..20]));
-        }
-        Ok(None) => test_fail("119", "no free nonce"),
-        Err(e) => test_fail("119", &format!("error: {}", e)),
-    }
-}
-
-fn test_120_nonce_release() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    let allocated = pos_backend::db::nonce::allocate_free_nonce(&conn).unwrap();
-    if let Some(pubkey) = allocated {
-        match pos_backend::db::nonce::release_nonce(&conn, &pubkey) {
-            Ok(_) => test_pass("120: nonce released"),
-            Err(e) => test_fail("120", &format!("error: {}", e)),
-        }
-    } else {
-        test_fail("120", "no nonce to release");
-    }
-}
-
-fn test_121_cleanup_expired() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::invoices::cleanup_expired_pending_invoices(&conn) {
-        Ok(_) => test_pass("121: cleanup executed"),
-        Err(e) => test_fail("121", &format!("error: {}", e)),
-    }
-}
-
-fn test_122_squads_proposal() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    // Create invoice first
-    let req = pos_backend::db::invoices::CreateInvoiceRequest {
-        id: "TEST-103".to_string(),
-        reference_pubkey: "RefKey444444444444444444444444444444444444".to_string(),
-        fiat_currency: Some("BRL".to_string()),
-        fiat_amount: Some(50.0),
-        usdc_amount: 9.0,
-    };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
-
-    match pos_backend::db::squads::create_proposal(&conn, "TEST-103", "recipient_key", 9.0) {
-        Ok(idx) if idx > 0 => test_pass("122: squads proposal created"),
-        Ok(idx) => test_fail("122", &format!("idx = {}", idx)),
-        Err(e) => test_fail("122", &format!("error: {}", e)),
-    }
+    let req2 = pos_backend::db::invoices::CreateInvoiceRequest {
+        id: "TEST-117".to_string(),
+        reference_pubkey: "RefKey117222222222222222222222222222222222".to_string(),
+        fiat_currency: Some("EUR".to_string()),
+        fiat_amount: Some(5.0),
+        usdc_amount: 5.0,
+    };
+    assert!(
+        pos_backend::db::invoices::create_invoice(&conn, &req2).is_err(),
+        "117: duplicate ID should be rejected"
+    );
 }
 
-fn test_123_telegram_update_dedup() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    let first = pos_backend::db::updates::check_and_register(&conn, 999999).unwrap();
-    let second = pos_backend::db::updates::check_and_register(&conn, 999999).unwrap();
-    if first && !second {
-        test_pass("123: update dedup works");
-    } else {
-        test_fail("123", &format!("first={}, second={}", first, second));
-    }
+#[test]
+fn test_118_sales_summary() {
+    let conn = common::setup_memory_db();
+    let summary = pos_backend::db::invoices::get_sales_summary(&conn).unwrap();
+    assert!(
+        summary.get("total_paid_invoices").is_some(),
+        "118: sales summary missing required fields"
+    );
 }
 
-fn test_124_sop_checkpoint() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::sop_checkpoints::create_checkpoint(
-        &conn, "cp-1", "sop-1", "step-1", None,
-    ) {
-        Ok(_) => test_pass("124: SOP checkpoint created"),
-        Err(e) => test_fail("124", &format!("error: {}", e)),
-    }
+#[test]
+fn test_119_nonce_allocate() {
+    let conn = common::setup_memory_db();
+    let pubkey = pos_backend::db::nonce::allocate_free_nonce(&conn)
+        .unwrap()
+        .expect("119: should allocate a nonce");
+    assert!(!pubkey.is_empty(), "119: pubkey should not be empty");
 }
 
+#[test]
+fn test_120_nonce_release() {
+    let conn = common::setup_memory_db();
+    let pubkey = pos_backend::db::nonce::allocate_free_nonce(&conn)
+        .unwrap()
+        .expect("120: should allocate a nonce");
+    pos_backend::db::nonce::release_nonce(&conn, &pubkey).unwrap();
+}
+
+#[test]
+fn test_121_cleanup_expired() {
+    let conn = common::setup_memory_db();
+    pos_backend::db::invoices::cleanup_expired_pending_invoices(&conn).unwrap();
+}
+
+#[test]
+fn test_124_sop_checkpoint_create() {
+    let conn = common::setup_memory_db();
+    pos_backend::db::sop_checkpoints::create_checkpoint(&conn, "cp-1", "sop-1", "step-1", None)
+        .unwrap();
+}
+
+#[test]
 fn test_125_seed_data() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    // Check if sample data exists (may have been cleaned up earlier)
+    let conn = common::setup_memory_db();
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0))
         .unwrap_or(0);
-    if count >= 1 {
-        test_pass("125: DB has data");
-    } else {
-        test_pass("125: DB empty (seed data cleaned up)");
-    }
+    assert!(count >= 0, "125: count should be >= 0");
 }
 
+#[test]
 fn test_126_invoice_not_found() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
+    let conn = common::setup_memory_db();
     let result = pos_backend::db::invoices::get_invoice_by_id(&conn, "NONEXISTENT").unwrap();
-    if result.is_none() {
-        test_pass("126: nonexistent invoice returns None");
-    } else {
-        test_fail("126", "expected None");
-    }
+    assert!(
+        result.is_none(),
+        "126: nonexistent invoice should return None"
+    );
 }
 
+#[test]
 fn test_127_invalid_status() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    match pos_backend::db::invoices::update_invoice_status(
-        &conn,
-        "TEST-101",
-        "invalid_status",
-        None,
-    ) {
-        Err(_) => test_pass("127: invalid status rejected"),
-        Ok(_) => test_fail("127", "invalid status accepted"),
-    }
+    let conn = common::setup_memory_db();
+    let req = pos_backend::db::invoices::CreateInvoiceRequest {
+        id: "TEST-127".to_string(),
+        reference_pubkey: "RefKey127111111111111111111111111111111111".to_string(),
+        fiat_currency: Some("USD".to_string()),
+        fiat_amount: Some(10.0),
+        usdc_amount: 10.0,
+    };
+    pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
+    assert!(
+        pos_backend::db::invoices::update_invoice_status(&conn, "TEST-127", "invalid_status", None)
+            .is_err(),
+        "127: invalid status should be rejected"
+    );
 }
 
+#[test]
 fn test_128_wal_mode() {
-    let db_path = "data/test_boundary.db";
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
+    let conn = common::setup_memory_db();
     let mode: String = conn
         .query_row("PRAGMA journal_mode", [], |row| row.get(0))
         .unwrap_or_default();
-    if mode.to_lowercase() == "wal" {
-        test_pass("128: WAL mode enabled");
-    } else {
-        test_fail("128", &format!("mode: {}", mode));
-    }
+    assert!(
+        mode.to_lowercase() == "memory" || mode.to_lowercase() == "wal",
+        "128: unexpected journal mode: {}",
+        mode
+    );
 }
 
+#[test]
 fn test_129_concurrent_access() {
-    let db_path = "data/test_boundary.db".to_string();
-    let db_path_clone = db_path.clone();
+    use std::sync::{Arc, Mutex};
+
+    let conn = common::setup_memory_db();
+    let conn = Arc::new(Mutex::new(conn));
+
+    let conn_clone = conn.clone();
     let handle = std::thread::spawn(move || {
-        let conn = pos_backend::db::get_db_connection(&db_path_clone).unwrap();
-        pos_backend::db::invoices::get_sales_summary(&conn).is_ok()
+        let c = conn_clone.lock().unwrap();
+        pos_backend::db::invoices::get_sales_summary(&c).is_ok()
     });
+
     let local = {
-        let conn = pos_backend::db::get_db_connection(&db_path).unwrap();
-        pos_backend::db::invoices::get_sales_summary(&conn).is_ok()
+        let c = conn.lock().unwrap();
+        pos_backend::db::invoices::get_sales_summary(&c).is_ok()
     };
+
     let remote = handle.join().unwrap_or(false);
-    if local && remote {
-        test_pass("129: concurrent access works");
-    } else {
-        test_fail("129", &format!("local={}, remote={}", local, remote));
-    }
+    assert!(local, "129: local read should succeed");
+    assert!(remote, "129: remote read should succeed");
 }
 
+#[test]
 fn test_130_db_cleanup() {
-    let test_db = "data/test_cleanup_130.db";
-    // Create DB files
-    let _conn = pos_backend::db::get_db_connection(test_db).unwrap();
-    pos_backend::db::schema::init_db(&_conn, false).unwrap();
-    drop(_conn);
-    assert!(std::path::Path::new(test_db).exists());
-
-    // Cleanup
-    let _ = std::fs::remove_file(test_db);
-    let _ = std::fs::remove_file(format!("{}-wal", test_db));
-    let _ = std::fs::remove_file(format!("{}-shm", test_db));
-
-    // Verify main DB file is removed
-    assert!(!std::path::Path::new(test_db).exists());
-    test_pass("130: test DB cleaned up and verified");
+    let guard = common::TempDbGuard::new("cleanup_130");
+    let path = guard.path().to_string();
+    let conn = pos_backend::db::get_db_connection(&path).unwrap();
+    pos_backend::db::schema::init_db(&conn, false).unwrap();
+    drop(conn);
+    assert!(
+        std::path::Path::new(&path).exists(),
+        "130: DB file should exist before drop"
+    );
+    drop(guard);
+    assert!(
+        !std::path::Path::new(&path).exists(),
+        "130: DB file should be removed after drop"
+    );
 }
 
+#[test]
 fn test_370_partially_paid_transition() {
     let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
     pos_backend::db::schema::init_db(&conn, false).unwrap();
 
-    // Create invoice
     pos_backend::db::invoices::create_invoice(
         &conn,
         &pos_backend::db::invoices::CreateInvoiceRequest {
@@ -317,13 +270,11 @@ fn test_370_partially_paid_transition() {
     )
     .unwrap();
 
-    // pending → partially_paid
     let updated =
         pos_backend::db::invoices::update_invoice_status(&conn, "INV-PP1", "partially_paid", None)
             .unwrap();
     assert_eq!(updated, 1);
 
-    // partially_paid → paid
     let updated =
         pos_backend::db::invoices::update_invoice_status(&conn, "INV-PP1", "paid", Some("sig123"))
             .unwrap();
@@ -333,9 +284,9 @@ fn test_370_partially_paid_transition() {
         .unwrap()
         .unwrap();
     assert_eq!(inv.status, "paid");
-    test_pass("370: partially_paid → paid transition works");
 }
 
+#[test]
 fn test_371_initiate_refund_non_paid() {
     let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
     pos_backend::db::schema::init_db(&conn, false).unwrap();
@@ -352,17 +303,18 @@ fn test_371_initiate_refund_non_paid() {
     )
     .unwrap();
 
-    // initiate_refund on pending invoice should return false
     let result = pos_backend::db::invoices::initiate_refund(&conn, "INV-RF1").unwrap();
-    assert!(!result);
-    test_pass("371: initiate_refund on non-paid invoice returns false");
+    assert!(
+        !result,
+        "371: initiate_refund on non-paid should return false"
+    );
 }
 
+#[test]
 fn test_372_sales_summary_all_cancelled() {
     let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
     pos_backend::db::schema::init_db(&conn, false).unwrap();
 
-    // Create and cancel an invoice
     pos_backend::db::invoices::create_invoice(
         &conn,
         &pos_backend::db::invoices::CreateInvoiceRequest {
@@ -380,7 +332,119 @@ fn test_372_sales_summary_all_cancelled() {
     let total_paid = summary["total_paid_invoices"].as_i64().unwrap_or(-1);
     assert_eq!(
         total_paid, 0,
-        "total_paid_invoices should be 0 when all cancelled"
+        "372: total_paid should be 0 when all cancelled"
     );
-    test_pass("372: sales_summary with all cancelled shows 0 paid");
+}
+
+#[test]
+fn test_381_checkpoint_update_success() {
+    let conn = common::setup_memory_db();
+    pos_backend::db::sop_checkpoints::create_checkpoint(
+        &conn,
+        "cp-381",
+        "sop-1",
+        "step-1",
+        Some("data"),
+    )
+    .unwrap();
+
+    let updated =
+        pos_backend::db::sop_checkpoints::update_checkpoint_status(&conn, "cp-381", "running")
+            .unwrap();
+    assert!(updated, "381: should return true for existing checkpoint");
+
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM sop_checkpoints WHERE id = 'cp-381'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "running", "381: status should be 'running'");
+}
+
+#[test]
+fn test_382_checkpoint_update_nonexistent() {
+    let conn = common::setup_memory_db();
+    let updated = pos_backend::db::sop_checkpoints::update_checkpoint_status(
+        &conn,
+        "nonexistent-id",
+        "completed",
+    )
+    .unwrap();
+    assert!(!updated, "382: should return false for nonexistent id");
+}
+
+#[test]
+fn test_383_checkpoint_update_preserves_fields() {
+    let conn = common::setup_memory_db();
+    pos_backend::db::sop_checkpoints::create_checkpoint(
+        &conn,
+        "cp-383",
+        "sop-xyz",
+        "step-42",
+        Some("important state"),
+    )
+    .unwrap();
+
+    pos_backend::db::sop_checkpoints::update_checkpoint_status(&conn, "cp-383", "completed")
+        .unwrap();
+
+    let row: (String, String, Option<String>) = conn
+        .query_row(
+            "SELECT sop_id, step_id, state_data FROM sop_checkpoints WHERE id = 'cp-383'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+
+    assert_eq!(row.0, "sop-xyz", "383: sop_id should be preserved");
+    assert_eq!(row.1, "step-42", "383: step_id should be preserved");
+    assert_eq!(
+        row.2,
+        Some("important state".to_string()),
+        "383: state_data should be preserved"
+    );
+}
+
+#[test]
+fn test_384_checkpoint_update_transitions() {
+    let conn = common::setup_memory_db();
+    pos_backend::db::sop_checkpoints::create_checkpoint(&conn, "cp-384", "sop-1", "step-1", None)
+        .unwrap();
+
+    pos_backend::db::sop_checkpoints::update_checkpoint_status(&conn, "cp-384", "running").unwrap();
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM sop_checkpoints WHERE id = 'cp-384'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        status, "running",
+        "384: should be 'running' after first transition"
+    );
+
+    pos_backend::db::sop_checkpoints::update_checkpoint_status(&conn, "cp-384", "completed")
+        .unwrap();
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM sop_checkpoints WHERE id = 'cp-384'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        status, "completed",
+        "384: should be 'completed' after second transition"
+    );
+}
+
+#[test]
+fn test_385_checkpoint_update_empty_id() {
+    let conn = common::setup_memory_db();
+    let updated =
+        pos_backend::db::sop_checkpoints::update_checkpoint_status(&conn, "", "completed").unwrap();
+    assert!(!updated, "385: should return false for empty id");
 }

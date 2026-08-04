@@ -1,5 +1,31 @@
 use pos_backend::config::AppConfig;
 
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Shutdown signal received, starting graceful shutdown");
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -32,32 +58,37 @@ async fn main() -> anyhow::Result<()> {
     let port = config.port;
     let addr = std::net::SocketAddr::new(host.parse()?, port);
 
-    println!("=================================================================");
-    println!("🚀 ZeroClaw Solana POS REST API Backend Server (Rust)");
-    println!("=================================================================");
-    println!("• Status       : OPERATIONAL (WAL Mode)");
-    println!("• Listening    : http://{}", addr);
-    println!("• Database     : {}", db_path);
-    println!("• Endpoints    : /actions.json, /api/v1/actions/pay_invoice,");
-    println!("                 /api/v1/sales/summary, /api/v1/invoices,");
-    println!("                 /api/v1/invoices/create, /api/v1/invoices/cancel,");
-    println!("                 /api/v1/nonce/allocate, /api/v1/nonce/release");
-    println!("=================================================================");
+    tracing::info!(
+        port = config.port,
+        db_path = %config.db_path,
+        rate_limit_rps = config.rate_limit_rps,
+        "ZeroClaw POS Backend operational (WAL mode)"
+    );
 
-    // Port fallback logic
-    match axum::serve(tokio::net::TcpListener::bind(addr).await?, app).await {
-        Ok(_) => Ok(()),
-        Err(e) if e.raw_os_error() == Some(98) => {
+    // Port fallback logic with graceful shutdown
+    let listener = tokio::net::TcpListener::bind(addr).await;
+    let (listener, used_addr) = match listener {
+        Ok(l) => (l, addr),
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
             let fallback_port = port + 1;
-            eprintln!(
-                "⚠️ [POS Server] Port {} is busy. Retrying on PORT={}...",
-                port, fallback_port
+            tracing::warn!(
+                port = port,
+                fallback_port = fallback_port,
+                "Port busy, retrying on fallback"
             );
             let fallback_addr = std::net::SocketAddr::new(config.host.parse()?, fallback_port);
-            let app = pos_backend::api::build_router(&config).await;
-            axum::serve(tokio::net::TcpListener::bind(fallback_addr).await?, app).await?;
-            Ok(())
+            let l = tokio::net::TcpListener::bind(fallback_addr).await?;
+            (l, fallback_addr)
         }
-        Err(e) => Err(e.into()),
-    }
+        Err(e) => return Err(e.into()),
+    };
+
+    tracing::info!(addr = %used_addr, "Server listening");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("Server shutdown complete");
+    Ok(())
 }

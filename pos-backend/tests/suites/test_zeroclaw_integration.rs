@@ -1,21 +1,3 @@
-use crate::{test_fail, test_pass};
-
-pub fn run_suite() {
-    println!("\n📦 ZeroClaw Integration Tests (293-304)");
-    test_293_sop_get_pending_invoices();
-    test_294_sop_create_invoice();
-    test_295_sop_update_invoice_status();
-    test_296_sop_cancel_invoice();
-    test_297_sop_nonce_allocate();
-    test_298_sop_nonce_release();
-    test_299_sop_refund_flow();
-    test_300_sop_invoice_lifecycle();
-    test_301_skill_solana_pay_url();
-    test_302_skill_price_feed();
-    test_303_skill_squads_proposal();
-    test_304_keyboard_callback_data();
-}
-
 fn setup_test_db() -> rusqlite::Connection {
     let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
     pos_backend::db::schema::init_db(&conn, true).unwrap();
@@ -24,6 +6,7 @@ fn setup_test_db() -> rusqlite::Connection {
 
 // ========== SOP check_payments.json Tests ==========
 
+#[test]
 fn test_293_sop_get_pending_invoices() {
     let conn = setup_test_db();
     // Create pending invoices with unique IDs
@@ -49,13 +32,19 @@ fn test_293_sop_get_pending_invoices() {
         .iter()
         .filter(|i| i.id.starts_with("INV-293-"))
         .collect();
-    if our_invoices.len() == 3 && our_invoices.iter().all(|i| i.status == "pending") {
-        test_pass("293: SOP can fetch pending invoices");
-    } else {
-        test_fail("293", &format!("got {} test invoices", our_invoices.len()));
-    }
+    assert_eq!(
+        our_invoices.len(),
+        3,
+        "got {} test invoices",
+        our_invoices.len()
+    );
+    assert!(
+        our_invoices.iter().all(|i| i.status == "pending"),
+        "not all invoices pending"
+    );
 }
 
+#[test]
 fn test_294_sop_create_invoice() {
     let conn = setup_test_db();
     // SOP calls: POST /api/v1/invoices/create
@@ -71,12 +60,12 @@ fn test_294_sop_create_invoice() {
     );
 
     match result {
-        Ok(id) if id == "INV-SOP-001" => test_pass("294: SOP can create invoice"),
-        Ok(id) => test_fail("294", &format!("wrong id: {}", id)),
-        Err(e) => test_fail("294", &format!("error: {}", e)),
+        Ok(id) => assert_eq!(id, "INV-SOP-001", "wrong id: {}", id),
+        Err(e) => panic!("294: error: {}", e),
     }
 }
 
+#[test]
 fn test_295_sop_update_invoice_status() {
     let conn = setup_test_db();
     pos_backend::db::invoices::create_invoice(
@@ -100,24 +89,18 @@ fn test_295_sop_update_invoice_status() {
     )
     .unwrap();
 
-    if updated == 1 {
-        let status: String = conn
-            .query_row(
-                "SELECT status FROM invoices WHERE id = 'INV-SOP-002'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        if status == "paid" {
-            test_pass("295: SOP can update invoice status");
-        } else {
-            test_fail("295", &format!("status: {}", status));
-        }
-    } else {
-        test_fail("295", "update returned 0 rows");
-    }
+    assert_eq!(updated, 1, "update returned 0 rows");
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM invoices WHERE id = 'INV-SOP-002'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "paid", "status: {}", status);
 }
 
+#[test]
 fn test_296_sop_cancel_invoice() {
     let conn = setup_test_db();
     pos_backend::db::invoices::create_invoice(
@@ -135,26 +118,20 @@ fn test_296_sop_cancel_invoice() {
     // SOP calls: POST /api/v1/invoices/cancel
     let cancelled = pos_backend::db::invoices::cancel_invoice(&conn, "INV-SOP-003").unwrap();
 
-    if cancelled == 1 {
-        let status: String = conn
-            .query_row(
-                "SELECT status FROM invoices WHERE id = 'INV-SOP-003'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        if status == "cancelled" {
-            test_pass("296: SOP can cancel invoice");
-        } else {
-            test_fail("296", &format!("status: {}", status));
-        }
-    } else {
-        test_fail("296", "cancel returned 0 rows");
-    }
+    assert_eq!(cancelled, 1, "cancel returned 0 rows");
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM invoices WHERE id = 'INV-SOP-003'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "cancelled", "status: {}", status);
 }
 
 // ========== SOP refund_approval.json Tests ==========
 
+#[test]
 fn test_297_sop_nonce_allocate() {
     let conn = setup_test_db();
 
@@ -170,16 +147,13 @@ fn test_297_sop_nonce_allocate() {
                     |row| row.get(0),
                 )
                 .unwrap();
-            if status == "locked" {
-                test_pass("297: SOP can allocate nonce");
-            } else {
-                test_fail("297", &format!("status: {}", status));
-            }
+            assert_eq!(status, "locked", "status: {}", status);
         }
-        None => test_fail("297", "no nonce available"),
+        None => panic!("297: no nonce available"),
     }
 }
 
+#[test]
 fn test_298_sop_nonce_release() {
     let conn = setup_test_db();
     let pubkey = pos_backend::db::nonce::allocate_free_nonce(&conn)
@@ -197,13 +171,10 @@ fn test_298_sop_nonce_release() {
         )
         .unwrap();
 
-    if status == "free" {
-        test_pass("298: SOP can release nonce");
-    } else {
-        test_fail("298", &format!("status: {}", status));
-    }
+    assert_eq!(status, "free", "status: {}", status);
 }
 
+#[test]
 fn test_299_sop_refund_flow() {
     let conn = setup_test_db();
 
@@ -232,16 +203,11 @@ fn test_299_sop_refund_flow() {
         pos_backend::db::squads::create_proposal(&conn, "INV-REFUND-299", "customer_address", 2.41)
             .unwrap();
 
-    if initiated && proposal_idx > 0 {
-        test_pass("299: SOP refund flow works");
-    } else {
-        test_fail(
-            "299",
-            &format!("initiated={}, idx={}", initiated, proposal_idx),
-        );
-    }
+    assert!(initiated, "initiate_refund returned false");
+    assert!(proposal_idx > 0, "proposal_idx={} not > 0", proposal_idx);
 }
 
+#[test]
 fn test_300_sop_invoice_lifecycle() {
     let conn = setup_test_db();
 
@@ -281,15 +247,16 @@ fn test_300_sop_invoice_lifecycle() {
         )
         .unwrap();
 
-    if status == "refund_proposed_squads_v4" {
-        test_pass("300: full invoice lifecycle works");
-    } else {
-        test_fail("300", &format!("final status: {}", status));
-    }
+    assert_eq!(
+        status, "refund_proposed_squads_v4",
+        "final status: {}",
+        status
+    );
 }
 
 // ========== Skill Integration Tests ==========
 
+#[test]
 fn test_301_skill_solana_pay_url() {
     let url = pos_core_logic::build_solana_pay_url(
         "8xAZmQ1111111111111111111111111111111111111",
@@ -300,16 +267,24 @@ fn test_301_skill_solana_pay_url() {
         "Invoice INV-101",
     );
 
-    if url.starts_with("solana:")
-        && url.contains("amount=4.82")
-        && url.contains("spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
-    {
-        test_pass("301: skill generates valid Solana Pay URL");
-    } else {
-        test_fail("301", &format!("url: {}", url));
-    }
+    assert!(
+        url.starts_with("solana:"),
+        "url does not start with solana: {}",
+        url
+    );
+    assert!(
+        url.contains("amount=4.82"),
+        "url missing amount=4.82: {}",
+        url
+    );
+    assert!(
+        url.contains("spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+        "url missing spl-token: {}",
+        url
+    );
 }
 
+#[test]
 fn test_302_skill_price_feed() {
     let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
         "UAH", None, None, None, None, true,
@@ -317,16 +292,14 @@ fn test_302_skill_price_feed() {
 
     match result {
         Ok(rate_info) => {
-            if rate_info.get("rate").is_some() && rate_info.get("tier").is_some() {
-                test_pass("302: skill gets fiat rate");
-            } else {
-                test_fail("302", "missing rate or tier");
-            }
+            assert!(rate_info.get("rate").is_some(), "missing rate");
+            assert!(rate_info.get("tier").is_some(), "missing tier");
         }
-        Err(e) => test_fail("302", e),
+        Err(e) => panic!("302: {}", e),
     }
 }
 
+#[test]
 fn test_303_skill_squads_proposal() {
     let result = pos_core_logic::build_squads_v4_proposal(
         "multisig111",
@@ -338,15 +311,16 @@ fn test_303_skill_squads_proposal() {
         "Refund invoice INV-101",
     );
 
-    if result.get("program_id").is_some() && result.get("instruction_data_base64").is_some() {
-        test_pass("303: skill generates Squads proposal");
-    } else {
-        test_fail("303", "missing required fields");
-    }
+    assert!(result.get("program_id").is_some(), "missing program_id");
+    assert!(
+        result.get("instruction_data_base64").is_some(),
+        "missing instruction_data_base64"
+    );
 }
 
 // ========== Keyboard & UI Tests ==========
 
+#[test]
 fn test_304_keyboard_callback_data() {
     // Verify callback_data format matches what ZeroClaw expects
     let cancel_kb = pos_backend::domain::i18n::get_cancel_invoice_inline_keyboard("INV-101", "en");
@@ -354,9 +328,5 @@ fn test_304_keyboard_callback_data() {
         .as_str()
         .unwrap();
 
-    if callback == "cancel_invoice_INV-101" {
-        test_pass("304: keyboard callback_data format correct");
-    } else {
-        test_fail("304", &format!("callback: {}", callback));
-    }
+    assert_eq!(callback, "cancel_invoice_INV-101", "callback: {}", callback);
 }

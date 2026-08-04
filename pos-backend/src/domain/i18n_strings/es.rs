@@ -33,7 +33,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     m.insert("price_needed", "✍️ Por favor especifique el precio y la moneda para '{items}'\n\nEjemplo:\n• `{items} 500 UAH`");
     m.insert("select_lang", "🌐 *Seleccione el idioma de la interfaz:*");
     m.insert("btn_custom", "✍️ Ingresar monto personalizado");
-    m.insert("btn_quick_uah", "☕ Recibo rápido (200 UAH)");
+    m.insert("btn_quick_uah", "☕ Recibo rápido ({amount} {currency})");
     m.insert("btn_sales", "📊 Resumen de ventas");
     m.insert("btn_refund", "🔄 Reembolso");
     m.insert("btn_lang", "🌐 Idiomas (13)");

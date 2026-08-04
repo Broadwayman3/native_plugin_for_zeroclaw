@@ -36,7 +36,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
         "🌐 *Оберіть мову інтерфейсу з 13 доступних:*",
     );
     m.insert("btn_custom", "✍️ Ввести довільну суму");
-    m.insert("btn_quick_uah", "☕ Швидкий чек (200 UAH)");
+    m.insert("btn_quick_uah", "☕ Швидкий чек ({amount} {currency})");
     m.insert("btn_sales", "📊 Звіт продажів");
     m.insert("btn_refund", "🔄 Рефанд (Refund)");
     m.insert("btn_lang", "🌐 13 Мов / Languages");

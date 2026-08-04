@@ -108,3 +108,58 @@ pub async fn handle_cancel_invoice(
         })),
     ))
 }
+
+/// POST /api/v1/refund/approve - Manager approves refund (Squads v4 proposal)
+#[derive(serde::Deserialize)]
+pub struct RefundRequest {
+    pub invoice_id: String,
+}
+
+pub async fn handle_refund_approve(
+    State(state): State<crate::api::AppState>,
+    Json(data): Json<RefundRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let conn = db::get_db_connection(&state.config.db_path)?;
+
+    let initiated = db::invoices::initiate_refund(&conn, &data.invoice_id)?;
+    if !initiated {
+        return Err(AppError::Conflict(format!(
+            "Invoice '{}' is not in 'paid' status, cannot initiate refund",
+            data.invoice_id
+        )));
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "invoice_id": data.invoice_id,
+            "status": "refund_proposed_squads_v4"
+        })),
+    ))
+}
+
+/// POST /api/v1/refund/reject - Manager rejects refund
+pub async fn handle_refund_reject(
+    State(state): State<crate::api::AppState>,
+    Json(data): Json<RefundRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let conn = db::get_db_connection(&state.config.db_path)?;
+
+    let reverted = db::invoices::revert_refund_to_paid(&conn, &data.invoice_id)?;
+    if !reverted {
+        return Err(AppError::Conflict(format!(
+            "Invoice '{}' is not in 'refunding' status, cannot reject refund",
+            data.invoice_id
+        )));
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "invoice_id": data.invoice_id,
+            "status": "paid"
+        })),
+    ))
+}

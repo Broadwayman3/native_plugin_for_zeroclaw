@@ -9,6 +9,7 @@ pub mod test_error;
 pub mod test_http_handlers;
 pub mod test_i18n;
 pub mod test_keyboards;
+pub mod test_manager;
 pub mod test_nonce_pools;
 pub mod test_pix_brl;
 pub mod test_pos_flow;

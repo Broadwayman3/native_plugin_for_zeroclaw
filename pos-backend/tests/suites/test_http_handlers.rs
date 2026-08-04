@@ -1,4 +1,4 @@
-use crate::{test_fail, test_pass};
+use crate::common::TempDbGuard;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
@@ -6,13 +6,7 @@ use tower::ServiceExt;
 
 use pos_backend::config::AppConfig;
 
-static TEST_DB_PATH: &str = "data/test_http_handlers.db";
-
-fn test_config() -> AppConfig {
-    let _ = std::fs::remove_file(TEST_DB_PATH);
-    let _ = std::fs::remove_file(format!("{}-wal", TEST_DB_PATH));
-    let _ = std::fs::remove_file(format!("{}-shm", TEST_DB_PATH));
-
+fn test_config(guard: &TempDbGuard) -> AppConfig {
     AppConfig {
         manager_telegram_id: 12345,
         merchant_wallet_pubkey: "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s".into(),
@@ -22,15 +16,17 @@ fn test_config() -> AppConfig {
         nonce_account_pubkey: "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s".into(),
         host: "127.0.0.1".into(),
         port: 8080,
-        db_path: TEST_DB_PATH.into(),
+        db_path: guard.path().into(),
         rate_limit_rps: 100,
         telegram_bot_secret_token: None,
         api_keys: vec![],
+        quick_receipt_amount: 200.0,
+        quick_receipt_currency: "UAH".into(),
     }
 }
 
-async fn setup_app() -> axum::Router {
-    let config = test_config();
+async fn setup_app(guard: &TempDbGuard) -> axum::Router {
+    let config = test_config(guard);
     let conn = pos_backend::db::get_db_connection(&config.db_path).unwrap();
     pos_backend::db::schema::init_db(&conn, false).unwrap();
     drop(conn);
@@ -45,176 +41,256 @@ async fn app_request(app: &axum::Router, req: Request<Body>) -> (StatusCode, Str
     (status, body)
 }
 
-pub fn run_suite() {
-    println!("\n📦 HTTP Handler Tests (347-351, 366-369)");
+#[test]
+fn test_347_health_check() {
+    let guard = TempDbGuard::new("http_347");
     let rt = tokio::runtime::Runtime::new().unwrap();
-
     rt.block_on(async {
-        let app = setup_app().await;
-
-        test_347_health_check(&app).await;
-        test_348_actions_spec(&app).await;
-        test_349_action_get(&app).await;
-        test_350_action_post_valid(&app).await;
-        test_351_action_post_invalid(&app).await;
-        test_366_x402_no_header(&app).await;
-        test_367_x402_with_header(&app).await;
-        test_368_cors_preflight(&app).await;
-        test_369_payload_too_large(&app).await;
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/healthz")
+            .body(Body::empty())
+            .unwrap();
+        let (status, _) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "347: expected 200");
     });
-
-    let _ = std::fs::remove_file(TEST_DB_PATH);
-    let _ = std::fs::remove_file(format!("{}-wal", TEST_DB_PATH));
-    let _ = std::fs::remove_file(format!("{}-shm", TEST_DB_PATH));
 }
 
-async fn test_347_health_check(app: &axum::Router) {
-    let req = Request::builder()
-        .uri("/healthz")
-        .body(Body::empty())
-        .unwrap();
-    let (status, _) = app_request(app, req).await;
-    if status == StatusCode::OK {
-        test_pass("347: health check returns 200");
-    } else {
-        test_fail("347", &format!("status: {}", status));
-    }
+#[test]
+fn test_348_actions_spec() {
+    let guard = TempDbGuard::new("http_348");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/actions.json")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "348: expected 200");
+        assert!(body.contains("rules"), "348: should contain rules");
+    });
 }
 
-async fn test_348_actions_spec(app: &axum::Router) {
-    let req = Request::builder()
-        .uri("/actions.json")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = app_request(app, req).await;
-    if status == StatusCode::OK && body.contains("rules") {
-        test_pass("348: actions.json returns spec with rules");
-    } else {
-        test_fail(
-            "348",
-            &format!("status: {}, body: {}", status, &body[..100.min(body.len())]),
+#[test]
+fn test_349_action_get() {
+    let guard = TempDbGuard::new("http_349");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/actions/pay_invoice?invoice_id=INV-1")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "349: expected 200");
+        assert!(
+            body.contains("Pay Invoice"),
+            "349: should contain Pay Invoice"
         );
-    }
+    });
 }
 
-async fn test_349_action_get(app: &axum::Router) {
-    let req = Request::builder()
-        .uri("/api/v1/actions/pay_invoice?invoice_id=INV-1")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = app_request(app, req).await;
-    if status == StatusCode::OK && body.contains("Pay Invoice") {
-        test_pass("349: action GET returns blink metadata");
-    } else {
-        test_fail(
-            "349",
-            &format!("status: {}, body: {}", status, &body[..100.min(body.len())]),
+#[test]
+fn test_350_action_post_valid() {
+    let guard = TempDbGuard::new("http_350");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/actions/pay_invoice")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"account":"8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s"}"#,
+            ))
+            .unwrap();
+        let (status, _) = app_request(&app, req).await;
+        assert_eq!(
+            status,
+            StatusCode::NOT_IMPLEMENTED,
+            "350: expected 501 (stub)"
         );
-    }
+    });
 }
 
-async fn test_350_action_post_valid(app: &axum::Router) {
-    let valid_account = "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s";
-    let req = Request::builder()
-        .uri("/api/v1/actions/pay_invoice")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(format!(r#"{{"account":"{}"}}"#, valid_account)))
-        .unwrap();
-    let (status, _) = app_request(app, req).await;
-    if status == StatusCode::NOT_IMPLEMENTED {
-        test_pass("350: action POST with valid Base58 returns 501 (stub)");
-    } else {
-        test_fail("350", &format!("status: {}", status));
-    }
+#[test]
+fn test_351_action_post_invalid() {
+    let guard = TempDbGuard::new("http_351");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/actions/pay_invoice")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"account":"short"}"#))
+            .unwrap();
+        let (status, _) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "351: expected 400");
+    });
 }
 
-async fn test_351_action_post_invalid(app: &axum::Router) {
-    let req = Request::builder()
-        .uri("/api/v1/actions/pay_invoice")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(r#"{"account":"short"}"#))
-        .unwrap();
-    let (status, _) = app_request(app, req).await;
-    if status == StatusCode::BAD_REQUEST {
-        test_pass("351: action POST with invalid account returns 400");
-    } else {
-        test_fail("351", &format!("status: {}", status));
-    }
-}
-
-async fn test_366_x402_no_header(app: &axum::Router) {
-    let req = Request::builder()
-        .uri("/api/v1/sales/premium_analytics")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = app_request(app, req).await;
-    if status == StatusCode::OK && body.contains("headers_required") {
-        test_pass("366: x402 without header returns 200 with instructions");
-    } else {
-        test_fail(
-            "366",
-            &format!("status: {}, body: {}", status, &body[..100.min(body.len())]),
+#[test]
+fn test_366_x402_no_header() {
+    let guard = TempDbGuard::new("http_366");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/sales/premium_analytics")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "366: expected 200");
+        assert!(
+            body.contains("headers_required"),
+            "366: should contain headers_required"
         );
-    }
+    });
 }
 
-async fn test_367_x402_with_header(app: &axum::Router) {
-    let req = Request::builder()
-        .uri("/api/v1/sales/premium_analytics")
-        .header("X-ACCEPT-PAYMENT", "x402")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = app_request(app, req).await;
-    if status == StatusCode::PAYMENT_REQUIRED && body.contains("pay_url") {
-        test_pass("367: x402 with header returns 402 + solana_pay_url");
-    } else {
-        test_fail(
-            "367",
-            &format!("status: {}, body: {}", status, &body[..100.min(body.len())]),
-        );
-    }
+#[test]
+fn test_367_x402_with_header() {
+    let guard = TempDbGuard::new("http_367");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/sales/premium_analytics")
+            .header("X-ACCEPT-PAYMENT", "x402")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "367: expected 402");
+        assert!(body.contains("pay_url"), "367: should contain pay_url");
+    });
 }
 
-async fn test_368_cors_preflight(app: &axum::Router) {
-    let req = Request::builder()
-        .uri("/api/v1/invoices")
-        .method("OPTIONS")
-        .header("Origin", "https://example.com")
-        .header("Access-Control-Request-Method", "GET")
-        .body(Body::empty())
-        .unwrap();
-    let resp = app.clone().oneshot(req).await.unwrap();
-    let status = resp.status();
-    let headers = resp.headers().clone();
-    if status == StatusCode::OK || status == StatusCode::NO_CONTENT {
-        let has_cors = headers.contains_key("access-control-allow-origin");
-        if has_cors {
-            test_pass("368: CORS preflight returns access-control headers");
-        } else {
-            test_fail("368", &format!("no CORS headers, status: {}", status));
-        }
-    } else {
-        test_fail("368", &format!("status: {}", status));
-    }
-}
-
-async fn test_369_payload_too_large(app: &axum::Router) {
-    let large_body = "x".repeat(1_100_000);
-    let req = Request::builder()
-        .uri("/api/v1/pos/create-order")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(large_body))
-        .unwrap();
-    let (status, _) = app_request(app, req).await;
-    if status == StatusCode::PAYLOAD_TOO_LARGE {
-        test_pass("369: oversized payload returns 413");
-    } else {
-        test_pass(&format!(
-            "369: oversized payload returns {} (acceptable)",
+#[test]
+fn test_368_cors_preflight() {
+    let guard = TempDbGuard::new("http_368");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/invoices")
+            .method("OPTIONS")
+            .header("Origin", "https://example.com")
+            .header("Access-Control-Request-Method", "GET")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        assert!(
+            status == StatusCode::OK || status == StatusCode::NO_CONTENT,
+            "368: expected 200 or 204, got {}",
             status
-        ));
-    }
+        );
+        assert!(
+            headers.contains_key("access-control-allow-origin"),
+            "368: missing CORS headers"
+        );
+    });
+}
+
+#[test]
+fn test_369_payload_too_large() {
+    let guard = TempDbGuard::new("http_369");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let large_body = "x".repeat(1_100_000);
+        let req = Request::builder()
+            .uri("/api/v1/pos/create-order")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(large_body))
+            .unwrap();
+        let (status, _) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "369: expected 413");
+    });
+}
+
+#[test]
+fn test_386_x402_response_has_solana_pay_url() {
+    let guard = TempDbGuard::new("http_386");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/sales/premium_analytics")
+            .header("X-ACCEPT-PAYMENT", "x402")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "386: expected 402");
+        assert!(
+            body.contains("solana:"),
+            "386: should contain solana: pay_url"
+        );
+    });
+}
+
+#[test]
+fn test_387_x402_response_has_spec_field() {
+    let guard = TempDbGuard::new("http_387");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/sales/premium_analytics")
+            .header("X-ACCEPT-PAYMENT", "x402")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "387: expected 402");
+        assert!(body.contains("x402_spec"), "387: should contain x402_spec");
+    });
+}
+
+#[test]
+fn test_388_x402_recipient_matches_config() {
+    let guard = TempDbGuard::new("http_388");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/sales/premium_analytics")
+            .header("X-ACCEPT-PAYMENT", "x402")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let headers = resp.headers().clone();
+        let recipient = headers
+            .get("X-PAYMENT-RECIPIENT")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(
+            recipient, "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s",
+            "388: X-PAYMENT-RECIPIENT mismatch"
+        );
+    });
+}
+
+#[test]
+fn test_389_x402_amount_is_numeric() {
+    let guard = TempDbGuard::new("http_389");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/sales/premium_analytics")
+            .header("X-ACCEPT-PAYMENT", "x402")
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "389: expected 402");
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(
+            json.get("amount_usdc").and_then(|v| v.as_f64()).is_some(),
+            "389: amount_usdc should be numeric"
+        );
+    });
 }

@@ -1,168 +1,72 @@
-use crate::{test_fail, test_pass};
+use crate::common;
 use std::env;
 
-pub fn run_suite() {
-    println!("\n📦 Config Tests (343-376)");
-    test_343_config_from_env_defaults();
-    test_344_config_from_env_custom();
-    test_345_config_from_env_bad_port();
-    test_346_config_from_env_bad_manager_id();
-    test_373_config_defaults_when_vars_missing();
-    test_374_config_port_fallback();
-}
+const CONFIG_KEYS: &[&str] = &[
+    "MANAGER_TELEGRAM_ID",
+    "MERCHANT_WALLET_PUBKEY",
+    "SOLANA_RPC_URL",
+    "SOLANA_FALLBACK_RPC_URL",
+    "USDC_MINT_ADDRESS",
+    "NONCE_ACCOUNT_PUBKEY",
+    "HOST",
+    "PORT",
+    "DB_PATH",
+    "RATE_LIMIT_RPS",
+    "TELEGRAM_BOT_SECRET_TOKEN",
+    "API_KEYS",
+];
 
+#[test]
 fn test_343_config_from_env_defaults() {
-    let keys = [
-        "MANAGER_TELEGRAM_ID",
-        "MERCHANT_WALLET_PUBKEY",
-        "SOLANA_RPC_URL",
-        "SOLANA_FALLBACK_RPC_URL",
-        "USDC_MINT_ADDRESS",
-        "NONCE_ACCOUNT_PUBKEY",
-        "HOST",
-        "PORT",
-        "DB_PATH",
-        "RATE_LIMIT_RPS",
-        "TELEGRAM_BOT_SECRET_TOKEN",
-        "API_KEYS",
-    ];
-    let saved: Vec<(String, Result<String, env::VarError>)> =
-        keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
-    for k in &keys {
-        env::remove_var(k);
-    }
+    let saved = common::save_and_clear_env(CONFIG_KEYS);
     let result = pos_backend::config::AppConfig::from_env();
-    for (k, v) in &saved {
-        match v {
-            Ok(val) => env::set_var(k, val),
-            Err(_) => env::remove_var(k),
-        }
-    }
-    match result {
-        Ok(cfg) => {
-            if cfg.port == 8080 && cfg.host == "0.0.0.0" {
-                test_pass("343: from_env() succeeds with defaults");
-            } else {
-                test_fail("343", &format!("port={} host={}", cfg.port, cfg.host));
-            }
-        }
-        Err(e) => test_fail("343", &format!("Err: {}", e)),
-    }
+    common::restore_env(&saved);
+
+    let cfg = result.expect("343: from_env() should succeed with defaults");
+    assert_eq!(cfg.port, 8080, "343: default port should be 8080");
+    assert_eq!(cfg.host, "0.0.0.0", "343: default host should be 0.0.0.0");
 }
 
+#[test]
 fn test_344_config_from_env_custom() {
-    let keys = [
-        "MANAGER_TELEGRAM_ID",
-        "MERCHANT_WALLET_PUBKEY",
-        "SOLANA_RPC_URL",
-        "SOLANA_FALLBACK_RPC_URL",
-        "USDC_MINT_ADDRESS",
-        "NONCE_ACCOUNT_PUBKEY",
-        "HOST",
-        "PORT",
-        "DB_PATH",
-        "RATE_LIMIT_RPS",
-        "TELEGRAM_BOT_SECRET_TOKEN",
-        "API_KEYS",
-    ];
-    let saved: Vec<(String, Result<String, env::VarError>)> =
-        keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
-    for k in &keys {
-        env::remove_var(k);
-    }
+    let saved = common::save_and_clear_env(CONFIG_KEYS);
     env::set_var("MANAGER_TELEGRAM_ID", "12345");
     let result = pos_backend::config::AppConfig::from_env();
-    for (k, v) in &saved {
-        match v {
-            Ok(val) => env::set_var(k, val),
-            Err(_) => env::remove_var(k),
-        }
-    }
-    match result {
-        Ok(cfg) => {
-            if cfg.manager_telegram_id == 12345 {
-                test_pass("344: MANAGER_TELEGRAM_ID=12345 parsed correctly");
-            } else {
-                test_fail(
-                    "344",
-                    &format!("manager_telegram_id = {}", cfg.manager_telegram_id),
-                );
-            }
-        }
-        Err(e) => test_fail("344", &format!("Err: {}", e)),
-    }
+    common::restore_env(&saved);
+
+    let cfg = result.expect("344: from_env() should succeed");
+    assert_eq!(
+        cfg.manager_telegram_id, 12345,
+        "344: MANAGER_TELEGRAM_ID should be 12345"
+    );
 }
 
+#[test]
 fn test_345_config_from_env_bad_port() {
-    let keys = [
-        "MANAGER_TELEGRAM_ID",
-        "MERCHANT_WALLET_PUBKEY",
-        "SOLANA_RPC_URL",
-        "SOLANA_FALLBACK_RPC_URL",
-        "USDC_MINT_ADDRESS",
-        "NONCE_ACCOUNT_PUBKEY",
-        "HOST",
-        "PORT",
-        "DB_PATH",
-        "RATE_LIMIT_RPS",
-        "TELEGRAM_BOT_SECRET_TOKEN",
-        "API_KEYS",
-    ];
-    let saved: Vec<(String, Result<String, env::VarError>)> =
-        keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
-    for k in &keys {
-        env::remove_var(k);
-    }
+    let saved = common::save_and_clear_env(CONFIG_KEYS);
     env::set_var("PORT", "notanumber");
     let result = pos_backend::config::AppConfig::from_env();
-    for (k, v) in &saved {
-        match v {
-            Ok(val) => env::set_var(k, val),
-            Err(_) => env::remove_var(k),
-        }
-    }
-    match result {
-        Err(_) => test_pass("345: PORT=notanumber returns Err"),
-        Ok(_) => test_fail("345", "expected Err, got Ok"),
-    }
+    common::restore_env(&saved);
+
+    assert!(result.is_err(), "345: PORT=notanumber should return Err");
 }
 
+#[test]
 fn test_346_config_from_env_bad_manager_id() {
-    let keys = [
-        "MANAGER_TELEGRAM_ID",
-        "MERCHANT_WALLET_PUBKEY",
-        "SOLANA_RPC_URL",
-        "SOLANA_FALLBACK_RPC_URL",
-        "USDC_MINT_ADDRESS",
-        "NONCE_ACCOUNT_PUBKEY",
-        "HOST",
-        "PORT",
-        "DB_PATH",
-        "RATE_LIMIT_RPS",
-        "TELEGRAM_BOT_SECRET_TOKEN",
-        "API_KEYS",
-    ];
-    let saved: Vec<(String, Result<String, env::VarError>)> =
-        keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
-    for k in &keys {
-        env::remove_var(k);
-    }
+    let saved = common::save_and_clear_env(CONFIG_KEYS);
     env::set_var("MANAGER_TELEGRAM_ID", "notanumber");
     let result = pos_backend::config::AppConfig::from_env();
-    for (k, v) in &saved {
-        match v {
-            Ok(val) => env::set_var(k, val),
-            Err(_) => env::remove_var(k),
-        }
-    }
-    match result {
-        Err(_) => test_pass("346: MANAGER_TELEGRAM_ID=notanumber returns Err"),
-        Ok(_) => test_fail("346", "expected Err, got Ok"),
-    }
+    common::restore_env(&saved);
+
+    assert!(
+        result.is_err(),
+        "346: MANAGER_TELEGRAM_ID=notanumber should return Err"
+    );
 }
 
+#[test]
 fn test_373_config_defaults_when_vars_missing() {
-    let keys = [
+    let subset_keys = &[
         "MANAGER_TELEGRAM_ID",
         "MERCHANT_WALLET_PUBKEY",
         "SOLANA_RPC_URL",
@@ -170,58 +74,35 @@ fn test_373_config_defaults_when_vars_missing() {
         "USDC_MINT_ADDRESS",
         "DB_PATH",
     ];
-    let saved: Vec<(String, Result<String, env::VarError>)> =
-        keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
-    for k in &keys {
-        env::remove_var(k);
-    }
+    let saved = common::save_and_clear_env(subset_keys);
     env::set_var("MANAGER_TELEGRAM_ID", "42");
     let result = pos_backend::config::AppConfig::from_env();
-    for (k, v) in &saved {
-        match v {
-            Ok(val) => env::set_var(k, val),
-            Err(_) => env::remove_var(k),
-        }
-    }
-    match result {
-        Ok(config) => {
-            if config.db_path == "data/pos_store.db"
-                && config.solana_rpc_url.contains("helius")
-                && config.fallback_rpc_url.contains("devnet")
-            {
-                test_pass("373: config uses correct defaults");
-            } else {
-                test_fail(
-                    "373",
-                    &format!("db_path={}, rpc={}", config.db_path, config.solana_rpc_url),
-                );
-            }
-        }
-        Err(e) => test_fail("373", &format!("from_env failed: {}", e)),
-    }
+    common::restore_env(&saved);
+
+    let config = result.expect("373: from_env() should succeed");
+    assert_eq!(config.db_path, "data/pos_store.db", "373: default db_path");
+    assert!(
+        config.solana_rpc_url.contains("helius"),
+        "373: default RPC should contain helius"
+    );
+    assert!(
+        config.fallback_rpc_url.contains("devnet"),
+        "373: fallback RPC should contain devnet"
+    );
 }
 
+#[test]
 fn test_374_config_port_fallback() {
     let keys = ["PORT", "POS_PORT"];
-    let saved: Vec<(String, Result<String, env::VarError>)> =
-        keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
-    for k in &keys {
-        env::remove_var(k);
-    }
+    let saved = common::save_and_clear_env(&keys);
     env::set_var("MANAGER_TELEGRAM_ID", "42");
     env::set_var("POS_PORT", "9090");
     let result = pos_backend::config::AppConfig::from_env();
-    for (k, v) in &saved {
-        match v {
-            Ok(val) => env::set_var(k, val),
-            Err(_) => env::remove_var(k),
-        }
-    }
-    match result {
-        Ok(config) if config.port == 9090 => {
-            test_pass("374: POS_PORT env var used as fallback");
-        }
-        Ok(config) => test_fail("374", &format!("port: {}", config.port)),
-        Err(e) => test_fail("374", &format!("from_env failed: {}", e)),
-    }
+    common::restore_env(&saved);
+
+    let config = result.expect("374: from_env() should succeed");
+    assert_eq!(
+        config.port, 9090,
+        "374: POS_PORT should be used as fallback"
+    );
 }

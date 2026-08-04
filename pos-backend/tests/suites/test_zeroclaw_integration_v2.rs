@@ -1,21 +1,6 @@
-use crate::{test_fail, test_pass};
+use crate::common;
 
-pub fn run_suite() {
-    println!("\n📦 ZeroClaw Integration Tests V2 (305-310)");
-    test_305_markdownv2_receipt();
-    test_306_x402_payment_required();
-    test_307_cors_preflight();
-    test_308_api_response_format();
-    test_309_concurrent_requests();
-    test_310_error_handling();
-}
-
-fn setup_test_db() -> rusqlite::Connection {
-    let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
-    pos_backend::db::schema::init_db(&conn, true).unwrap();
-    conn
-}
-
+#[test]
 fn test_305_markdownv2_receipt() {
     let receipt = pos_backend::domain::i18n::format_itemized_receipt(
         "INV-305",
@@ -27,17 +12,14 @@ fn test_305_markdownv2_receipt() {
         Some(200.0),
         Some(41.5),
     );
-
-    // Receipt should contain the invoice ID
-    if receipt.contains("305") {
-        test_pass("305: receipt formatted correctly");
-    } else {
-        test_fail("305", "receipt missing invoice ID");
-    }
+    assert!(
+        receipt.contains("305"),
+        "305: receipt should contain invoice ID"
+    );
 }
 
+#[test]
 fn test_306_x402_payment_required() {
-    // Verify x402 endpoint structure
     let config = pos_backend::config::AppConfig {
         manager_telegram_id: 0,
         merchant_wallet_pubkey: "test".to_string(),
@@ -51,16 +33,15 @@ fn test_306_x402_payment_required() {
         rate_limit_rps: 100,
         telegram_bot_secret_token: None,
         api_keys: vec![],
+        quick_receipt_amount: 200.0,
+        quick_receipt_currency: "UAH".into(),
     };
-
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _router = rt.block_on(pos_backend::api::build_router(&config));
-
-    test_pass("306: x402 endpoint configured");
 }
 
+#[test]
 fn test_307_cors_preflight() {
-    // Verify CORS configuration
     let config = pos_backend::config::AppConfig {
         manager_telegram_id: 0,
         merchant_wallet_pubkey: "test".to_string(),
@@ -74,16 +55,16 @@ fn test_307_cors_preflight() {
         rate_limit_rps: 100,
         telegram_bot_secret_token: None,
         api_keys: vec![],
+        quick_receipt_amount: 200.0,
+        quick_receipt_currency: "UAH".into(),
     };
-
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _router = rt.block_on(pos_backend::api::build_router(&config));
-
-    test_pass("307: CORS configured for preflight");
 }
 
+#[test]
 fn test_308_api_response_format() {
-    let conn = setup_test_db();
+    let conn = common::setup_memory_db();
     pos_backend::db::invoices::create_invoice(
         &conn,
         &pos_backend::db::invoices::CreateInvoiceRequest {
@@ -95,36 +76,26 @@ fn test_308_api_response_format() {
         },
     )
     .unwrap();
-
     let invoices =
         pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-FORMAT-308"), None).unwrap();
-    if let Some(inv) = invoices.first() {
-        if inv.id == "INV-FORMAT-308" && inv.fiat_currency == "UAH" && inv.status == "pending" {
-            test_pass("308: API response format correct");
-        } else {
-            test_fail("308", "unexpected invoice data");
-        }
-    } else {
-        test_fail("308", "no invoices returned");
-    }
+    let inv = invoices.first().expect("308: no invoices returned");
+    assert_eq!(inv.id, "INV-FORMAT-308", "308: wrong invoice id");
+    assert_eq!(inv.fiat_currency, "UAH", "308: wrong currency");
+    assert_eq!(inv.status, "pending", "308: wrong status");
 }
 
+#[test]
 fn test_309_concurrent_requests() {
-    let db_path = "data/test_concurrent_api.db";
-    let _ = std::fs::remove_file(db_path);
-    let _ = std::fs::remove_file(format!("{}-wal", db_path));
-    let _ = std::fs::remove_file(format!("{}-shm", db_path));
-
-    // Initialize DB first
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
+    let guard = common::TempDbGuard::new("concurrent_api");
+    let conn = pos_backend::db::get_db_connection(guard.path()).unwrap();
     pos_backend::db::schema::init_db(&conn, false).unwrap();
     drop(conn);
 
     let handles: Vec<_> = (0..5)
         .map(|i| {
-            let db_path = db_path.to_string();
+            let path = guard.path().to_string();
             std::thread::spawn(move || {
-                let conn = pos_backend::db::get_db_connection(&db_path).unwrap();
+                let conn = pos_backend::db::get_db_connection(&path).unwrap();
                 pos_backend::db::invoices::create_invoice(
                     &conn,
                     &pos_backend::db::invoices::CreateInvoiceRequest {
@@ -144,31 +115,24 @@ fn test_309_concurrent_requests() {
         h.join().unwrap();
     }
 
-    let conn = pos_backend::db::get_db_connection(db_path).unwrap();
+    let conn = pos_backend::db::get_db_connection(guard.path()).unwrap();
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0))
         .unwrap();
-    let _ = std::fs::remove_file(db_path);
-    let _ = std::fs::remove_file(format!("{}-wal", db_path));
-    let _ = std::fs::remove_file(format!("{}-shm", db_path));
-
-    if count == 5 {
-        test_pass("309: concurrent API requests work");
-    } else {
-        test_fail("309", &format!("count: {}", count));
-    }
+    assert_eq!(
+        count, 5,
+        "309: expected 5 concurrent inserts, got {}",
+        count
+    );
 }
 
+#[test]
 fn test_310_error_handling() {
-    let conn = setup_test_db();
-
-    // Test 404-like behavior (invoice not found)
-    let result = pos_backend::db::invoices::get_invoices_list(&conn, Some("NONEXISTENT"), None);
-    match result {
-        Ok(invoices) if invoices.is_empty() => {
-            test_pass("310: missing invoice returns empty list");
-        }
-        Ok(_) => test_fail("310", "should return empty list"),
-        Err(e) => test_fail("310", &format!("error: {}", e)),
-    }
+    let conn = common::setup_memory_db();
+    let invoices =
+        pos_backend::db::invoices::get_invoices_list(&conn, Some("NONEXISTENT"), None).unwrap();
+    assert!(
+        invoices.is_empty(),
+        "310: should return empty list for nonexistent invoice"
+    );
 }

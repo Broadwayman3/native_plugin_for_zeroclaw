@@ -92,11 +92,24 @@ fn t_impl(key: &str, lang: Option<&str>, escape_markdown: bool, kwargs: &[(&str,
 }
 
 /// Generates localized cashier persistent reply keyboard.
-pub fn get_main_reply_keyboard(lang: &str) -> serde_json::Value {
+pub fn get_main_reply_keyboard(
+    lang: &str,
+    quick_amount: f64,
+    quick_currency: &str,
+) -> serde_json::Value {
     let clean = normalize_lang(lang);
+    let amount_str = if quick_amount.fract() == 0.0 {
+        format!("{}", quick_amount as i64)
+    } else {
+        format!("{}", quick_amount)
+    };
+    let quick_kwargs = &[
+        ("amount", amount_str.as_str()),
+        ("currency", quick_currency),
+    ];
     serde_json::json!({
         "keyboard": [
-            [{"text": t_raw("btn_custom", Some(&clean), &[])}, {"text": t_raw("btn_quick_uah", Some(&clean), &[])}],
+            [{"text": t_raw("btn_custom", Some(&clean), &[])}, {"text": t_raw("btn_quick_uah", Some(&clean), quick_kwargs)}],
             [{"text": t_raw("btn_sales", Some(&clean), &[])}, {"text": t_raw("btn_refund", Some(&clean), &[])}],
             [{"text": t_raw("btn_lang", Some(&clean), &[])}]
         ],

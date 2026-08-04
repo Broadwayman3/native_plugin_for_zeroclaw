@@ -15,7 +15,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::config::AppConfig;
-use middleware::{AuthConfig, AuthLayer, RateLimitLayer};
+use middleware::{AuthConfig, AuthLayer, ManagerLayer, RateLimitLayer};
 
 /// Shared application state.
 #[derive(Clone)]
@@ -45,6 +45,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
             "X-ACCEPT-PAYMENT".parse().unwrap(),
             "X-Telegram-Bot-Api-Secret-Token".parse().unwrap(),
             "X-Api-Key".parse().unwrap(),
+            "X-Telegram-User-Id".parse().unwrap(),
             "Content-Encoding".parse().unwrap(),
             "Accept-Encoding".parse().unwrap(),
         ])
@@ -60,7 +61,25 @@ pub async fn build_router(config: &AppConfig) -> Router {
     let auth_config = AuthConfig {
         telegram_bot_secret_token: config.telegram_bot_secret_token.clone(),
         api_keys: config.api_keys.clone(),
+        manager_telegram_id: if config.manager_telegram_id != 0 {
+            Some(config.manager_telegram_id)
+        } else {
+            None
+        },
     };
+
+    // Manager-only routes (refund approve/reject)
+    let manager_routes = Router::new()
+        .route(
+            "/api/v1/refund/approve",
+            post(invoices::handle_refund_approve),
+        )
+        .route(
+            "/api/v1/refund/reject",
+            post(invoices::handle_refund_reject),
+        )
+        .layer(ManagerLayer::new(auth_config.manager_telegram_id))
+        .layer(AuthLayer::new(auth_config.clone()));
 
     // Routes that require auth (mutating)
     let mutating_routes = Router::new()
@@ -100,6 +119,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
         );
 
     Router::new()
+        .merge(manager_routes)
         .merge(mutating_routes)
         .merge(read_routes)
         .layer(RateLimitLayer::new(limiter))

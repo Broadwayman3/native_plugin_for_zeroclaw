@@ -47,7 +47,7 @@ pub async fn handle_create_order(
         })));
     }
 
-    let fiat_amt = parsed.amount.unwrap_or(0.0);
+    let fiat_amt = parsed.amount.unwrap_or_default();
     let fiat_curr = parsed.currency.as_deref().unwrap_or("UAH");
     let item_desc = &parsed.items;
 
@@ -59,9 +59,10 @@ pub async fn handle_create_order(
     let rate_info =
         domain::price_feed::get_multitier_fiat_rate(fiat_curr, None, None, None, None, true)
             .map_err(|e| {
-                eprintln!(
-                    "⚠️ Price feed unavailable for {}: {}. Invoice not created.",
-                    fiat_curr, e
+                tracing::warn!(
+                    currency = fiat_curr,
+                    error = %e,
+                    "Price feed unavailable, invoice not created"
                 );
                 AppError::BadRequest(format!(
                     "Price feed unavailable for {}. Cannot create invoice.",

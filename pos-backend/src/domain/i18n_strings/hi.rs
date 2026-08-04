@@ -33,7 +33,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     );
     m.insert("select_lang", "🌐 *इंटरफ़ेस भाषा चुनें:*");
     m.insert("btn_custom", "✍️ कस्टम राशि दर्ज करें");
-    m.insert("btn_quick_uah", "☕ त्वरित रसीद (200 UAH)");
+    m.insert("btn_quick_uah", "☕ त्वरित रसीद ({amount} {currency})");
     m.insert("btn_sales", "📊 बिक्री सारांश");
     m.insert("btn_refund", "🔄 रिफंड");
     m.insert("btn_lang", "🌐 भाषाएँ (13)");

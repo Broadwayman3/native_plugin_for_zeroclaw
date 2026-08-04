@@ -36,7 +36,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     m.insert("price_needed", "✍️ Lütfen '{items}' için toplam fiyatı ve para birimini belirtin\n\nÖrnek:\n• `{items} 500 UAH`");
     m.insert("select_lang", "🌐 *Arayüz dilini seçin:*");
     m.insert("btn_custom", "✍️ Özel tutar girin");
-    m.insert("btn_quick_uah", "☕ Hızlı fiş (200 UAH)");
+    m.insert("btn_quick_uah", "☕ Hızlı fiş ({amount} {currency})");
     m.insert("btn_sales", "📊 Satış Özeti");
     m.insert("btn_refund", "🔄 İade");
     m.insert("btn_lang", "🌐 Diller (13)");

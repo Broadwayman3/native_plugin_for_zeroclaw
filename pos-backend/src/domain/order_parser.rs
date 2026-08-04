@@ -32,7 +32,7 @@ pub fn parse_pos_order_input(
 
     // Try to match currency patterns: "150 UAH", "35.50 BRL", "12 USD", "$100", "€50", etc.
     if let Some(caps) = RE_CURRENCY.captures(text_clean) {
-        let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or(0.0);
+        let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or_default();
 
         // Reject negative amounts (check char before the match)
         let match_start = caps.get(0).unwrap().start();
@@ -91,7 +91,7 @@ pub fn parse_pos_order_input(
     // Try currency prefix patterns: "$50", "€25.50", "R$100"
     if let Some(caps) = RE_CURRENCY_PREFIX.captures(text_clean) {
         let curr_str = caps.get(1).unwrap().as_str();
-        let amt: f64 = caps.get(2).unwrap().as_str().parse().unwrap_or(0.0);
+        let amt: f64 = caps.get(2).unwrap().as_str().parse().unwrap_or_default();
 
         if amt <= 0.0 || !amt.is_finite() || amt > 999_999.99 {
             return ParsedOrder {
@@ -133,7 +133,7 @@ pub fn parse_pos_order_input(
 
     // Try bare number (defaults to UAH)
     if let Some(caps) = RE_PLAIN_NUMBER.captures(text_clean) {
-        let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or(0.0);
+        let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or_default();
 
         if amt <= 0.0 || !amt.is_finite() || amt > 999_999.99 {
             return ParsedOrder {

@@ -36,7 +36,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     );
     m.insert("select_lang", "🌐 *Wybierz język interfejsu:*");
     m.insert("btn_custom", "✍️ Wpisz kwotę");
-    m.insert("btn_quick_uah", "☕ Szybki paragon (200 UAH)");
+    m.insert("btn_quick_uah", "☕ Szybki paragon ({amount} {currency})");
     m.insert("btn_sales", "📊 Podsumowanie sprzedaży");
     m.insert("btn_refund", "🔄 Zwrot");
     m.insert("btn_lang", "🌐 Języki (13)");

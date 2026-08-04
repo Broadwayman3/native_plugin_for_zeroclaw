@@ -37,14 +37,17 @@ pub fn allocate_free_nonce(conn: &Connection) -> Result<Option<String>, rusqlite
                 .optional()?;
 
             if let Some(pk) = pubkey {
+                conn.execute_batch("BEGIN IMMEDIATE")?;
                 let updated = conn.execute(
                     "UPDATE nonce_accounts SET status = 'locked', locked_at = CURRENT_TIMESTAMP
-                     WHERE pubkey = ?1 AND status = 'free'",
+                 WHERE pubkey = ?1 AND status = 'free'",
                     params![pk],
                 )?;
                 if updated > 0 {
+                    conn.execute_batch("COMMIT")?;
                     return Ok(Some(pk));
                 }
+                conn.execute_batch("ROLLBACK")?;
             }
             Ok(None)
         }

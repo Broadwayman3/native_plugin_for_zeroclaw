@@ -153,14 +153,13 @@ pub fn verify_solana_transaction(
         for (i, key) in account_keys.iter().enumerate() {
             let pubkey = key.get("pubkey").and_then(|v| v.as_str()).unwrap_or("");
             if pubkey == expected_merchant_ata {
-                if let Some(&delta) = deltas.get(&(i as i64)) {
-                    if delta >= expected_usdc_atomic {
-                        return serde_json::json!({
-                            "is_valid": true,
-                            "paid_atomic": delta,
-                            "verification_method": "balance_delta"
-                        });
-                    }
+                let delta = deltas.get(&(i as i64)).copied().unwrap_or(0);
+                if delta >= expected_usdc_atomic {
+                    return serde_json::json!({
+                        "is_valid": true,
+                        "paid_atomic": delta,
+                        "verification_method": "balance_delta"
+                    });
                 }
                 break;
             }

@@ -16,7 +16,7 @@ pub fn create_rate_limiter(rps: u32) -> SharedLimiter {
 }
 
 /// Extracts the client IP from X-Forwarded-For, X-Real-IP, or the socket address.
-fn extract_client_ip(headers: &HeaderMap, addr: Option<SocketAddr>) -> SocketAddr {
+pub(crate) fn extract_client_ip(headers: &HeaderMap, addr: Option<SocketAddr>) -> SocketAddr {
     if let Some(forwarded) = headers.get("x-forwarded-for") {
         if let Ok(s) = forwarded.to_str() {
             if let Some(first) = s.split(',').next() {
@@ -117,6 +117,8 @@ pub struct AuthConfig {
     pub telegram_bot_secret_token: Option<String>,
     /// Valid API keys for external clients (from X-API-Key header).
     pub api_keys: Vec<String>,
+    /// Manager Telegram user ID for manager-only actions (from X-Telegram-User-Id header).
+    pub manager_telegram_id: Option<i64>,
 }
 
 /// Tower layer for auth on mutating routes.
@@ -206,5 +208,168 @@ where
             )
                 .into_response())
         })
+    }
+}
+
+/// Tower layer for manager-only routes (refund approve/reject).
+#[derive(Clone)]
+pub struct ManagerLayer {
+    manager_id: Option<i64>,
+}
+
+impl ManagerLayer {
+    pub fn new(manager_id: Option<i64>) -> Self {
+        Self { manager_id }
+    }
+}
+
+impl<S> tower::Layer<S> for ManagerLayer {
+    type Service = ManagerService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        ManagerService {
+            inner,
+            manager_id: self.manager_id,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ManagerService<S> {
+    inner: S,
+    manager_id: Option<i64>,
+}
+
+impl<S, ReqBody> tower::Service<axum::http::Request<ReqBody>> for ManagerService<S>
+where
+    S: tower::Service<axum::http::Request<ReqBody>, Response = Response> + Clone + Send + 'static,
+    S::Future: Send,
+    ReqBody: Send + 'static,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: axum::http::Request<ReqBody>) -> Self::Future {
+        // If no manager configured, allow all (development mode)
+        let Some(expected_id) = self.manager_id else {
+            let mut inner = self.inner.clone();
+            return Box::pin(async move { inner.call(req).await });
+        };
+
+        let headers = req.headers().clone();
+        let user_id = headers
+            .get("x-telegram-user-id")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<i64>().ok());
+
+        match user_id {
+            Some(id) if id == expected_id => {
+                let mut inner = self.inner.clone();
+                Box::pin(async move { inner.call(req).await })
+            }
+            _ => {
+                tracing::warn!(
+                    expected_manager = expected_id,
+                    actual_user = ?user_id,
+                    "Manager-only action rejected"
+                );
+                Box::pin(async {
+                    Ok((
+                        StatusCode::FORBIDDEN,
+                        axum::Json(serde_json::json!({
+                            "error": "Forbidden. This action requires manager authorization."
+                        })),
+                    )
+                        .into_response())
+                })
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderName, HeaderValue};
+
+    fn make_header(name: HeaderName, val: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(name, HeaderValue::from_str(val).unwrap());
+        h
+    }
+
+    #[test]
+    fn test_extract_ip_x_forwarded_for_single() {
+        let headers = make_header(HeaderName::from_static("x-forwarded-for"), "1.2.3.4:8080");
+        let addr = extract_client_ip(&headers, None);
+        assert_eq!(addr.ip(), "1.2.3.4".parse::<std::net::IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_extract_ip_x_forwarded_for_multiple() {
+        let headers = make_header(
+            HeaderName::from_static("x-forwarded-for"),
+            "1.2.3.4:8080, 5.6.7.8:9090",
+        );
+        let addr = extract_client_ip(&headers, None);
+        assert_eq!(addr.ip(), "1.2.3.4".parse::<std::net::IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_extract_ip_x_real_ip() {
+        let headers = make_header(HeaderName::from_static("x-real-ip"), "10.0.0.1:0");
+        let addr = extract_client_ip(&headers, None);
+        assert_eq!(addr.ip(), "10.0.0.1".parse::<std::net::IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_extract_ip_fallback_to_socket_addr() {
+        let headers = HeaderMap::new();
+        let fallback = SocketAddr::from(([192, 168, 1, 1], 3000));
+        let addr = extract_client_ip(&headers, Some(fallback));
+        assert_eq!(addr, fallback);
+    }
+
+    #[test]
+    fn test_extract_ip_fallback_to_loopback() {
+        let headers = HeaderMap::new();
+        let addr = extract_client_ip(&headers, None);
+        assert_eq!(addr.ip(), "127.0.0.1".parse::<std::net::IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_extract_ip_malformed_x_forwarded_for() {
+        let headers = make_header(HeaderName::from_static("x-forwarded-for"), "not-an-ip");
+        let fallback = SocketAddr::from(([10, 0, 0, 1], 0));
+        let addr = extract_client_ip(&headers, Some(fallback));
+        assert_eq!(addr, fallback);
+    }
+
+    #[test]
+    fn test_extract_ip_x_forwarded_for_takes_precedence() {
+        let mut headers = make_header(HeaderName::from_static("x-forwarded-for"), "1.2.3.4:8080");
+        headers.insert(
+            HeaderName::from_static("x-real-ip"),
+            HeaderValue::from_str("10.0.0.1:0").unwrap(),
+        );
+        let addr = extract_client_ip(&headers, None);
+        assert_eq!(addr.ip(), "1.2.3.4".parse::<std::net::IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn test_extract_ip_ipv6_address() {
+        let headers = make_header(HeaderName::from_static("x-forwarded-for"), "[::1]:8080");
+        let addr = extract_client_ip(&headers, None);
+        assert_eq!(addr.ip(), "::1".parse::<std::net::IpAddr>().unwrap());
     }
 }

@@ -36,7 +36,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     );
     m.insert("select_lang", "🌐 *请选择界面语言：*");
     m.insert("btn_custom", "✍️ 输入自定义金额");
-    m.insert("btn_quick_uah", "☕ 快速收据 (200 UAH)");
+    m.insert("btn_quick_uah", "☕ 快速收据 ({amount} {currency})");
     m.insert("btn_sales", "📊 销售摘要");
     m.insert("btn_refund", "🔄 退款");
     m.insert("btn_lang", "🌐 语言 (13)");

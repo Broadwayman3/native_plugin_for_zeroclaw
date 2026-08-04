@@ -33,7 +33,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     m.insert("price_needed", "✍️ Bitte geben Sie Gesamtpreis und Währung für '{items}' an\n\nBeispiel:\n• `{items} 500 UAH`");
     m.insert("select_lang", "🌐 *Wählen Sie die Schnittstellensprache:*");
     m.insert("btn_custom", "✍️ Betrag eingeben");
-    m.insert("btn_quick_uah", "☕ Schnellbon (200 UAH)");
+    m.insert("btn_quick_uah", "☕ Schnellbon ({amount} {currency})");
     m.insert("btn_sales", "📊 Verkaufsübersicht");
     m.insert("btn_refund", "🔄 Rückerstattung");
     m.insert("btn_lang", "🌐 Sprachen (13)");

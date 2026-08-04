@@ -279,3 +279,13 @@ pub fn propose_refund(conn: &Connection, invoice_id: &str) -> Result<bool, rusql
     )?;
     Ok(updated > 0)
 }
+
+/// Reverts a refund request back to paid status (refunding → paid).
+pub fn revert_refund_to_paid(conn: &Connection, invoice_id: &str) -> Result<bool, rusqlite::Error> {
+    let updated = conn.execute(
+        "UPDATE invoices SET status = 'paid', updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?1 AND status = 'refunding'",
+        params![invoice_id],
+    )?;
+    Ok(updated > 0)
+}

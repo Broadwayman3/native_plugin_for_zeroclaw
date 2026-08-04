@@ -39,7 +39,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
         "🌐 *Select interface language / Оберіть мову:*",
     );
     m.insert("btn_custom", "✍️ Enter custom amount");
-    m.insert("btn_quick_uah", "☕ Quick receipt (200 UAH)");
+    m.insert("btn_quick_uah", "☕ Quick receipt ({amount} {currency})");
     m.insert("btn_sales", "📊 Sales Summary");
     m.insert("btn_refund", "🔄 Refund");
     m.insert("btn_lang", "🌐 Languages (13)");

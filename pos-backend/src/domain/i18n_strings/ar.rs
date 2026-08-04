@@ -33,7 +33,7 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     );
     m.insert("select_lang", "🌐 *اختر لغة الواجهة:*");
     m.insert("btn_custom", "✍️ إدخال مبلغ مخصص");
-    m.insert("btn_quick_uah", "☕ إيصال سريع (200 UAH)");
+    m.insert("btn_quick_uah", "☕ إيصال سريع ({amount} {currency})");
     m.insert("btn_sales", "📊 ملخص المبيعات");
     m.insert("btn_refund", "🔄 استرداد");
     m.insert("btn_lang", "🌐 اللغات (13)");
