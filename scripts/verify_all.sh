@@ -14,15 +14,7 @@ echo "1. Initializing Environment..."
 ./scripts/setup.sh
 
 echo ""
-echo "1b. Running AST Static Security & Safety Linter..."
-python3 scripts/lint_safety_ast.py
-
-echo ""
-echo "2. Validating Fail-Closed JSON Schema & Context Truncation Engine..."
-python3 scripts/validators.py
-
-echo ""
-echo "3. Building & Validating Rust WASM Plugin (solana-pos-core)..."
+echo "2. Building & Validating Rust WASM Plugin (solana-pos-core)..."
 ./scripts/build_wasm.sh
 
 if command -v wasm-tools >/dev/null 2>&1; then
@@ -34,33 +26,22 @@ else
 fi
 
 echo ""
-echo "3b. Executing WASM Host Component Execution Test..."
-python3 scripts/test_wasm_host.py
+echo "3. Running pos-backend Tests..."
+cargo test --manifest-path pos-backend/Cargo.toml
 
 echo ""
-echo "4. Testing Local SQLite Database, Nonce Pool & x402 Engine..."
-python3 scripts/pos_backend.py --test
+echo "4. Running pos-core-logic Tests..."
+cargo test --manifest-path plugins/solana-pos-core/pos-core-logic/Cargo.toml
 
 echo ""
-echo "5. Running Prompt Injection & Security Audit Suite..."
-python3 scripts/test_prompt_inj.py
+echo "5. Running solana-pos-core WASM Plugin Tests..."
+cd plugins/solana-pos-core && cargo test --lib --release && cd - > /dev/null
 
 echo ""
-echo "5b. Executing Senior Lead QA & Red Team Security Audit Suite..."
-python3 scripts/qa_red_team_audit.py
-
-echo ""
-echo "6. Executing Pre-Commit Automated Safety Check..."
+echo "6. Running Pre-Commit Safety Check..."
 ./scripts/pre_commit.sh
 
 echo ""
-echo "7. Running Full 305 Comprehensive Boundary & Edge Case Tests..."
-
-
-python3 scripts/test_boundary_cases.py
-
-
-echo ""
 echo "================================================================="
-echo "✨ ALL VERIFICATION STEPS PASSED PERFECTLY (100% READY FOR 1ST PLACE)!"
+echo "✨ ALL VERIFICATION STEPS PASSED PERFECTLY!"
 echo "================================================================="

@@ -48,9 +48,13 @@ fn test_293_sop_get_pending_invoices() {
     }
 
     // SOP calls: GET /api/v1/invoices?status=pending
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, None, Some("pending")).unwrap();
+    let invoices =
+        pos_backend::db::invoices::get_invoices_list(&conn, None, Some("pending")).unwrap();
     // Filter to only our test invoices (setup_test_db seeds sample data too)
-    let our_invoices: Vec<_> = invoices.iter().filter(|i| i.id.starts_with("INV-293-")).collect();
+    let our_invoices: Vec<_> = invoices
+        .iter()
+        .filter(|i| i.id.starts_with("INV-293-"))
+        .collect();
     if our_invoices.len() == 3 && our_invoices.iter().all(|i| i.status == "pending") {
         test_pass("293: SOP can fetch pending invoices");
     } else {
@@ -223,24 +227,24 @@ fn test_299_sop_refund_flow() {
     .unwrap();
 
     // Mark as paid
-    pos_backend::db::invoices::update_invoice_status(&conn, "INV-REFUND-299", "paid", None).unwrap();
+    pos_backend::db::invoices::update_invoice_status(&conn, "INV-REFUND-299", "paid", None)
+        .unwrap();
 
     // Initiate refund (paid -> refunding) using the dedicated function
     let initiated = pos_backend::db::invoices::initiate_refund(&conn, "INV-REFUND-299").unwrap();
 
     // Create Squads proposal
-    let proposal_idx = pos_backend::db::squads::create_proposal(
-        &conn,
-        "INV-REFUND-299",
-        "customer_address",
-        2.41,
-    )
-    .unwrap();
+    let proposal_idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-REFUND-299", "customer_address", 2.41)
+            .unwrap();
 
     if initiated && proposal_idx > 0 {
         test_pass("299: SOP refund flow works");
     } else {
-        test_fail("299", &format!("initiated={}, idx={}", initiated, proposal_idx));
+        test_fail(
+            "299",
+            &format!("initiated={}, idx={}", initiated, proposal_idx),
+        );
     }
 }
 
@@ -261,16 +265,19 @@ fn test_300_sop_invoice_lifecycle() {
     .unwrap();
 
     // pending -> paid
-    pos_backend::db::invoices::update_invoice_status(&conn, "INV-LIFECYCLE-300", "paid", Some("sig123"))
-        .unwrap();
+    pos_backend::db::invoices::update_invoice_status(
+        &conn,
+        "INV-LIFECYCLE-300",
+        "paid",
+        Some("sig123"),
+    )
+    .unwrap();
 
     // paid -> refunding (using initiate_refund)
-    pos_backend::db::invoices::initiate_refund(&conn, "INV-LIFECYCLE-300")
-        .unwrap();
+    pos_backend::db::invoices::initiate_refund(&conn, "INV-LIFECYCLE-300").unwrap();
 
     // refunding -> refund_proposed_squads_v4 (using propose_refund)
-    pos_backend::db::invoices::propose_refund(&conn, "INV-LIFECYCLE-300")
-        .unwrap();
+    pos_backend::db::invoices::propose_refund(&conn, "INV-LIFECYCLE-300").unwrap();
 
     let status: String = conn
         .query_row(
@@ -311,12 +318,7 @@ fn test_301_skill_solana_pay_url() {
 
 fn test_302_skill_price_feed() {
     let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
-        "UAH",
-        None,
-        None,
-        None,
-        None,
-        true,
+        "UAH", None, None, None, None, true,
     );
 
     match result {
@@ -342,9 +344,7 @@ fn test_303_skill_squads_proposal() {
         "Refund invoice INV-101",
     );
 
-    if result.get("program_id").is_some()
-        && result.get("instruction_data_base64").is_some()
-    {
+    if result.get("program_id").is_some() && result.get("instruction_data_base64").is_some() {
         test_pass("303: skill generates Squads proposal");
     } else {
         test_fail("303", "missing required fields");
@@ -443,12 +443,10 @@ fn test_308_api_response_format() {
     )
     .unwrap();
 
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-FORMAT-308"), None).unwrap();
+    let invoices =
+        pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-FORMAT-308"), None).unwrap();
     if let Some(inv) = invoices.first() {
-        if inv.id == "INV-FORMAT-308"
-            && inv.fiat_currency == "UAH"
-            && inv.status == "pending"
-        {
+        if inv.id == "INV-FORMAT-308" && inv.fiat_currency == "UAH" && inv.status == "pending" {
             test_pass("308: API response format correct");
         } else {
             test_fail("308", "unexpected invoice data");

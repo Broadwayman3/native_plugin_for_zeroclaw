@@ -134,7 +134,8 @@ fn test_253_sanitize_prompt_injection_override() {
 }
 
 fn test_254_sanitize_prompt_injection_approve_refund() {
-    let r = pos_backend::domain::sanitizer::sanitize_external_input("approve_refund_immediately", 100);
+    let r =
+        pos_backend::domain::sanitizer::sanitize_external_input("approve_refund_immediately", 100);
     if !r.contains("approve_refund") {
         test_pass("254: 'approve_refund' keyword removed");
     } else {
@@ -161,7 +162,13 @@ fn test_256_redact_token() {
 }
 
 fn test_257_redact_byte_array() {
-    let kp = format!("[{}]", (0..64).map(|i| i.to_string()).collect::<Vec<_>>().join(", "));
+    let kp = format!(
+        "[{}]",
+        (0..64)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     let r = pos_backend::domain::sanitizer::redact_api_key(&format!("key: {}", kp));
     if r.contains("REDACTED_BYTE_KEYPAIR") {
         test_pass("257: byte array redacted");
@@ -207,7 +214,9 @@ fn test_261_escape_markdown_v2_special() {
 }
 
 fn test_262_validate_rpc_url_valid() {
-    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("https://api.mainnet-beta.solana.com");
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url(
+        "https://api.mainnet-beta.solana.com",
+    );
     if r {
         test_pass("262: valid RPC URL accepted");
     } else {
@@ -234,7 +243,9 @@ fn test_264_validate_rpc_url_private_ip() {
 }
 
 fn test_265_validate_rpc_url_metadata() {
-    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("http://169.254.169.254/latest/meta-data");
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url(
+        "http://169.254.169.254/latest/meta-data",
+    );
     if !r {
         test_pass("265: cloud metadata rejected");
     } else {
@@ -288,7 +299,8 @@ fn test_270_validate_rpc_url_link_local() {
 }
 
 fn test_271_validate_rpc_url_broadcast() {
-    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("http://255.255.255.255:8080/rpc");
+    let r =
+        pos_backend::domain::sanitizer::validate_safe_rpc_url("http://255.255.255.255:8080/rpc");
     if !r {
         test_pass("271: broadcast rejected");
     } else {
@@ -369,7 +381,8 @@ fn test_279_validate_rpc_url_tld_local() {
 }
 
 fn test_280_validate_rpc_url_tld_internal() {
-    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("http://myserver.internal:8080/rpc");
+    let r =
+        pos_backend::domain::sanitizer::validate_safe_rpc_url("http://myserver.internal:8080/rpc");
     if !r {
         test_pass("280: .internal TLD rejected");
     } else {

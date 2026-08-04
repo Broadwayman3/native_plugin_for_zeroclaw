@@ -4,96 +4,97 @@
 
 **Commits are FORBIDDEN unless ALL checks pass with ZERO errors and ZERO warnings.**
 
-On every commit, checks run on the **files touched by the diff** (see `git diff --name-only`), NOT the whole tree. The whole tree is not yet clean — the legacy backlog is tracked separately in §Tree-Cleanup Backlog below.
+On every commit, checks run on the **files touched by the diff** (see `git diff --name-only`), NOT the whole tree.
 
 ### Lint & Format (touched files only)
 
 ```bash
-# Must pass with EXIT=0 and NO output on touched files
-# E203 ignored: black formats slices as "a[i : i+n]", which flake8 flags but is correct output.
-flake8 <touched_py_files> --max-line-length=160 --ignore=E501,W503,E402,E203
-
 # Must pass with EXIT=0 and NO output
-black --check <touched_py_files> --line-length=160
+cargo fmt --check --manifest-path pos-backend/Cargo.toml
+cargo fmt --check --manifest-path plugins/solana-pos-core/Cargo.toml
 ```
 
-### Type Check (touched files only)
+### Clippy Linter (touched files only)
 
 ```bash
-# Must pass with EXIT=0 and NO errors (--no-error-summary required)
-mypy <touched_py_files> --ignore-missing-imports
-```
-
-### Security Audit (touched files only)
-
-```bash
-# Must show ZERO Medium and ZERO High issues
-bandit <touched_py_files> -ll
+# Must pass with EXIT=0 and ZERO warnings
+cargo clippy --manifest-path pos-backend/Cargo.toml -- -D warnings
+cargo clippy --manifest-path plugins/solana-pos-core/Cargo.toml -- -D warnings
 ```
 
 ### Test Suite
 
 ```bash
 # Must pass with 100% rate (all tests green, no failures)
-# Requires a clean tree for verification of interface changes (full suite always valid).
-./scripts/verify_all.sh
+cargo test --manifest-path pos-backend/Cargo.toml
+cargo test --manifest-path plugins/solana-pos-core/pos-core-logic/Cargo.toml
+cd plugins/solana-pos-core && cargo test --lib --release
 ```
-
-## Tree-Cleanup Backlog
-
-The following legacy debt exists in `scripts/` and is intentionally **NOT** fixed as part of ordinary commits. It must be worked down in a dedicated cleanup PR (incremental, file-by-file). Newly touched files MUST remain clean (zero errors / zero warnings), keeping the backlog non-growing.
-
-| Debt | Scope | Count |
-|------|-------|-------|
-| File size >400 lines | `tests/test_edge_math_and_blinks.py` (736), `tests/test_squads_multisig.py` (521) | **2 files** |
-| legacy `parse_mode="Markdown"` | 7 messages in `bot_ui_handlers.py` (migration to MarkdownV2 tracked) | 7 messages |
-
-Migration note: `i18n.py` was split into `i18n_strings.py` + `i18n_strings_ext.py` (pure data) so both modules stay under 400 lines. All flake8 violations (684→0) and black drift (34→0) have been resolved in this session.
 
 ## File Size Rules
 
 - **Maximum 400 lines per file.** No god classes. No monoliths.
 - Files exceeding 400 lines MUST be split into smaller modules.
 - Each module MUST have a single responsibility.
-- Each test module MUST be self-contained with its own `run_suite()`.
 
 ## Code Standards
 
-- Zero external dependencies beyond Python stdlib
-- All DB connections MUST use `try/finally: conn.close()`
-- No `return` inside `try` block without explicit `conn.close()` first
-- All SQL MUST use parameterized queries (no f-strings in SQL)
+- Rust idioms: prefer `Result` over `unwrap()`, use `thiserror` for error types
+- All SQL MUST use parameterized queries (no string interpolation in SQL)
+- All DB connections MUST use `try/finally` pattern (rusqlite `Connection` dropped properly)
 - All Telegram user input MUST go through `sanitize_external_input()`
-- All Telegram output text MUST be escaped via `escape_telegram_markdown_v2()` or `t(escape_markdown=True)`
-- Manager-only actions MUST check `MANAGER_TELEGRAM_ID` from `bot_ui_utils`
+- All Telegram output text MUST be escaped via `escape_telegram_markdown_v2()`
+- Manager-only actions MUST check `MANAGER_TELEGRAM_ID`
+- Financial calculations MUST use `u128` atomic units (no float for on-chain amounts)
 
 ## Project Structure
 
 ```
-scripts/
-  pos_core/          # Domain logic (NO network I/O, NO side effects beyond DB)
-    bot_ui_utils.py  # Keyboards, button matching, order parsing, payload builders
-    bot_ui_handlers.py # Callback and text message handlers
-    db.py            # SQLite WAL DAO layer
-    i18n.py          # 13-language internationalization (functions; data in i18n_strings*.py)
-    i18n_strings.py  # Pure data: LANG_META + translations (part 1)
-    i18n_strings_ext.py  # Pure data: translations (part 2)
-    solana_pay.py    # Solana Pay URL generation, refund initiation
-    price_feed.py    # Multi-tier fiat rate fallback
-    formatters.py    # Pubkey formatting, QR image URLs, Telegram payloads
-    nonce_pool.py    # Durable nonce account pool
-    verification.py  # Solana transaction verification
-    pix_brl.py       # Brazil PIX QR code
-    router.py        # HTTP micro-router
-    constants.py     # Domain constants
-  tests/             # Modular test suite (each module has run_suite())
-  telegram_bot_listener.py  # Long-polling adapter (thin I/O layer)
-  sanitizer.py       # Input sanitizer, SSRF guard, secret redactor
+pos-backend/src/
+├── main.rs              # Axum HTTP server entrypoint
+├── config.rs            # AppConfig struct, env-var loader
+├── error.rs             # AppError enum (thiserror)
+├── api/                 # REST endpoints
+│   ├── mod.rs           # Router builder, CORS, AppState
+│   ├── actions.rs       # Solana Actions/Blinks
+│   ├── invoices.rs      # Invoice CRUD
+│   ├── nonce.rs         # Durable nonce pool
+│   ├── pos_flow.rs      # POS order creation
+│   ├── sales.rs         # Sales summary
+│   └── x402.rs          # x402 machine commerce
+├── db/                  # SQLite data access
+│   ├── schema.rs        # DDL, migrations, nonce seeding
+│   ├── invoices.rs      # Invoice DAO
+│   ├── nonce.rs         # Nonce account pool
+│   ├── squads.rs        # Squads v4 proposals
+│   └── ...
+└── domain/              # Business logic
+    ├── sanitizer.rs     # SSRF guard, input sanitization
+    ├── verification.rs  # Triple Payment Verification
+    ├── i18n.rs          # 13-language i18n dispatcher
+    ├── price_feed.rs    # Multi-tier fiat rate fallback
+    └── ...
+
+plugins/solana-pos-core/
+├── src/lib.rs           # WASM entrypoint (wit-bindgen)
+└── pos-core-logic/src/  # Shared business logic
+    ├── solana_pay.rs    # Solana Pay URL builder
+    ├── squads.rs        # Squads v4 proposal builder
+    └── token2022.rs     # Token-2022 fee calculator
 ```
 
 ## Test Conventions
 
-- Tests are numbered sequentially across modules
-- Each test module has a `run_suite() -> int` returning count of passed tests
-- `test_boundary_cases.py` is the master entrypoint
-- Test DB uses `data/test_boundary.db`
+- Tests are numbered sequentially: `test_001` through `test_310`
+- Each test module is self-contained
+- Property-based testing via `proptest` for financial math
+- Run full suite: `./scripts/verify_all.sh`
+
+## Documentation
+
+- `docs/ARCHITECTURE.md` — crate structure, WIT ABI, data flow
+- `docs/API.md` — REST API reference (12 endpoints)
+- `docs/SECURITY.md` — threat model, defense matrix
+- `docs/DATABASE.md` — schema, migrations, pragmas
+- `docs/DEPLOYMENT.md` — Docker, local dev, env vars
+- `docs/TESTING.md` — test strategy, module breakdown

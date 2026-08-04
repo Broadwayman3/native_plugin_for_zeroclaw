@@ -1,6 +1,6 @@
 ---
 name: durable_nonce
-description: Skill for constructing Durable Nonce transactions with live RPC state querying and Nonce Account Pools to solve Blockhash Expiry and Parallel Approval Collisions (Bounty Trap #1).
+description: Skill for constructing Durable Nonce transactions with live RPC state querying and Nonce Account Pools to solve Blockhash Expiry and Parallel Approval Collisions (Bounty Trap #1). Nonce pool managed in Rust (pos-backend/src/db/nonce.rs).
 ---
 
 # Durable Nonce Account Skill (Solana Craft Solution)

@@ -147,7 +147,13 @@ fn test_171_instruction_data_draft_true() {
 
 fn test_172_create_squads_proposal_json() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result.get("program_id").is_some() && result.get("proposal_index").is_some() {
         test_pass("172: create_squads_proposal returns valid JSON");
@@ -159,7 +165,8 @@ fn test_172_create_squads_proposal_json() {
 fn test_173_update_squads_proposal_status() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-173");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-173", "recipient1", 2.41).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-173", "recipient1", 2.41).unwrap();
     let updated = pos_backend::db::squads::update_proposal_status(&conn, idx, "approved").unwrap();
     if updated {
         test_pass("173: update_squads_proposal_status returns true");
@@ -173,9 +180,12 @@ fn test_174_proposal_index_auto_increment() {
     create_test_invoice(&conn, "INV-1");
     create_test_invoice(&conn, "INV-2");
     create_test_invoice(&conn, "INV-3");
-    let idx1 = pos_backend::db::squads::create_proposal(&conn, "INV-1", "recipient1", 10.0).unwrap();
-    let idx2 = pos_backend::db::squads::create_proposal(&conn, "INV-2", "recipient2", 20.0).unwrap();
-    let idx3 = pos_backend::db::squads::create_proposal(&conn, "INV-3", "recipient3", 30.0).unwrap();
+    let idx1 =
+        pos_backend::db::squads::create_proposal(&conn, "INV-1", "recipient1", 10.0).unwrap();
+    let idx2 =
+        pos_backend::db::squads::create_proposal(&conn, "INV-2", "recipient2", 20.0).unwrap();
+    let idx3 =
+        pos_backend::db::squads::create_proposal(&conn, "INV-3", "recipient3", 30.0).unwrap();
     if idx1 < idx2 && idx2 < idx3 {
         test_pass("174: proposal_index auto-increments");
     } else {
@@ -185,11 +195,27 @@ fn test_174_proposal_index_auto_increment() {
 
 fn test_175_proposal_json_structure() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
-    let required = ["program_id", "multisig_pubkey", "vault_pubkey", "proposer_pubkey",
-                    "recipient_pubkey", "amount_usdc", "proposal_index", "memo",
-                    "anchor_discriminator", "instruction_data_hex", "instruction_data_base64"];
+    let required = [
+        "program_id",
+        "multisig_pubkey",
+        "vault_pubkey",
+        "proposer_pubkey",
+        "recipient_pubkey",
+        "amount_usdc",
+        "proposal_index",
+        "memo",
+        "anchor_discriminator",
+        "instruction_data_hex",
+        "instruction_data_base64",
+    ];
     let mut missing = vec![];
     for key in &required {
         if result.get(*key).is_none() {
@@ -205,7 +231,13 @@ fn test_175_proposal_json_structure() {
 
 fn test_176_proposal_json_program_id() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result["program_id"] == "SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm" {
         test_pass("176: program_id correct");
@@ -216,18 +248,33 @@ fn test_176_proposal_json_program_id() {
 
 fn test_177_proposal_json_anchor_discriminator() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result["anchor_discriminator"] == "847444aed8a0c616" {
         test_pass("177: anchor discriminator hex correct");
     } else {
-        test_fail("177", &format!("discriminator: {}", result["anchor_discriminator"]));
+        test_fail(
+            "177",
+            &format!("discriminator: {}", result["anchor_discriminator"]),
+        );
     }
 }
 
 fn test_178_proposal_json_multisig() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result["multisig_pubkey"] == "multisig111" {
         test_pass("178: multisig_pubkey correct");
@@ -238,7 +285,13 @@ fn test_178_proposal_json_multisig() {
 
 fn test_179_proposal_json_vault() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result["vault_pubkey"] == "vault111" {
         test_pass("179: vault_pubkey correct");
@@ -249,7 +302,13 @@ fn test_179_proposal_json_vault() {
 
 fn test_180_proposal_json_proposer() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result["proposer_pubkey"] == "proposer111" {
         test_pass("180: proposer_pubkey correct");
@@ -260,7 +319,13 @@ fn test_180_proposal_json_proposer() {
 
 fn test_181_proposal_json_recipient() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result["recipient_pubkey"] == "recipient111" {
         test_pass("181: recipient_pubkey correct");
@@ -271,7 +336,13 @@ fn test_181_proposal_json_recipient() {
 
 fn test_182_proposal_json_amount() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.5, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.5,
+        5,
+        "Refund",
     );
     if result["amount_usdc"] == 10.5 {
         test_pass("182: amount_usdc correct");
@@ -282,7 +353,13 @@ fn test_182_proposal_json_amount() {
 
 fn test_183_proposal_json_memo() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Test Memo",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Test Memo",
     );
     if result["memo"] == "Test Memo" {
         test_pass("183: memo correct");
@@ -348,8 +425,15 @@ fn test_189_base64_encode_padding() {
 fn test_190_proposal_status_created() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-190");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-190", "recipient1", 10.0).unwrap();
-    let status: String = conn.query_row("SELECT status FROM squads_proposals WHERE proposal_index = ?1", [idx], |row| row.get(0)).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-190", "recipient1", 10.0).unwrap();
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM squads_proposals WHERE proposal_index = ?1",
+            [idx],
+            |row| row.get(0),
+        )
+        .unwrap();
     if status == "created" {
         test_pass("190: proposal status starts as 'created'");
     } else {
@@ -360,9 +444,16 @@ fn test_190_proposal_status_created() {
 fn test_191_proposal_status_approved() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-191");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-191", "recipient1", 10.0).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-191", "recipient1", 10.0).unwrap();
     pos_backend::db::squads::update_proposal_status(&conn, idx, "approved").unwrap();
-    let status: String = conn.query_row("SELECT status FROM squads_proposals WHERE proposal_index = ?1", [idx], |row| row.get(0)).unwrap();
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM squads_proposals WHERE proposal_index = ?1",
+            [idx],
+            |row| row.get(0),
+        )
+        .unwrap();
     if status == "approved" {
         test_pass("191: proposal status updated to 'approved'");
     } else {
@@ -373,9 +464,16 @@ fn test_191_proposal_status_approved() {
 fn test_192_proposal_status_rejected() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-192");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-192", "recipient1", 10.0).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-192", "recipient1", 10.0).unwrap();
     pos_backend::db::squads::update_proposal_status(&conn, idx, "rejected").unwrap();
-    let status: String = conn.query_row("SELECT status FROM squads_proposals WHERE proposal_index = ?1", [idx], |row| row.get(0)).unwrap();
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM squads_proposals WHERE proposal_index = ?1",
+            [idx],
+            |row| row.get(0),
+        )
+        .unwrap();
     if status == "rejected" {
         test_pass("192: proposal status updated to 'rejected'");
     } else {
@@ -386,7 +484,8 @@ fn test_192_proposal_status_rejected() {
 fn test_193_proposal_invalid_status() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-193");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-193", "recipient1", 10.0).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-193", "recipient1", 10.0).unwrap();
     let result = pos_backend::db::squads::update_proposal_status(&conn, idx, "invalid_status");
     if result.is_ok() {
         test_pass("193: invalid status accepted (DB doesn't validate)");
@@ -433,7 +532,13 @@ fn test_197_squads_program_id_constant() {
 
 fn test_198_proposal_json_instruction_data_hex() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     let hex = result["instruction_data_hex"].as_str().unwrap();
     if hex.len() == 36 && hex.starts_with("847444ae") {
@@ -445,10 +550,20 @@ fn test_198_proposal_json_instruction_data_hex() {
 
 fn test_199_proposal_json_instruction_data_base64() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     let b64 = result["instruction_data_base64"].as_str().unwrap();
-    if !b64.is_empty() && b64.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=') {
+    if !b64.is_empty()
+        && b64
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
+    {
         test_pass("199: instruction_data_base64 valid");
     } else {
         test_fail("199", &format!("base64: {}", b64));
@@ -481,8 +596,15 @@ fn test_201_proposal_index_unique() {
 fn test_202_proposal_invoice_reference() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-202");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-202", "recipient1", 10.0).unwrap();
-    let invoice_id: String = conn.query_row("SELECT invoice_id FROM squads_proposals WHERE proposal_index = ?1", [idx], |row| row.get(0)).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-202", "recipient1", 10.0).unwrap();
+    let invoice_id: String = conn
+        .query_row(
+            "SELECT invoice_id FROM squads_proposals WHERE proposal_index = ?1",
+            [idx],
+            |row| row.get(0),
+        )
+        .unwrap();
     if invoice_id == "INV-202" {
         test_pass("202: proposal references correct invoice");
     } else {
@@ -493,8 +615,15 @@ fn test_202_proposal_invoice_reference() {
 fn test_203_proposal_amount_precision() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-203");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-203", "recipient1", 10.123456).unwrap();
-    let amount: f64 = conn.query_row("SELECT amount_usdc FROM squads_proposals WHERE proposal_index = ?1", [idx], |row| row.get(0)).unwrap();
+    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-203", "recipient1", 10.123456)
+        .unwrap();
+    let amount: f64 = conn
+        .query_row(
+            "SELECT amount_usdc FROM squads_proposals WHERE proposal_index = ?1",
+            [idx],
+            |row| row.get(0),
+        )
+        .unwrap();
     if (amount - 10.123456).abs() < f64::EPSILON {
         test_pass("203: amount precision preserved");
     } else {
@@ -529,7 +658,13 @@ fn test_206_instruction_data_le_byte_order() {
 
 fn test_207_proposal_json_error_handling() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     if result.get("program_id").is_some() {
         test_pass("207: valid inputs return valid JSON");
@@ -559,7 +694,8 @@ fn test_209_instruction_data_execution_type_one() {
 fn test_210_proposal_create_with_invoice() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-200");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-200", "recipient1", 2.41).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-200", "recipient1", 2.41).unwrap();
     if idx > 0 {
         test_pass("210: proposal created with invoice reference");
     } else {
@@ -570,10 +706,17 @@ fn test_210_proposal_create_with_invoice() {
 fn test_211_proposal_update_cascade() {
     let conn = setup_test_db();
     create_test_invoice(&conn, "INV-211");
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-211", "recipient1", 10.0).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-211", "recipient1", 10.0).unwrap();
     pos_backend::db::squads::update_proposal_status(&conn, idx, "approved").unwrap();
     pos_backend::db::squads::update_proposal_status(&conn, idx, "rejected").unwrap();
-    let status: String = conn.query_row("SELECT status FROM squads_proposals WHERE proposal_index = ?1", [idx], |row| row.get(0)).unwrap();
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM squads_proposals WHERE proposal_index = ?1",
+            [idx],
+            |row| row.get(0),
+        )
+        .unwrap();
     if status == "rejected" {
         test_pass("211: multiple status updates work");
     } else {
@@ -593,7 +736,13 @@ fn test_212_instruction_data_consistency() {
 
 fn test_213_proposal_json_serialization() {
     let result = pos_core_logic::build_squads_v4_proposal(
-        "multisig111", "vault111", "proposer111", "recipient111", 10.0, 5, "Refund",
+        "multisig111",
+        "vault111",
+        "proposer111",
+        "recipient111",
+        10.0,
+        5,
+        "Refund",
     );
     let json_str = serde_json::to_string(&result).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();

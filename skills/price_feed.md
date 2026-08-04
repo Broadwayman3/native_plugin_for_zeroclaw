@@ -1,6 +1,6 @@
 ---
 name: price_feed
-description: Skill for converting local fiat currencies (UAH, EUR, USD, BRL) to USDC using Jupiter REST API and Switchboard Crossbar endpoints.
+description: Skill for converting local fiat currencies (UAH, EUR, USD, BRL) to USDC using Jupiter REST API and Switchboard Crossbar endpoints. Implemented in Rust (pos-backend/src/domain/price_feed.rs).
 ---
 
 # Currency Conversion & Price Feed Skill (Multinational & BRL/PIX Ready)

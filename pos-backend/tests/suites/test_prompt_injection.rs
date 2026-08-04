@@ -71,7 +71,12 @@ fn test_286_fake_payment_injection() {
         1000000,
         "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     );
-    if result["is_valid"] == false && result["error"].as_str().unwrap().contains("No valid token transfer") {
+    if result["is_valid"] == false
+        && result["error"]
+            .as_str()
+            .unwrap()
+            .contains("No valid token transfer")
+    {
         test_pass("286: fake payment injection rejected");
     } else {
         test_fail("286", &format!("result: {}", result));

@@ -1,6 +1,6 @@
 ---
 name: solana_pay
-description: Skill for generating Solana Pay URLs, QR codes, and Blinks with unique reference public keys and Triple Payment Verification.
+description: Skill for generating Solana Pay URLs, QR codes, and Blinks with unique reference public keys and Triple Payment Verification. Implemented in Rust (pos-core-logic crate).
 ---
 
 # Solana Pay Invoicing & QR Code Skill

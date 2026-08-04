@@ -20,6 +20,10 @@ data/
 # Python caches
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Script artifacts
+scripts/data/
 
 # OS metadata
 .DS_Store

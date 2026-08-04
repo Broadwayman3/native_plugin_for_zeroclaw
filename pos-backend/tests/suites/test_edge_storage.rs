@@ -46,7 +46,9 @@ fn test_214_db_wal_mode() {
     let db_path = "data/test_wal_mode.db";
     let _ = std::fs::remove_file(db_path);
     let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    let mode: String = conn.query_row("PRAGMA journal_mode", [], |row| row.get(0)).unwrap();
+    let mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
     let _ = std::fs::remove_file(db_path);
     let _ = std::fs::remove_file(format!("{}-wal", db_path));
     let _ = std::fs::remove_file(format!("{}-shm", db_path));
@@ -100,7 +102,11 @@ fn test_217_cleanup_expired_pending() {
     pos_backend::db::invoices::cleanup_expired_pending_invoices(&conn).unwrap();
 
     let status: String = conn
-        .query_row("SELECT status FROM invoices WHERE id = 'INV-OLD'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM invoices WHERE id = 'INV-OLD'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
 
     if status == "expired" {
@@ -124,7 +130,9 @@ fn test_218_check_and_register_dedup() {
 
 fn test_219_seed_sample_data() {
     let conn = setup_test_db();
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0)).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0))
+        .unwrap();
     if count == 0 {
         // Seed data not enabled in setup_test_db
         test_pass("219: seed data disabled in test (correct)");
@@ -166,7 +174,9 @@ fn test_220_concurrent_db_writes() {
     }
 
     let conn = pos_backend::db::get_db_connection(db_path).unwrap();
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0)).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0))
+        .unwrap();
     let _ = std::fs::remove_file(db_path);
 
     if count == 5 {
@@ -191,11 +201,19 @@ fn test_221_invoice_status_transitions() {
     .unwrap();
 
     // pending -> paid
-    let updated = pos_backend::db::invoices::update_invoice_status(&conn, "INV-TRANS", "paid", Some("sig123")).unwrap();
+    let updated = pos_backend::db::invoices::update_invoice_status(
+        &conn,
+        "INV-TRANS",
+        "paid",
+        Some("sig123"),
+    )
+    .unwrap();
     assert_eq!(updated, 1);
 
     // paid -> refunding (direct update without status check)
-    let updated = pos_backend::db::invoices::update_invoice_status(&conn, "INV-TRANS", "refunding", None).unwrap();
+    let updated =
+        pos_backend::db::invoices::update_invoice_status(&conn, "INV-TRANS", "refunding", None)
+            .unwrap();
     if updated == 0 {
         // The update function only allows pending/partially_paid transitions
         // This is expected behavior - paid invoices can't be transitioned
@@ -296,7 +314,13 @@ fn test_225_invoice_update_status_valid() {
     )
     .unwrap();
 
-    let updated = pos_backend::db::invoices::update_invoice_status(&conn, "INV-VALID", "paid", Some("sig123")).unwrap();
+    let updated = pos_backend::db::invoices::update_invoice_status(
+        &conn,
+        "INV-VALID",
+        "paid",
+        Some("sig123"),
+    )
+    .unwrap();
     if updated == 1 {
         test_pass("225: valid status update works");
     } else {
@@ -320,7 +344,9 @@ fn test_226_invoice_update_status_invalid() {
     pos_backend::db::invoices::update_invoice_status(&conn, "INV-INVALID", "paid", None).unwrap();
 
     // Try to update already-paid invoice to a different status
-    let updated = pos_backend::db::invoices::update_invoice_status(&conn, "INV-INVALID", "cancelled", None).unwrap();
+    let updated =
+        pos_backend::db::invoices::update_invoice_status(&conn, "INV-INVALID", "cancelled", None)
+            .unwrap();
     if updated == 0 {
         test_pass("226: invalid status transition rejected");
     } else {
@@ -469,7 +495,8 @@ fn test_234_get_invoices_by_id() {
     )
     .unwrap();
 
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-FIND"), None).unwrap();
+    let invoices =
+        pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-FIND"), None).unwrap();
     if invoices.len() == 1 && invoices[0].id == "INV-FIND" {
         test_pass("234: get invoice by ID");
     } else {
@@ -479,7 +506,8 @@ fn test_234_get_invoices_by_id() {
 
 fn test_235_get_invoices_by_id_not_found() {
     let conn = setup_test_db();
-    let invoices = pos_backend::db::invoices::get_invoices_list(&conn, Some("NONEXISTENT"), None).unwrap();
+    let invoices =
+        pos_backend::db::invoices::get_invoices_list(&conn, Some("NONEXISTENT"), None).unwrap();
     if invoices.is_empty() {
         test_pass("235: nonexistent invoice returns empty");
     } else {
@@ -492,7 +520,9 @@ fn test_236_db_connection_wal() {
     // Just verify the connection function works
     let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
     pos_backend::db::schema::init_db(&conn, false).unwrap();
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0)).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0))
+        .unwrap();
     if count == 0 {
         test_pass("236: connection works (in-memory, no WAL)");
     } else {
@@ -502,7 +532,9 @@ fn test_236_db_connection_wal() {
 
 fn test_237_db_connection_busy_timeout() {
     let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
-    let timeout: i64 = conn.query_row("PRAGMA busy_timeout", [], |row| row.get(0)).unwrap();
+    let timeout: i64 = conn
+        .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+        .unwrap();
     if timeout == 5000 {
         test_pass("237: busy_timeout set to 5000");
     } else {
@@ -512,7 +544,9 @@ fn test_237_db_connection_busy_timeout() {
 
 fn test_238_db_connection_cache_size() {
     let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
-    let cache_size: i64 = conn.query_row("PRAGMA cache_size", [], |row| row.get(0)).unwrap();
+    let cache_size: i64 = conn
+        .query_row("PRAGMA cache_size", [], |row| row.get(0))
+        .unwrap();
     if cache_size == -64000 {
         test_pass("238: cache_size set to -64000");
     } else {
@@ -523,8 +557,14 @@ fn test_238_db_connection_cache_size() {
 fn test_239_invoice_status_all_allowed() {
     let allowed = pos_backend::db::invoices::ALLOWED_INVOICE_STATUSES;
     let expected = vec![
-        "pending", "paid", "partially_paid", "cancelled", "refunding",
-        "refund_proposed_squads_v4", "expired", "failed",
+        "pending",
+        "paid",
+        "partially_paid",
+        "cancelled",
+        "refunding",
+        "refund_proposed_squads_v4",
+        "expired",
+        "failed",
     ];
     if allowed.len() == expected.len() && allowed.iter().all(|s| expected.contains(s)) {
         test_pass("239: all allowed statuses present");
@@ -547,7 +587,8 @@ fn test_240_squads_proposal_create() {
         },
     )
     .unwrap();
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-240", "recipient1", 10.0).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-240", "recipient1", 10.0).unwrap();
     if idx > 0 {
         test_pass("240: squads proposal created");
     } else {
@@ -569,7 +610,8 @@ fn test_241_squads_proposal_update() {
         },
     )
     .unwrap();
-    let idx = pos_backend::db::squads::create_proposal(&conn, "INV-241", "recipient1", 10.0).unwrap();
+    let idx =
+        pos_backend::db::squads::create_proposal(&conn, "INV-241", "recipient1", 10.0).unwrap();
     let updated = pos_backend::db::squads::update_proposal_status(&conn, idx, "approved").unwrap();
     if updated {
         test_pass("241: squads proposal updated");

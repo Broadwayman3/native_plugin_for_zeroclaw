@@ -11,17 +11,18 @@ pub fn run_suite() {
 
 fn test_288_cors_headers() {
     // Verify CORS is configured with explicit headers (not Allow-Headers: Any)
-    let config = pos_backend::config::AppConfig::from_env().unwrap_or(pos_backend::config::AppConfig {
-        manager_telegram_id: 0,
-        merchant_wallet_pubkey: "test".to_string(),
-        solana_rpc_url: "https://api.devnet.solana.com".to_string(),
-        fallback_rpc_url: "https://api.devnet.solana.com".to_string(),
-        usdc_mint_address: "test".to_string(),
-        nonce_account_pubkey: "test".to_string(),
-        host: "127.0.0.1".to_string(),
-        port: 8080,
-        db_path: ":memory:".to_string(),
-    });
+    let config =
+        pos_backend::config::AppConfig::from_env().unwrap_or(pos_backend::config::AppConfig {
+            manager_telegram_id: 0,
+            merchant_wallet_pubkey: "test".to_string(),
+            solana_rpc_url: "https://api.devnet.solana.com".to_string(),
+            fallback_rpc_url: "https://api.devnet.solana.com".to_string(),
+            usdc_mint_address: "test".to_string(),
+            nonce_account_pubkey: "test".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            db_path: ":memory:".to_string(),
+        });
 
     // Build router and verify it doesn't panic
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -32,7 +33,9 @@ fn test_288_cors_headers() {
 }
 
 fn test_289_pubkey_formatting() {
-    let short = pos_backend::domain::formatters::format_pubkey_short("8xAZmQ1111111111111111111111111111111111111");
+    let short = pos_backend::domain::formatters::format_pubkey_short(
+        "8xAZmQ1111111111111111111111111111111111111",
+    );
     if short.starts_with("8xAZ") && short.ends_with("1111") && short.contains("...") {
         test_pass("289: pubkey formatting correct");
     } else {
@@ -109,12 +112,16 @@ fn test_292_invoice_id_filtering() {
     }
 
     // Filter by ID
-    let filtered = pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-3"), None).unwrap();
+    let filtered =
+        pos_backend::db::invoices::get_invoices_list(&conn, Some("INV-3"), None).unwrap();
     let all = pos_backend::db::invoices::get_invoices_list(&conn, None, None).unwrap();
 
     if filtered.len() == 1 && filtered[0].id == "INV-3" && all.len() == 5 {
         test_pass("292: invoice ID filtering works");
     } else {
-        test_fail("292", &format!("filtered={}, all={}", filtered.len(), all.len()));
+        test_fail(
+            "292",
+            &format!("filtered={}, all={}", filtered.len(), all.len()),
+        );
     }
 }

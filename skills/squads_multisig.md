@@ -1,6 +1,6 @@
 ---
 name: squads_multisig
-description: Skill for constructing Squads v4 Multisig Proposal transactions with live on-chain sequence index synchronization.
+description: Skill for constructing Squads v4 Multisig Proposal transactions with live on-chain sequence index synchronization. Proposal building in Rust (plugins/solana-pos-core/pos-core-logic/src/squads.rs).
 ---
 
 # Squads v4 Multisig Integration Skill (Tier 3 Institutional Security)

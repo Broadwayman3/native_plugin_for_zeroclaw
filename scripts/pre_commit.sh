@@ -13,55 +13,30 @@ if command -v shellcheck >/dev/null 2>&1; then
     shellcheck scripts/*.sh
 fi
 
-# 2. Custom AST Safety Linter (SQL Injection & Math Guard)
-echo "📋 Running Python AST Static Code Safety Linter..."
-python3 scripts/lint_safety_ast.py
+# 2. Rust Formatting Check
+echo "📋 Checking Rust code formatting..."
+cargo fmt --check --manifest-path pos-backend/Cargo.toml
+cargo fmt --check --manifest-path plugins/solana-pos-core/Cargo.toml
 
-# 3. Bandit Security Static Analysis
-if command -v bandit >/dev/null 2>&1; then
-    echo "🛡️ Running Bandit Security Analysis..."
-    bandit -r scripts/ -x 'scripts/test_*' --severity-level medium
-fi
+# 3. Rust Clippy Linter (Strict)
+echo "🔬 Running cargo clippy on pos-backend..."
+cargo clippy --manifest-path pos-backend/Cargo.toml -- -D warnings
 
-# 4. Python Type Safety & Style Checks (mypy, flake8/ruff)
-if command -v mypy >/dev/null 2>&1; then
-    echo "🔬 Running mypy type checking..."
-    mypy scripts/validators.py scripts/sanitizer.py scripts/pos_core/*.py --ignore-missing-imports
-fi
-
-if command -v flake8 >/dev/null 2>&1; then
-    echo "🎨 Running flake8 linter on changed files..."
-    CHANGED_PY=$(git diff --name-only --cached --diff-filter=ACM | grep '\.py$' || true)
-    if [ -z "$CHANGED_PY" ]; then
-        CHANGED_PY=$(git diff --name-only --diff-filter=ACM | grep '\.py$' || true)
-    fi
-    if [ -n "$CHANGED_PY" ]; then
-        flake8 $CHANGED_PY --max-line-length=160 --ignore=E501,W503,E402,E203
-    fi
-elif command -v ruff >/dev/null 2>&1; then
-    echo "🎨 Running ruff linter..."
-    ruff check scripts/
-fi
-
-# 5. Rust Formatting, WASM Check & Clippy Linter
+echo "🔬 Running cargo clippy on solana-pos-core (WASM target)..."
 cd plugins/solana-pos-core
-if command -v cargo >/dev/null 2>&1; then
-    cargo fmt --check
-    cargo clippy --target wasm32-wasip2 -- -D warnings
-    cargo check --target wasm32-wasip2
-    cargo build --target wasm32-wasip2 --release
-fi
+cargo clippy --target wasm32-wasip2 -- -D warnings
+cargo check --target wasm32-wasip2
 cd - > /dev/null
 
-# 6. Python Schema Validation & Sanitizer Self-Tests
-python3 scripts/validators.py
-python3 scripts/sanitizer.py
+# 4. Run All Tests
+echo "🧪 Running pos-backend tests..."
+cargo test --manifest-path pos-backend/Cargo.toml
 
-# 7. Security Audit & Prompt Injection Suite
-python3 scripts/test_prompt_inj.py
+echo "🧪 Running pos-core-logic tests..."
+cargo test --manifest-path plugins/solana-pos-core/pos-core-logic/Cargo.toml
 
-# 8. Comprehensive Boundary Cases (305 Tests)
-python3 scripts/test_boundary_cases.py
+echo "🧪 Running solana-pos-core WASM plugin tests..."
+cd plugins/solana-pos-core && cargo test --lib --release && cd - > /dev/null
 
 echo "================================================================="
 echo "✅ All pre-commit security & linting checks passed! Commit allowed."

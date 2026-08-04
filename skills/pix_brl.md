@@ -1,6 +1,6 @@
 ---
 name: pix_brl
-description: Skill for Brazil-first BRL invoicing and dual settlement reconciliation via Switchboard Crossbar and EMV QRCPS PIX payloads.
+description: Skill for Brazil-first BRL invoicing and dual settlement reconciliation via Switchboard Crossbar and EMV QRCPS PIX payloads. Implemented in Rust (pos-backend/src/domain/pix_brl.rs).
 ---
 
 # Brazil-First BRL & PIX Reconciliation Skill
