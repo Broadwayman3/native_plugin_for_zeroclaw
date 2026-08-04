@@ -1,7 +1,7 @@
 use crate::{test_fail, test_pass};
 
 pub fn run_suite() {
-    println!("\n📦 Verification Tests (091-100)");
+    println!("\n📦 Verification Tests (091-101)");
     test_091_verify_valid_transaction();
     test_092_verify_invalid_payload();
     test_093_verify_no_meta();
@@ -12,6 +12,7 @@ pub fn run_suite() {
     test_098_verify_wrong_mint();
     test_099_verify_missing_account();
     test_100_verify_empty_instructions();
+    test_101_verify_transfer_checked_type();
 }
 
 fn test_091_verify_valid_transaction() {
@@ -180,5 +181,48 @@ fn test_100_verify_empty_instructions() {
         test_pass("100: empty instructions rejected");
     } else {
         test_fail("100", "expected is_valid=false");
+    }
+}
+
+fn test_101_verify_transfer_checked_type() {
+    let tx = serde_json::json!({
+        "meta": {"err": null, "postTokenBalances": [], "preTokenBalances": [], "innerInstructions": []},
+        "transaction": {
+            "message": {
+                "accountKeys": [
+                    {"pubkey": "payer"},
+                    {"pubkey": "merchant_ata"}
+                ],
+                "instructions": [
+                    {
+                        "parsed": {
+                            "type": "transferChecked",
+                            "info": {
+                                "destination": "merchant_ata",
+                                "amount": "1000000",
+                                "source": "payer"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    });
+    let r = pos_backend::domain::verification::verify_solana_transaction(
+        &tx,
+        "merchant_ata",
+        1000000,
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    );
+    if r["is_valid"] == true && r["verification_method"] == "top_level_instruction" {
+        test_pass("101: transferChecked type verified");
+    } else {
+        test_fail(
+            "101",
+            &format!(
+                "valid={}, method={}",
+                r["is_valid"], r["verification_method"]
+            ),
+        );
     }
 }

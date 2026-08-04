@@ -60,6 +60,10 @@ pub async fn handle_create_order(
         .unwrap_or("UAH");
     let item_desc = parsed.get("items").and_then(|v| v.as_str()).unwrap_or("");
 
+    if fiat_amt <= 0.0 || !fiat_amt.is_finite() {
+        return Err(AppError::BadRequest("Amount must be positive".to_string()));
+    }
+
     // Get fiat rate — return error if unavailable (no fallback to 1.0)
     let rate_info =
         domain::price_feed::get_multitier_fiat_rate(fiat_curr, None, None, None, None, true)
@@ -77,6 +81,10 @@ pub async fn handle_create_order(
         .get("rate")
         .and_then(|v| v.as_f64())
         .ok_or_else(|| AppError::BadRequest("Invalid rate data from price feed".into()))?;
+
+    if rate <= 0.0 || !rate.is_finite() {
+        return Err(AppError::BadRequest("Invalid exchange rate".to_string()));
+    }
 
     // USDC amount via u128 atomic units (6 decimals)
     let usdc_atomic = pos_core_logic::safe_f64_to_u64_atomic(fiat_amt / rate, 6);

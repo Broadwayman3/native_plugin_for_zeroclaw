@@ -1,7 +1,7 @@
 use crate::{test_fail, test_pass};
 
 pub fn run_suite() {
-    println!("\n📦 Price Feed Tests (061-070)");
+    println!("\n📦 Price Feed Tests (061-074)");
     test_061_static_rates_usd();
     test_062_static_rates_uah();
     test_063_static_rates_brl();
@@ -12,6 +12,8 @@ pub fn run_suite() {
     test_068_rate_tier_secondary();
     test_069_rate_tier_cache();
     test_070_rate_tier_static();
+    test_071_stale_primary_fallback_to_secondary();
+    test_072_millisecond_timestamp_normalized();
 }
 
 fn test_061_static_rates_usd() {
@@ -141,5 +143,50 @@ fn test_070_rate_tier_static() {
         }
         Ok(r) => test_fail("070", &format!("tier: {:?}", r.get("tier"))),
         Err(e) => test_fail("070", e),
+    }
+}
+
+fn test_071_stale_primary_fallback_to_secondary() {
+    let now = 1700000000i64;
+    let stale_ts = now - 600; // 10 minutes old (> 300s threshold)
+    let primary = serde_json::json!({"rate": 41.5, "timestamp": stale_ts});
+    let secondary = serde_json::json!({"rate": 42.0, "timestamp": now});
+
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "UAH",
+        Some(&primary),
+        Some(&secondary),
+        None,
+        Some(now),
+        false,
+    );
+    match result {
+        Ok(r) if r.get("tier").and_then(|v| v.as_str()) == Some("secondary_pyth_hermes") => {
+            test_pass("071: stale primary falls back to secondary");
+        }
+        Ok(r) => test_fail("071", &format!("tier: {:?}", r.get("tier"))),
+        Err(e) => test_fail("071", e),
+    }
+}
+
+fn test_072_millisecond_timestamp_normalized() {
+    let now = 1700000000i64;
+    let ms_ts = now * 1000; // Millisecond timestamp
+    let primary = serde_json::json!({"rate": 41.5, "timestamp": ms_ts});
+
+    let result = pos_backend::domain::price_feed::get_multitier_fiat_rate(
+        "UAH",
+        Some(&primary),
+        None,
+        None,
+        Some(now),
+        false,
+    );
+    match result {
+        Ok(r) if r.get("rate").and_then(|v| v.as_f64()) == Some(41.5) => {
+            test_pass("072: millisecond timestamp normalized to seconds");
+        }
+        Ok(r) => test_fail("072", &format!("rate: {:?}", r.get("rate"))),
+        Err(e) => test_fail("072", e),
     }
 }

@@ -1,7 +1,7 @@
 use crate::{test_fail, test_pass};
 
 pub fn run_suite() {
-    println!("\n📦 Sanitizer Tests (071-090)");
+    println!("\n📦 Sanitizer Tests (071-096)");
     test_071_sanitize_control_chars();
     test_072_sanitize_injection_keywords();
     test_073_sanitize_unicode_normalization();
@@ -22,6 +22,12 @@ pub fn run_suite() {
     test_088_validate_rpc_url_invalid_scheme();
     test_089_validate_rpc_url_empty();
     test_090_sanitize_zero_width_chars();
+    test_091_validate_rpc_url_https_localhost();
+    test_092_validate_rpc_url_https_private_ip();
+    test_093_validate_rpc_url_https_metadata();
+    test_094_validate_rpc_url_ipv4_mapped_loopback();
+    test_095_validate_rpc_url_ipv4_mapped_private();
+    test_096_validate_rpc_url_ipv4_mapped_private_class_c();
 }
 
 fn test_071_sanitize_control_chars() {
@@ -212,5 +218,63 @@ fn test_090_sanitize_zero_width_chars() {
         test_pass("090: zero-width space removed");
     } else {
         test_fail("090", &format!("result: {}", r));
+    }
+}
+
+fn test_091_validate_rpc_url_https_localhost() {
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("https://localhost:8443/rpc");
+    if !r {
+        test_pass("091: HTTPS localhost rejected");
+    } else {
+        test_fail("091", "expected false");
+    }
+}
+
+fn test_092_validate_rpc_url_https_private_ip() {
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("https://192.168.1.1:8443/rpc");
+    if !r {
+        test_pass("092: HTTPS private IP rejected");
+    } else {
+        test_fail("092", "expected false");
+    }
+}
+
+fn test_093_validate_rpc_url_https_metadata() {
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url(
+        "https://169.254.169.254/latest/meta-data",
+    );
+    if !r {
+        test_pass("093: HTTPS cloud metadata rejected");
+    } else {
+        test_fail("093", "expected false");
+    }
+}
+
+fn test_094_validate_rpc_url_ipv4_mapped_loopback() {
+    let r =
+        pos_backend::domain::sanitizer::validate_safe_rpc_url("https://[::ffff:127.0.0.1]:8443");
+    if !r {
+        test_pass("094: IPv4-mapped loopback rejected");
+    } else {
+        test_fail("094", "expected false");
+    }
+}
+
+fn test_095_validate_rpc_url_ipv4_mapped_private() {
+    let r = pos_backend::domain::sanitizer::validate_safe_rpc_url("https://[::ffff:10.0.0.1]:8443");
+    if !r {
+        test_pass("095: IPv4-mapped private rejected");
+    } else {
+        test_fail("095", "expected false");
+    }
+}
+
+fn test_096_validate_rpc_url_ipv4_mapped_private_class_c() {
+    let r =
+        pos_backend::domain::sanitizer::validate_safe_rpc_url("https://[::ffff:192.168.1.1]:8443");
+    if !r {
+        test_pass("096: IPv4-mapped 192.168.x.x rejected");
+    } else {
+        test_fail("096", "expected false");
     }
 }

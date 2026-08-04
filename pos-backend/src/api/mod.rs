@@ -50,6 +50,8 @@ pub async fn build_router(config: &AppConfig) -> Router {
     let payload_limit = tower_http::limit::RequestBodyLimitLayer::new(1_048_576);
 
     Router::new()
+        // Health check
+        .route("/healthz", get(health_check))
         // Actions/Blinks endpoints
         .route("/actions.json", get(actions::handle_actions_spec))
         .route(

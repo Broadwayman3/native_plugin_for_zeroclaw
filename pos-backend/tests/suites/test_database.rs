@@ -22,6 +22,9 @@ pub fn run_suite() {
     test_128_wal_mode();
     test_129_concurrent_access();
     test_130_db_cleanup();
+    test_370_partially_paid_transition();
+    test_371_initiate_refund_non_paid();
+    test_372_sales_summary_all_cancelled();
 }
 
 fn test_111_db_connection() {
@@ -295,4 +298,89 @@ fn test_130_db_cleanup() {
     // Verify main DB file is removed
     assert!(!std::path::Path::new(test_db).exists());
     test_pass("130: test DB cleaned up and verified");
+}
+
+fn test_370_partially_paid_transition() {
+    let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
+    pos_backend::db::schema::init_db(&conn, false).unwrap();
+
+    // Create invoice
+    pos_backend::db::invoices::create_invoice(
+        &conn,
+        &pos_backend::db::invoices::CreateInvoiceRequest {
+            id: "INV-PP1".into(),
+            reference_pubkey: "RefKeyPP1".into(),
+            fiat_currency: Some("USD".into()),
+            fiat_amount: Some(50.0),
+            usdc_amount: 50.0,
+        },
+    )
+    .unwrap();
+
+    // pending → partially_paid
+    let updated =
+        pos_backend::db::invoices::update_invoice_status(&conn, "INV-PP1", "partially_paid", None)
+            .unwrap();
+    assert_eq!(updated, 1);
+
+    // partially_paid → paid
+    let updated =
+        pos_backend::db::invoices::update_invoice_status(&conn, "INV-PP1", "paid", Some("sig123"))
+            .unwrap();
+    assert_eq!(updated, 1);
+
+    let inv = pos_backend::db::invoices::get_invoice_by_id(&conn, "INV-PP1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(inv.status, "paid");
+    test_pass("370: partially_paid → paid transition works");
+}
+
+fn test_371_initiate_refund_non_paid() {
+    let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
+    pos_backend::db::schema::init_db(&conn, false).unwrap();
+
+    pos_backend::db::invoices::create_invoice(
+        &conn,
+        &pos_backend::db::invoices::CreateInvoiceRequest {
+            id: "INV-RF1".into(),
+            reference_pubkey: "RefKeyRF1".into(),
+            fiat_currency: Some("USD".into()),
+            fiat_amount: Some(20.0),
+            usdc_amount: 20.0,
+        },
+    )
+    .unwrap();
+
+    // initiate_refund on pending invoice should return false
+    let result = pos_backend::db::invoices::initiate_refund(&conn, "INV-RF1").unwrap();
+    assert!(!result);
+    test_pass("371: initiate_refund on non-paid invoice returns false");
+}
+
+fn test_372_sales_summary_all_cancelled() {
+    let conn = pos_backend::db::get_db_connection(":memory:").unwrap();
+    pos_backend::db::schema::init_db(&conn, false).unwrap();
+
+    // Create and cancel an invoice
+    pos_backend::db::invoices::create_invoice(
+        &conn,
+        &pos_backend::db::invoices::CreateInvoiceRequest {
+            id: "INV-SC1".into(),
+            reference_pubkey: "RefKeySC1".into(),
+            fiat_currency: Some("USD".into()),
+            fiat_amount: Some(10.0),
+            usdc_amount: 10.0,
+        },
+    )
+    .unwrap();
+    pos_backend::db::invoices::cancel_invoice(&conn, "INV-SC1").unwrap();
+
+    let summary = pos_backend::db::invoices::get_sales_summary(&conn).unwrap();
+    let total_paid = summary["total_paid_invoices"].as_i64().unwrap_or(-1);
+    assert_eq!(
+        total_paid, 0,
+        "total_paid_invoices should be 0 when all cancelled"
+    );
+    test_pass("372: sales_summary with all cancelled shows 0 paid");
 }

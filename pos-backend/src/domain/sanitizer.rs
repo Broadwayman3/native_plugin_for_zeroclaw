@@ -85,8 +85,9 @@ pub fn validate_safe_rpc_url(url_str: &str) -> bool {
         None => return false,
     };
 
-    // Check if hostname is an IP address
-    if let Ok(ip) = hostname.parse::<std::net::IpAddr>() {
+    // Check if hostname is an IP address (strip brackets for IPv6 like [::1])
+    let hostname_clean = hostname.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = hostname_clean.parse::<std::net::IpAddr>() {
         match ip {
             std::net::IpAddr::V4(v4) => {
                 if v4.is_private() || is_reserved_v4(&v4) || v4.is_link_local() || v4.is_broadcast()

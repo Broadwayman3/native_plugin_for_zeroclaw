@@ -8,6 +8,10 @@ static RE_CURRENCY: Lazy<Regex> =
 static RE_PLAIN_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*(\d+(?:\.\d+)?)\s*$").unwrap());
 
 /// Parses POS order input text to extract amount, currency, and items.
+///
+/// NOTE: This function does NOT call sanitize_external_input().
+/// The caller (handle_create_order in pos_flow.rs) is responsible for sanitization.
+/// This is intentional — avoids double-sanitization and keeps this function pure.
 pub fn parse_pos_order_input(
     text: &str,
     default_item_label: &str,
@@ -19,6 +23,19 @@ pub fn parse_pos_order_input(
     // Try to match currency patterns: "150 UAH", "35.50 BRL", "12 USD", "$100", "€50", etc.
     if let Some(caps) = RE_CURRENCY.captures(text_clean) {
         let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or(0.0);
+
+        if amt <= 0.0 || !amt.is_finite() || amt > 999_999.99 {
+            let mut r = HashMap::new();
+            r.insert("has_price".to_string(), serde_json::Value::Bool(false));
+            r.insert(
+                "items".to_string(),
+                serde_json::Value::String(text_clean.to_string()),
+            );
+            r.insert("amount".to_string(), serde_json::Value::Null);
+            r.insert("currency".to_string(), serde_json::Value::Null);
+            return r;
+        }
+
         let curr_str = caps.get(2).unwrap().as_str();
 
         let curr = match curr_str {
@@ -52,6 +69,19 @@ pub fn parse_pos_order_input(
     // Try bare number (defaults to UAH)
     if let Some(caps) = RE_PLAIN_NUMBER.captures(text_clean) {
         let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or(0.0);
+
+        if amt <= 0.0 || !amt.is_finite() || amt > 999_999.99 {
+            let mut r = HashMap::new();
+            r.insert("has_price".to_string(), serde_json::Value::Bool(false));
+            r.insert(
+                "items".to_string(),
+                serde_json::Value::String(text_clean.to_string()),
+            );
+            r.insert("amount".to_string(), serde_json::Value::Null);
+            r.insert("currency".to_string(), serde_json::Value::Null);
+            return r;
+        }
+
         let final_item = if let Some(draft) = draft_items {
             draft.to_string()
         } else {

@@ -1,5 +1,9 @@
 use crate::domain::i18n_strings::{LANG_META, TRANSLATIONS};
 use crate::domain::sanitizer::escape_telegram_markdown_v2;
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+static PLACEHOLDER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
 
 /// Normalizes language code (e.g., "pt-BR" -> "pt", "zh-CN" -> "zh").
 fn normalize_lang(lang: &str) -> String {
@@ -57,14 +61,32 @@ fn t_impl(key: &str, lang: Option<&str>, escape_markdown: bool, kwargs: &[(&str,
         .copied()
         .unwrap_or(key);
 
-    let mut result = template.to_string();
-    for (k, v) in kwargs {
-        result = result.replace(&format!("{{{}}}", k), v);
-    }
-
     if escape_markdown {
-        escape_telegram_markdown_v2(&result)
+        // 1. Escape template (handles (, ), ., !, #, $, {, }, _, etc.)
+        let mut escaped = escape_telegram_markdown_v2(template);
+        // 2. Restore bold markers and code backticks
+        //    "\*" → "*" (bold), "\`" → "`" (code) — these are intentional formatting
+        escaped = escaped.replace("\\*", "*").replace("\\`", "`");
+        // 3. Unescape placeholder braces (\{ → {, \} → }) — BEFORE kwargs substitution
+        escaped = escaped.replace("\\{", "{").replace("\\}", "}");
+        // 3.5. Restore underscores inside {placeholder} names (e.g., invoice\_id → invoice_id)
+        //       _ is a MarkdownV2 special char but must NOT be escaped inside placeholder names
+        escaped = PLACEHOLDER_RE
+            .replace_all(&escaped, |caps: &regex::Captures| {
+                format!("{{{}}}", caps[1].replace("\\_", "_"))
+            })
+            .to_string();
+        // 4. Escape each kwarg value separately
+        for (k, v) in kwargs {
+            let escaped_v = escape_telegram_markdown_v2(v);
+            escaped = escaped.replace(&format!("{{{}}}", k), &escaped_v);
+        }
+        escaped
     } else {
+        let mut result = template.to_string();
+        for (k, v) in kwargs {
+            result = result.replace(&format!("{{{}}}", k), v);
+        }
         result
     }
 }

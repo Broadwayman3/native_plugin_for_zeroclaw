@@ -32,6 +32,11 @@ pub fn generate_lang_inline_keyboard() -> serde_json::Value {
 }
 
 /// Checks if user text matches any translation of a given button key across all 13 languages.
+///
+/// NOTE: User text must start with the full button label (including emoji) to match.
+/// Partial text like "I don't approve" will NOT match "✅ Approve".
+/// Text without emoji like "Approve" will NOT match "✅ Approve".
+/// This is intentional — prevents false positives on substring matches.
 pub fn is_btn_click(text: &str, key: &str) -> bool {
     let text_clean = text.trim().to_lowercase();
     use crate::domain::i18n_strings::TRANSLATIONS;
@@ -39,7 +44,7 @@ pub fn is_btn_click(text: &str, key: &str) -> bool {
     for trans_dict in TRANSLATIONS.values() {
         if let Some(target) = trans_dict.get(key) {
             let target_clean = target.trim().to_lowercase();
-            if text_clean == target_clean || text_clean.contains(&target_clean) {
+            if text_clean == target_clean || text_clean.starts_with(&target_clean) {
                 return true;
             }
         }
