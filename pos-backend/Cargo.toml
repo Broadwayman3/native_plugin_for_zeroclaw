@@ -16,11 +16,15 @@ path = "src/main.rs"
 name = "test_boundary"
 path = "tests/mod.rs"
 
+[[test]]
+name = "test_proptest_order_parser"
+path = "tests/test_proptest_order_parser.rs"
+
 [dependencies]
 # Web framework
 axum = "0.7"
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "limit"] }
+tower-http = { version = "0.5", features = ["cors", "limit", "trace"] }
 tokio = { version = "1", features = ["full"] }
 
 # Database
@@ -32,8 +36,6 @@ serde_json = "1.0"
 
 # Crypto/Encoding
 rand = "0.8"
-base64 = "0.22"
-sha2 = "0.10"
 uuid = { version = "1.0", features = ["v4"] }
 
 # Regex & Unicode
@@ -50,10 +52,16 @@ anyhow = "1.0"
 # Environment
 dotenvy = "0.15"
 
-# IP/URL validation
-ipnet = "2.9"
+# URL validation
 urlencoding = "2.1"
 url = "2.5"
+
+# Rate limiting
+governor = "0.6"
+
+# Tracing / logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Shared business logic
 pos-core-logic = { path = "../plugins/solana-pos-core/pos-core-logic" }
@@ -62,3 +70,4 @@ pos-core-logic = { path = "../plugins/solana-pos-core/pos-core-logic" }
 tokio-test = "0.4"
 tower = { version = "0.4", features = ["util"] }
 http-body-util = "0.1"
+proptest = "1"

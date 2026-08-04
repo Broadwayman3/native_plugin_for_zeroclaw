@@ -22,6 +22,9 @@ fn test_288_cors_headers() {
             host: "127.0.0.1".to_string(),
             port: 8080,
             db_path: ":memory:".to_string(),
+            rate_limit_rps: 100,
+            telegram_bot_secret_token: None,
+            api_keys: vec![],
         });
 
     // Build router and verify it doesn't panic

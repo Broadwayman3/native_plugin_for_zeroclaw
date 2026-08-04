@@ -22,6 +22,9 @@ fn test_343_config_from_env_defaults() {
         "HOST",
         "PORT",
         "DB_PATH",
+        "RATE_LIMIT_RPS",
+        "TELEGRAM_BOT_SECRET_TOKEN",
+        "API_KEYS",
     ];
     let saved: Vec<(String, Result<String, env::VarError>)> =
         keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
@@ -58,6 +61,9 @@ fn test_344_config_from_env_custom() {
         "HOST",
         "PORT",
         "DB_PATH",
+        "RATE_LIMIT_RPS",
+        "TELEGRAM_BOT_SECRET_TOKEN",
+        "API_KEYS",
     ];
     let saved: Vec<(String, Result<String, env::VarError>)> =
         keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
@@ -98,6 +104,9 @@ fn test_345_config_from_env_bad_port() {
         "HOST",
         "PORT",
         "DB_PATH",
+        "RATE_LIMIT_RPS",
+        "TELEGRAM_BOT_SECRET_TOKEN",
+        "API_KEYS",
     ];
     let saved: Vec<(String, Result<String, env::VarError>)> =
         keys.iter().map(|k| (k.to_string(), env::var(k))).collect();
@@ -129,6 +138,9 @@ fn test_346_config_from_env_bad_manager_id() {
         "HOST",
         "PORT",
         "DB_PATH",
+        "RATE_LIMIT_RPS",
+        "TELEGRAM_BOT_SECRET_TOKEN",
+        "API_KEYS",
     ];
     let saved: Vec<(String, Result<String, env::VarError>)> =
         keys.iter().map(|k| (k.to_string(), env::var(k))).collect();

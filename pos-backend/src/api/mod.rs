@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod invoices;
+pub mod middleware;
 pub mod nonce;
 pub mod pos_flow;
 pub mod sales;
@@ -11,8 +12,10 @@ use axum::routing::{get, post};
 use axum::Router;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
 
 use crate::config::AppConfig;
+use middleware::{AuthConfig, AuthLayer, RateLimitLayer};
 
 /// Shared application state.
 #[derive(Clone)]
@@ -41,6 +44,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
             header::AUTHORIZATION,
             "X-ACCEPT-PAYMENT".parse().unwrap(),
             "X-Telegram-Bot-Api-Secret-Token".parse().unwrap(),
+            "X-Api-Key".parse().unwrap(),
             "Content-Encoding".parse().unwrap(),
             "Accept-Encoding".parse().unwrap(),
         ])
@@ -49,19 +53,17 @@ pub async fn build_router(config: &AppConfig) -> Router {
     // Payload limit middleware (1MB)
     let payload_limit = tower_http::limit::RequestBodyLimitLayer::new(1_048_576);
 
-    Router::new()
-        // Health check
-        .route("/healthz", get(health_check))
-        // Actions/Blinks endpoints
-        .route("/actions.json", get(actions::handle_actions_spec))
-        .route(
-            "/api/v1/actions/pay_invoice",
-            get(actions::handle_action_get).post(actions::handle_action_post),
-        )
-        // Sales endpoints
-        .route("/api/v1/sales/summary", get(sales::handle_sales_summary))
-        // Invoice endpoints
-        .route("/api/v1/invoices", get(invoices::handle_get_invoices))
+    // Rate limiting
+    let limiter = middleware::create_rate_limiter(config.rate_limit_rps);
+
+    // Auth config for mutating routes
+    let auth_config = AuthConfig {
+        telegram_bot_secret_token: config.telegram_bot_secret_token.clone(),
+        api_keys: config.api_keys.clone(),
+    };
+
+    // Routes that require auth (mutating)
+    let mutating_routes = Router::new()
         .route(
             "/api/v1/invoices/create",
             post(invoices::handle_create_invoice),
@@ -74,21 +76,36 @@ pub async fn build_router(config: &AppConfig) -> Router {
             "/api/v1/invoices/cancel",
             post(invoices::handle_cancel_invoice),
         )
-        // Nonce endpoints
-        .route("/api/v1/nonce/allocate", post(nonce::handle_nonce_allocate))
-        .route("/api/v1/nonce/release", post(nonce::handle_nonce_release))
-        // POS flow (create from order - replaces handle_text_message)
         .route(
             "/api/v1/pos/create-order",
             post(pos_flow::handle_create_order),
         )
-        // x402 endpoint
+        .route("/api/v1/nonce/allocate", post(nonce::handle_nonce_allocate))
+        .route("/api/v1/nonce/release", post(nonce::handle_nonce_release))
+        .layer(AuthLayer::new(auth_config));
+
+    // Read-only routes (no auth required)
+    let read_routes = Router::new()
+        .route("/healthz", get(health_check))
+        .route("/actions.json", get(actions::handle_actions_spec))
+        .route(
+            "/api/v1/actions/pay_invoice",
+            get(actions::handle_action_get).post(actions::handle_action_post),
+        )
+        .route("/api/v1/sales/summary", get(sales::handle_sales_summary))
+        .route("/api/v1/invoices", get(invoices::handle_get_invoices))
         .route(
             "/api/v1/sales/premium_analytics",
             get(x402::handle_premium_analytics),
-        )
-        .layer(cors)
+        );
+
+    Router::new()
+        .merge(mutating_routes)
+        .merge(read_routes)
+        .layer(RateLimitLayer::new(limiter))
+        .layer(TraceLayer::new_for_http())
         .layer(payload_limit)
+        .layer(cors)
         .with_state(state)
 }
 

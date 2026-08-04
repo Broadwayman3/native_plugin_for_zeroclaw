@@ -26,15 +26,22 @@ pub fn run_suite() -> usize {
     suites::test_security::run_suite();
     suites::test_nonce_pools::run_suite();
     suites::test_squads_multisig::run_suite();
+    suites::test_squads_multisig_v2::run_suite();
     suites::test_edge_storage::run_suite();
+    suites::test_edge_storage_v2::run_suite();
     suites::test_ssrf_extended::run_suite();
     suites::test_prompt_injection::run_suite();
     suites::test_qa_red_team::run_suite();
     suites::test_validators::run_suite();
     suites::test_zeroclaw_integration::run_suite();
+    suites::test_zeroclaw_integration_v2::run_suite();
     suites::test_error::run_suite();
     suites::test_config::run_suite();
     suites::test_http_handlers::run_suite();
+    suites::test_api_endpoints::run_suite();
+    suites::test_pos_flow::run_suite();
+    suites::test_rate_limit::run_suite();
+    suites::test_auth::run_suite();
 
     let total = TEST_COUNT.load(Ordering::SeqCst);
     let passed = PASS_COUNT.load(Ordering::SeqCst);

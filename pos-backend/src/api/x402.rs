@@ -7,7 +7,7 @@ use crate::api::AppState;
 
 /// GET /api/v1/sales/premium_analytics - x402 Machine Commerce endpoint
 pub async fn handle_premium_analytics(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Response {
     // Check for x402 payment header
@@ -21,16 +21,14 @@ pub async fn handle_premium_analytics(
         response_headers.insert("X-PAYMENT-REQUIRED-AMOUNT", "1.00 USDC".parse().unwrap());
         response_headers.insert(
             "X-PAYMENT-RECIPIENT",
-            "8xAZmQ1111111111111111111111111111111111111"
-                .parse()
-                .unwrap(),
+            state.config.merchant_wallet_pubkey.parse().unwrap(),
         );
 
         let body = serde_json::json!({
             "error": "Payment Required",
             "x402_spec": "solana-pay",
             "amount_usdc": 1.00,
-            "pay_url": "solana:8xAZmQ11111111111111111111111111111111111?amount=1.00&spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            "pay_url": format!("solana:{}?amount=1.00&spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", state.config.merchant_wallet_pubkey)
         });
 
         let mut response = (StatusCode::PAYMENT_REQUIRED, Json(body)).into_response();

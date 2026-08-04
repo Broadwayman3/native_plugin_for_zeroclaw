@@ -134,37 +134,29 @@ pub fn validate_safe_rpc_url(url_str: &str) -> bool {
             return false;
         }
 
-        // DNS resolution check with timeout (2 seconds max)
-        // NOTE: This blocks for up to 2 seconds. Called synchronously from
-        // validate_safe_rpc_url. Do NOT call from async context.
+        // DNS resolution check with timeout (500ms max)
+        // Uses a background thread + mpsc recv_timeout for non-blocking resolution.
+        // Returns immediately when DNS resolves, only waits up to 500ms if slow.
+        use std::sync::mpsc;
+        let (tx, rx) = mpsc::channel();
         let addr_str = format!("{}:443", hostname);
-        let result = std::thread::scope(|s| {
-            let handle = s.spawn(|| {
-                addr_str
-                    .to_socket_addrs()
-                    .map(|addrs| addrs.collect::<Vec<_>>())
-            });
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            handle.join().unwrap_or(Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "DNS resolution timeout",
-            )))
+        std::thread::spawn(move || {
+            let result = addr_str.to_socket_addrs().map(|mut addrs| addrs.next());
+            let _ = tx.send(result);
         });
-        match result {
-            Ok(addrs) => {
-                for addr in addrs {
-                    let ip = addr.ip();
-                    if ip.is_loopback() || ip.is_unspecified() {
+        match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+            Ok(Ok(Some(sock_addr))) => {
+                let ip = sock_addr.ip();
+                if ip.is_loopback() || ip.is_unspecified() {
+                    return false;
+                }
+                if let std::net::IpAddr::V4(v4) = ip {
+                    if v4.is_private() || is_reserved_v4(&v4) {
                         return false;
-                    }
-                    if let std::net::IpAddr::V4(v4) = ip {
-                        if v4.is_private() || is_reserved_v4(&v4) {
-                            return false;
-                        }
                     }
                 }
             }
-            Err(_) => return false,
+            _ => return false,
         }
     }
 

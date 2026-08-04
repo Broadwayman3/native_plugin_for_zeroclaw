@@ -4,7 +4,21 @@ use pos_backend::config::AppConfig;
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     let config = AppConfig::from_env()?;
+    tracing::info!(
+        port = config.port,
+        db_path = %config.db_path,
+        rate_limit_rps = config.rate_limit_rps,
+        "Starting ZeroClaw POS Backend"
+    );
     let db_path = config.db_path.clone();
 
     // Initialize database

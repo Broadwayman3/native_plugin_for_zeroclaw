@@ -35,30 +35,21 @@ pub async fn handle_create_order(
         req.draft_items.as_deref(),
     );
 
-    let has_price = parsed
-        .get("has_price")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if !has_price {
+    if !parsed.has_price {
         // Need price - return prompt
-        let items = parsed.get("items").and_then(|v| v.as_str()).unwrap_or("");
-        let prompt_text = domain::i18n::t("price_needed", Some(lang), &[("items", items)]);
+        let prompt_text = domain::i18n::t("price_needed", Some(lang), &[("items", &parsed.items)]);
 
         return Ok(Json(serde_json::json!({
             "action": "prompt_price",
             "message": prompt_text,
-            "items": items,
+            "items": parsed.items,
             "parse_mode": "MarkdownV2"
         })));
     }
 
-    let fiat_amt = parsed.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let fiat_curr = parsed
-        .get("currency")
-        .and_then(|v| v.as_str())
-        .unwrap_or("UAH");
-    let item_desc = parsed.get("items").and_then(|v| v.as_str()).unwrap_or("");
+    let fiat_amt = parsed.amount.unwrap_or(0.0);
+    let fiat_curr = parsed.currency.as_deref().unwrap_or("UAH");
+    let item_desc = &parsed.items;
 
     if fiat_amt <= 0.0 || !fiat_amt.is_finite() {
         return Err(AppError::BadRequest("Amount must be positive".to_string()));
