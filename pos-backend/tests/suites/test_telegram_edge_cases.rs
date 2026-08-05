@@ -167,4 +167,21 @@ fn test_385_order_parser_decimal_comma() {
         Some("UAH"),
         "385: currency should be UAH"
     );
+
+    // Adversarial Check 1: Thousands separator 1,000 USD must not be corrupted to 1.000 USD
+    let parsed3 =
+        pos_backend::domain::order_parser::parse_pos_order_input("1,000 USD", "Item", None);
+    assert!(parsed3.has_price, "385: 1,000 USD should parse with price");
+    assert_eq!(
+        parsed3.amount,
+        Some(1000.0),
+        "385: 1,000 USD should parse as 1000.0, NOT 1.0"
+    );
+
+    // Adversarial Check 2: Comma list Coffee 1, Tea 2 must not corrupt text
+    let norm = pos_backend::domain::order_parser::normalize_numeric_commas("Coffee 1, Tea 2");
+    assert_eq!(
+        norm, "Coffee 1, Tea 2",
+        "385: comma list text must remain intact"
+    );
 }

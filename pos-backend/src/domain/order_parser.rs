@@ -12,7 +12,55 @@ static RE_PLAIN_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*(\d+(?:\.\d+
 static RE_QTY: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^(?i)(\d+(?:\.\d+)?)\s*[xX*]\s*(.+)$").unwrap());
 
-static RE_DECIMAL_COMMA: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+),(\d+)").unwrap());
+static RE_QTY_COMMA: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)(\b\d+),(\d{1,2})\s*([xX*])").unwrap());
+
+/// Normalizes numeric commas:
+/// - Quantity multipliers: `1,5x` -> `1.5x`
+/// - Thousands separators: `1,000` -> `1000`
+/// - Decimal commas: `15,50` -> `15.50`
+pub fn normalize_numeric_commas(input: &str) -> String {
+    let text = input.trim();
+    if !text.contains(',') {
+        return text.to_string();
+    }
+
+    // 1. Quantity multiplier with comma: 1,5x -> 1.5x
+    let text = RE_QTY_COMMA.replace_all(text, "$1.$2$3").to_string();
+
+    // 2. Token-based numeric comma normalization
+    let tokens: Vec<String> = text
+        .split_whitespace()
+        .map(|token| {
+            if token.contains(',') {
+                let parts: Vec<&str> = token.split(',').collect();
+                if parts.len() == 2 {
+                    let p0_digits = parts[0].chars().all(|c| c.is_ascii_digit());
+                    let p1_digits = parts[1].chars().all(|c| c.is_ascii_digit());
+                    if p0_digits
+                        && p1_digits
+                        && !parts[0].is_empty()
+                        && (parts[1].len() == 1 || parts[1].len() == 2)
+                    {
+                        return format!("{}.{}", parts[0], parts[1]);
+                    }
+                    if p0_digits && p1_digits && !parts[0].is_empty() && parts[1].len() == 3 {
+                        return format!("{}{}", parts[0], parts[1]);
+                    }
+                } else if parts.len() > 2
+                    && parts
+                        .iter()
+                        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+                {
+                    return parts.join("");
+                }
+            }
+            token.to_string()
+        })
+        .collect();
+
+    tokens.join(" ")
+}
 
 /// Parsed POS order input.
 #[derive(Debug, Clone)]
@@ -34,7 +82,7 @@ pub fn parse_pos_order_input(
     default_item_label: &str,
     draft_items: Option<&str>,
 ) -> ParsedOrder {
-    let norm_text = RE_DECIMAL_COMMA.replace_all(text.trim(), "$1.$2");
+    let norm_text = normalize_numeric_commas(text.trim());
     let text_clean = norm_text.trim();
 
     // Check if input contains multi-segment splitters (+ or newline)
@@ -103,8 +151,7 @@ fn parse_single_segment(
     default_item_label: &str,
     draft_items: Option<&str>,
 ) -> ParsedOrder {
-    let seg_norm = RE_DECIMAL_COMMA.replace_all(seg_text.trim(), "$1.$2");
-    let seg_clean = seg_norm.trim();
+    let seg_clean = seg_text.trim();
 
     // Reject segments starting with a negative sign
     if seg_clean.starts_with('-') {
