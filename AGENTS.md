@@ -85,7 +85,7 @@ plugins/solana-pos-core/
 
 ## Test Conventions
 
-- Tests are numbered sequentially: `test_001` through `test_310`
+- Tests are numbered sequentially: `test_001` through `test_394`
 - Each test module is self-contained
 - Property-based testing via `proptest` for financial math
 - Run full suite: `./scripts/verify_all.sh`

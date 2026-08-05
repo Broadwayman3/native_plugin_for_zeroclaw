@@ -64,7 +64,7 @@ Refunds operate under Squads v4 governance: the agent creates an Anchor-complian
 
 ### Reproducibility (15-min Setup)
 1. Clone repo: `git clone https://github.com/Broadwayman3/native_plugin_for_zeroclaw`
-2. Verify test suite (352 tests): `./scripts/verify_all.sh`
+2. Verify test suite (486 tests): `./scripts/verify_all.sh`
 3. Configure `.env`: Set `MERCHANT_WALLET_PUBKEY` and `TELEGRAM_BOT_TOKEN`.
 4. Launch: `docker-compose up -d`
 ```

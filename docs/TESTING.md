@@ -2,17 +2,17 @@
 
 ## Overview
 
-The project has **352 test functions + 3 proptest property-based tests** across three crates.
+The project has **486 total tests** (447 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core) including property-based tests across three crates.
 
 | Crate | Tests | Focus |
 |-------|-------|-------|
-| `pos-backend` | 314 | REST API, DB, domain logic, i18n, security |
-| `pos-core-logic` | 30 + 2 proptest | Shared business logic (Solana Pay, Squads, Token-2022) |
-| `solana-pos-core` | 8 + 1 proptest | WASM plugin unit tests |
+| `pos-backend` | 441 + 6 proptest | REST API, DB, domain logic, i18n, security, edge cases |
+| `pos-core-logic` | 27 + 4 proptest | Shared business logic (Solana Pay, Squads, Token-2022) |
+| `solana-pos-core` | 5 + 3 proptest | WASM plugin unit tests |
 
 ## Test Numbering
 
-Tests are numbered sequentially: `test_001` through `test_310`.
+Tests are numbered sequentially: `test_001` through `test_394`.
 
 ## Running Tests
 
@@ -25,13 +25,13 @@ Tests are numbered sequentially: `test_001` through `test_310`.
 ### Individual crates
 
 ```bash
-# pos-backend (314 tests)
-cargo test --manifest-path pos-backend/Cargo.toml
+# pos-backend (447 tests)
+cargo test --manifest-path pos-backend/Cargo.toml -- --test-threads=1
 
-# pos-core-logic (30 + 2 proptest)
+# pos-core-logic (31 tests)
 cargo test --manifest-path plugins/solana-pos-core/pos-core-logic/Cargo.toml
 
-# solana-pos-core WASM plugin (8 + 1 proptest)
+# solana-pos-core WASM plugin (8 tests)
 cd plugins/solana-pos-core && cargo test --lib --release
 ```
 

@@ -2,7 +2,7 @@
 
 > **Tier 3 WASM Native Plugin + Squads v4 Multisig Governance**
 
-![Tests](https://img.shields.io/badge/Tests-352%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
+![Tests](https://img.shields.io/badge/Tests-486%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
 ![WASM Sandbox](https://img.shields.io/badge/Sandbox-Tier%203%20WASM%20wasip2-orange?style=for-the-badge&logo=webassembly)
 ![Custody](https://img.shields.io/badge/Custody-T1%20Invoicing%20%2B%20Squads%20v4-blue?style=for-the-badge&logo=solana)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
@@ -10,7 +10,7 @@
 ## 10-Second Verification
 
 ```bash
-# Complete automated verification (352 tests, WASM build, security checks)
+# Complete automated verification (486 tests, WASM build, security checks)
 ./scripts/verify_all.sh
 ```
 
@@ -94,7 +94,7 @@
 - **Tier 3 WASM Sandbox**: Rust plugin in isolated `wasm32-wasip2` environment
 - **Squads v4 Multisig**: Agent = Proposer only; managers hold threshold signers
 - **Triple Payment Verification**: Reference key + token mint + amount check
-- **352 automated tests** including security audit and prompt injection defense
+- **486 automated tests** (447 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core WASM) including prompt injection defense
 
 ## License
 
