@@ -135,3 +135,36 @@ fn test_384_receipt_multilingual_rate() {
         "384: UK receipt should contain localized Фіат rate"
     );
 }
+
+#[test]
+fn test_385_order_parser_decimal_comma() {
+    let parsed1 = pos_backend::domain::order_parser::parse_pos_order_input(
+        "2x Cappuccino R$ 15,50",
+        "Item",
+        None,
+    );
+    assert!(parsed1.has_price, "385: R$ 15,50 should parse with price");
+    assert_eq!(parsed1.amount, Some(15.50), "385: amount should be 15.50");
+    assert_eq!(
+        parsed1.currency.as_deref(),
+        Some("BRL"),
+        "385: currency should be BRL"
+    );
+
+    let parsed2 = pos_backend::domain::order_parser::parse_pos_order_input(
+        "1,5x Croissant 40,50 UAH",
+        "Item",
+        None,
+    );
+    assert!(parsed2.has_price, "385: 1,5x with 40,50 UAH should parse");
+    assert_eq!(
+        parsed2.amount,
+        Some(40.50),
+        "385: line price should be 40.50"
+    );
+    assert_eq!(
+        parsed2.currency.as_deref(),
+        Some("UAH"),
+        "385: currency should be UAH"
+    );
+}

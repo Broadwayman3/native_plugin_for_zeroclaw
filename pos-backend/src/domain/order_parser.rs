@@ -12,6 +12,8 @@ static RE_PLAIN_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*(\d+(?:\.\d+
 static RE_QTY: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^(?i)(\d+(?:\.\d+)?)\s*[xX*]\s*(.+)$").unwrap());
 
+static RE_DECIMAL_COMMA: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+),(\d+)").unwrap());
+
 /// Parsed POS order input.
 #[derive(Debug, Clone)]
 pub struct ParsedOrder {
@@ -32,7 +34,8 @@ pub fn parse_pos_order_input(
     default_item_label: &str,
     draft_items: Option<&str>,
 ) -> ParsedOrder {
-    let text_clean = text.trim();
+    let norm_text = RE_DECIMAL_COMMA.replace_all(text.trim(), "$1.$2");
+    let text_clean = norm_text.trim();
 
     // Check if input contains multi-segment splitters (+ or newline)
     let segments: Vec<&str> = if text_clean.contains('+') || text_clean.contains('\n') {
@@ -100,7 +103,8 @@ fn parse_single_segment(
     default_item_label: &str,
     draft_items: Option<&str>,
 ) -> ParsedOrder {
-    let seg_clean = seg_text.trim();
+    let seg_norm = RE_DECIMAL_COMMA.replace_all(seg_text.trim(), "$1.$2");
+    let seg_clean = seg_norm.trim();
 
     // Reject segments starting with a negative sign
     if seg_clean.starts_with('-') {
