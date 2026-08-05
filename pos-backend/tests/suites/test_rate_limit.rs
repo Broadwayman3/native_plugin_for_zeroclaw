@@ -110,3 +110,27 @@ fn test_373_rate_limit_exceeds_returns_429() {
         assert!(got_429, "373: no 429 received after 60 rapid requests");
     });
 }
+
+#[test]
+fn test_375_rate_limit_burst_triggers_429() {
+    let guard = TempDbGuard::new("rate_375");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let mut count_429 = 0;
+        for _ in 0..100 {
+            let req = Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap();
+            let (status, _) = app_request(&app, req).await;
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                count_429 += 1;
+            }
+        }
+        assert!(
+            count_429 > 0,
+            "375: burst rate limit should trigger HTTP 429 response"
+        );
+    });
+}

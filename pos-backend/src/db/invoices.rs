@@ -234,8 +234,8 @@ pub fn get_sales_summary(conn: &Connection) -> Result<serde_json::Value, rusqlit
     // Generate proper ISO timestamp
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let timestamp = format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
         (now_secs / 31536000) + 1970,

@@ -52,4 +52,17 @@ proptest! {
         let result = parse_pos_order_input(&input, "Order", None);
         prop_assert!(!result.has_price);
     }
+
+    #[test]
+    fn test_quantity_multiplier_parsing(
+        qty in 1u32..10u32,
+        price in 1.0f64..500.0f64
+    ) {
+        let input = format!("{}x {} UAH", qty, price);
+        let result = parse_pos_order_input(&input, "Order", None);
+        prop_assert!(result.has_price);
+        let expected = (qty as f64) * price;
+        let diff = (result.amount.unwrap() - expected).abs();
+        prop_assert!(diff < 0.001);
+    }
 }

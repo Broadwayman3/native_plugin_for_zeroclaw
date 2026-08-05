@@ -1,5 +1,9 @@
 use crate::common;
+use once_cell::sync::Lazy;
 use std::env;
+use std::sync::Mutex;
+
+static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 const CONFIG_KEYS: &[&str] = &[
     "MANAGER_TELEGRAM_ID",
@@ -18,6 +22,7 @@ const CONFIG_KEYS: &[&str] = &[
 
 #[test]
 fn test_343_config_from_env_defaults() {
+    let _guard = ENV_MUTEX.lock().unwrap();
     let saved = common::save_and_clear_env(CONFIG_KEYS);
     let result = pos_backend::config::AppConfig::from_env();
     common::restore_env(&saved);
@@ -29,6 +34,7 @@ fn test_343_config_from_env_defaults() {
 
 #[test]
 fn test_344_config_from_env_custom() {
+    let _guard = ENV_MUTEX.lock().unwrap();
     let saved = common::save_and_clear_env(CONFIG_KEYS);
     env::set_var("MANAGER_TELEGRAM_ID", "12345");
     let result = pos_backend::config::AppConfig::from_env();
@@ -43,6 +49,7 @@ fn test_344_config_from_env_custom() {
 
 #[test]
 fn test_345_config_from_env_bad_port() {
+    let _guard = ENV_MUTEX.lock().unwrap();
     let saved = common::save_and_clear_env(CONFIG_KEYS);
     env::set_var("PORT", "notanumber");
     let result = pos_backend::config::AppConfig::from_env();
@@ -53,6 +60,7 @@ fn test_345_config_from_env_bad_port() {
 
 #[test]
 fn test_346_config_from_env_bad_manager_id() {
+    let _guard = ENV_MUTEX.lock().unwrap();
     let saved = common::save_and_clear_env(CONFIG_KEYS);
     env::set_var("MANAGER_TELEGRAM_ID", "notanumber");
     let result = pos_backend::config::AppConfig::from_env();
@@ -66,6 +74,7 @@ fn test_346_config_from_env_bad_manager_id() {
 
 #[test]
 fn test_373_config_defaults_when_vars_missing() {
+    let _guard = ENV_MUTEX.lock().unwrap();
     let subset_keys = &[
         "MANAGER_TELEGRAM_ID",
         "MERCHANT_WALLET_PUBKEY",
@@ -93,6 +102,7 @@ fn test_373_config_defaults_when_vars_missing() {
 
 #[test]
 fn test_374_config_port_fallback() {
+    let _guard = ENV_MUTEX.lock().unwrap();
     let keys = ["PORT", "POS_PORT"];
     let saved = common::save_and_clear_env(&keys);
     env::set_var("MANAGER_TELEGRAM_ID", "42");

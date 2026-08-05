@@ -11,7 +11,7 @@ pub fn format_pubkey_short(pubkey: &str) -> String {
 /// Generates direct transaction link to Solscan Explorer.
 pub fn get_solscan_tx_url(signature: &str, network: Option<&str>) -> String {
     let cluster_param = match network {
-        Some("devnet") | Some("testnet") => format!("?cluster={}", network.unwrap()),
+        Some(net @ ("devnet" | "testnet")) => format!("?cluster={}", net),
         _ => String::new(),
     };
     format!("https://solscan.io/tx/{}{}", signature, cluster_param)
@@ -54,4 +54,27 @@ pub fn generate_telegram_photo_payload(
     }
 
     payload
+}
+
+/// Formats updated Telegram photo/message caption when an invoice transitions to PAID status.
+/// All user-supplied and dynamic values are escaped via escape_telegram_markdown_v2().
+pub fn format_paid_receipt_caption(
+    invoice_id: &str,
+    items: &str,
+    usdc_amount: f64,
+    signature: &str,
+    network: Option<&str>,
+) -> String {
+    use crate::domain::sanitizer::escape_telegram_markdown_v2;
+
+    let esc_id = escape_telegram_markdown_v2(invoice_id);
+    let esc_items = escape_telegram_markdown_v2(items);
+    let esc_usdc = escape_telegram_markdown_v2(&format!("{:.2}", usdc_amount));
+    let esc_sig_short = escape_telegram_markdown_v2(&format_pubkey_short(signature));
+    let solscan_url = get_solscan_tx_url(signature, network);
+
+    format!(
+        "✅ *ОПЛАЧЕНО* \\| Чек \\#{}\n• Позиції: {}\n• Сума: *{} USDC*\n• Транзакція: [{}]({})",
+        esc_id, esc_items, esc_usdc, esc_sig_short, solscan_url
+    )
 }

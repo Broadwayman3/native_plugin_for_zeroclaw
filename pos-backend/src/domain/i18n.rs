@@ -130,14 +130,30 @@ pub fn get_main_reply_keyboard(
     })
 }
 
-/// Generates inline keyboard for invoice cancellation.
-pub fn get_cancel_invoice_inline_keyboard(invoice_id: &str, lang: &str) -> serde_json::Value {
+/// Generates inline keyboard for invoice cancellation and optional Phantom Wallet deep link.
+pub fn get_cancel_invoice_inline_keyboard(
+    invoice_id: &str,
+    phantom_url: Option<&str>,
+    lang: &str,
+) -> serde_json::Value {
     let clean = normalize_lang(lang);
-    let btn_label = t_raw("cancel_btn_text", Some(&clean), &[]);
+    let cancel_btn_label = t_raw("cancel_btn_text", Some(&clean), &[]);
+    let phantom_btn_label = t_raw("btn_pay_phantom", Some(&clean), &[]);
+
+    let mut row = Vec::new();
+    if let Some(url) = phantom_url {
+        row.push(serde_json::json!({
+            "text": if phantom_btn_label.is_empty() { "📲 Phantom Wallet" } else { &phantom_btn_label },
+            "url": url
+        }));
+    }
+    row.push(serde_json::json!({
+        "text": cancel_btn_label,
+        "callback_data": format!("cancel_invoice_{}", invoice_id)
+    }));
+
     serde_json::json!({
-        "inline_keyboard": [[
-            {"text": btn_label, "callback_data": format!("cancel_invoice_{}", invoice_id)}
-        ]]
+        "inline_keyboard": [row]
     })
 }
 

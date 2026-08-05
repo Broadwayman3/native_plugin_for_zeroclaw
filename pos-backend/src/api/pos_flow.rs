@@ -102,7 +102,7 @@ pub async fn handle_create_order(
         },
     )?;
 
-    // Generate Solana Pay URL
+    // Generate Solana Pay URL and Phantom Universal Link
     let solana_url = pos_core_logic::build_solana_pay_url(
         &state.config.merchant_wallet_pubkey,
         usdc_amt,
@@ -111,6 +111,7 @@ pub async fn handle_create_order(
         "ZeroClaw POS",
         "POS Payment",
     );
+    let phantom_link = pos_core_logic::solana_pay::generate_phantom_universal_link(&solana_url);
 
     let qr_url = domain::formatters::generate_solana_pay_qr_image_url(&solana_url, 300);
     let receipt = domain::i18n::format_itemized_receipt(
@@ -134,7 +135,8 @@ pub async fn handle_create_order(
         );
     }
 
-    let keyboard = domain::i18n::get_cancel_invoice_inline_keyboard(&inv_id, lang);
+    let keyboard =
+        domain::i18n::get_cancel_invoice_inline_keyboard(&inv_id, Some(&phantom_link), lang);
 
     let mut response_json = serde_json::json!({
         "action": "invoice_created",
@@ -142,6 +144,7 @@ pub async fn handle_create_order(
         "receipt": receipt,
         "qr_url": qr_url,
         "solana_pay_url": solana_url,
+        "phantom_deep_link": phantom_link,
         "reply_markup": keyboard,
         "parse_mode": "MarkdownV2",
         "offline_warning": is_offline

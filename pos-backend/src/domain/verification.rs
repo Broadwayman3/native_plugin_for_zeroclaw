@@ -162,7 +162,7 @@ pub fn verify_solana_transaction_with_fee_bps(
         }
     };
 
-    if meta.get("err").is_some() && !meta.get("err").unwrap().is_null() {
+    if matches!(meta.get("err"), Some(e) if !e.is_null()) {
         return serde_json::json!({
             "is_valid": false,
             "error": "Transaction failed or reverted on-chain"

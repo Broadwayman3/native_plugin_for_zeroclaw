@@ -323,7 +323,8 @@ fn test_303_skill_squads_proposal() {
 #[test]
 fn test_304_keyboard_callback_data() {
     // Verify callback_data format matches what ZeroClaw expects
-    let cancel_kb = pos_backend::domain::i18n::get_cancel_invoice_inline_keyboard("INV-101", "en");
+    let cancel_kb =
+        pos_backend::domain::i18n::get_cancel_invoice_inline_keyboard("INV-101", None, "en");
     let callback = cancel_kb["inline_keyboard"][0][0]["callback_data"]
         .as_str()
         .unwrap();

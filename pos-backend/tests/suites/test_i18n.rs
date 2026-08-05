@@ -118,7 +118,7 @@ fn test_108_get_main_reply_keyboard() {
 
 #[test]
 fn test_109_get_cancel_invoice_keyboard() {
-    let kb = pos_backend::domain::i18n::get_cancel_invoice_inline_keyboard("INV-101", "en");
+    let kb = pos_backend::domain::i18n::get_cancel_invoice_inline_keyboard("INV-101", None, "en");
     let callback = kb["inline_keyboard"][0][0]["callback_data"]
         .as_str()
         .unwrap_or("");
@@ -127,6 +127,16 @@ fn test_109_get_cancel_invoice_keyboard() {
         "callback: {}",
         callback
     );
+
+    let kb_with_phantom = pos_backend::domain::i18n::get_cancel_invoice_inline_keyboard(
+        "INV-101",
+        Some("https://phantom.app/ul/browse/test"),
+        "en",
+    );
+    let phantom_url = kb_with_phantom["inline_keyboard"][0][0]["url"]
+        .as_str()
+        .unwrap_or("");
+    assert!(phantom_url.contains("phantom.app"));
 }
 
 #[test]
