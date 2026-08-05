@@ -373,3 +373,14 @@ fn test_166_currency_symbol_mapping_fallback() {
     assert_eq!(pos_backend::domain::i18n::currency_to_symbol("EUR"), "€");
     assert_eq!(pos_backend::domain::i18n::currency_to_symbol("BHD"), "BHD");
 }
+
+#[test]
+fn test_167_order_parser_lowercase_normalization() {
+    let r =
+        pos_backend::domain::order_parser::parse_pos_order_input("100 brl + 50 BRL", "Order", None);
+    assert!(
+        r.has_price && r.amount == Some(150.0) && r.currency.as_deref() == Some("BRL"),
+        "167: lowercase multi-currency 'brl' and 'BRL' should normalize & combine to 150 BRL, result: {:?}",
+        r
+    );
+}

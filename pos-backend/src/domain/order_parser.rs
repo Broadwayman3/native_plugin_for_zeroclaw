@@ -51,12 +51,13 @@ pub fn parse_pos_order_input(
 
             if amt > 0.0 && amt.is_finite() && amt <= 999_999.99 {
                 let curr_str = caps.get(2).unwrap().as_str();
-                let curr = match curr_str {
-                    "₴" => "UAH",
-                    "$" => "USD",
-                    "€" => "EUR",
-                    "R$" | "REAL" => "BRL",
-                    "ZŁ" => "PLN",
+                let curr_upper = curr_str.to_uppercase();
+                let curr = match curr_upper.as_str() {
+                    "₴" | "UAH" => "UAH",
+                    "$" | "USD" => "USD",
+                    "€" | "EUR" => "EUR",
+                    "R$" | "REAL" | "BRL" => "BRL",
+                    "ZŁ" | "PLN" => "PLN",
                     _ => curr_str,
                 }
                 .to_uppercase();
@@ -134,13 +135,14 @@ pub fn parse_pos_order_input(
         }
 
         let curr_str = caps.get(2).unwrap().as_str();
+        let curr_upper = curr_str.to_uppercase();
 
-        let curr = match curr_str {
-            "₴" => "UAH",
-            "$" => "USD",
-            "€" => "EUR",
-            "R$" | "REAL" => "BRL",
-            "ZŁ" => "PLN",
+        let curr = match curr_upper.as_str() {
+            "₴" | "UAH" => "UAH",
+            "$" | "USD" => "USD",
+            "€" | "EUR" => "EUR",
+            "R$" | "REAL" | "BRL" => "BRL",
+            "ZŁ" | "PLN" => "PLN",
             _ => curr_str,
         }
         .to_uppercase();
@@ -167,6 +169,7 @@ pub fn parse_pos_order_input(
     // Try currency prefix patterns: "$50", "€25.50", "R$100"
     if let Some(caps) = RE_CURRENCY_PREFIX.captures(text_clean) {
         let curr_str = caps.get(1).unwrap().as_str();
+        let curr_upper = curr_str.to_uppercase();
         let amt: f64 = caps.get(2).unwrap().as_str().parse().unwrap_or_default();
 
         if amt <= 0.0 || !amt.is_finite() || amt > 999_999.99 {
@@ -178,12 +181,12 @@ pub fn parse_pos_order_input(
             };
         }
 
-        let curr = match curr_str {
-            "₴" => "UAH",
-            "$" => "USD",
-            "€" => "EUR",
-            "R$" | "REAL" => "BRL",
-            "ZŁ" => "PLN",
+        let curr = match curr_upper.as_str() {
+            "₴" | "UAH" => "UAH",
+            "$" | "USD" => "USD",
+            "€" | "EUR" => "EUR",
+            "R$" | "REAL" | "BRL" => "BRL",
+            "ZŁ" | "PLN" => "PLN",
             _ => curr_str,
         }
         .to_uppercase();
