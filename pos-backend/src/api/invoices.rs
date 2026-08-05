@@ -80,15 +80,50 @@ pub async fn handle_update_invoice_status(
     ))
 }
 
-/// POST /api/v1/invoices/cancel - Cancel/void a pending invoice
+/// POST /api/v1/invoices/cancel - Cancel/void a pending invoice (Idempotent)
 pub async fn handle_cancel_invoice(
     State(state): State<crate::api::AppState>,
     Json(data): Json<db::invoices::CancelInvoiceRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let conn = db::get_db_connection(&state.config.db_path)?;
 
-    let cancelled = db::invoices::cancel_invoice(&conn, &data.invoice_id)?;
+    let existing = db::invoices::get_invoice_by_id(&conn, &data.invoice_id)?;
+    let inv = match existing {
+        Some(i) => i,
+        None => {
+            return Ok((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({
+                    "success": false,
+                    "error": "Invoice not found"
+                })),
+            ));
+        }
+    };
 
+    if inv.status == "cancelled" {
+        return Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "success": true,
+                "cancelled_id": data.invoice_id,
+                "status": "cancelled",
+                "already_cancelled": true
+            })),
+        ));
+    }
+
+    if inv.status == "paid" {
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Conflict: Cannot cancel a paid invoice. Initiate refund instead."
+            })),
+        ));
+    }
+
+    let cancelled = db::invoices::cancel_invoice(&conn, &data.invoice_id)?;
     if cancelled == 0 {
         return Ok((
             StatusCode::CONFLICT,
@@ -104,7 +139,8 @@ pub async fn handle_cancel_invoice(
         Json(serde_json::json!({
             "success": true,
             "cancelled_id": data.invoice_id,
-            "status": "cancelled"
+            "status": "cancelled",
+            "already_cancelled": false
         })),
     ))
 }

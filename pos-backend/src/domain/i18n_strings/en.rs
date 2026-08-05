@@ -19,6 +19,10 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
     m.insert("receipt_title", "☕ ZeroClaw POS Receipt #{invoice_id}");
     m.insert("receipt_tax", "Tax ({tax_rate_pct}%): ${tax_amount}");
     m.insert("receipt_total", "TOTAL: ${amount_usdc} USDC");
+    m.insert(
+        "receipt_fiat_rate",
+        "• Fiat: {amount} {currency} (Rate: {rate})",
+    );
     m.insert("default_item", "Standard Order");
     m.insert(
         "wallet_hint",

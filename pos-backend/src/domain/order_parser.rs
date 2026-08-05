@@ -102,6 +102,16 @@ fn parse_single_segment(
 ) -> ParsedOrder {
     let seg_clean = seg_text.trim();
 
+    // Reject segments starting with a negative sign
+    if seg_clean.starts_with('-') {
+        return ParsedOrder {
+            has_price: false,
+            amount: None,
+            currency: None,
+            items: seg_clean.to_string(),
+        };
+    }
+
     // Check for quantity multiplier at the start of segment (e.g. "2x Espresso 40 UAH", "1.5x Cake 50 UAH")
     let (qty, core_text) = if let Some(caps) = RE_QTY.captures(seg_clean) {
         let q: f64 = caps
@@ -190,6 +200,19 @@ fn parse_single_segment(
 
     // Try currency prefix patterns: "$50", "€25.50", "R$100"
     if let Some(caps) = RE_CURRENCY_PREFIX.captures(core_text) {
+        let match_start = caps.get(0).unwrap().start();
+        if match_start > 0 {
+            let prev_char = core_text.chars().nth(match_start - 1);
+            if prev_char == Some('-') {
+                return ParsedOrder {
+                    has_price: false,
+                    amount: None,
+                    currency: None,
+                    items: seg_clean.to_string(),
+                };
+            }
+        }
+
         let curr_str = caps.get(1).unwrap().as_str();
         let curr_upper = curr_str.to_uppercase();
         let matched_amt: f64 = caps.get(2).unwrap().as_str().parse().unwrap_or_default();

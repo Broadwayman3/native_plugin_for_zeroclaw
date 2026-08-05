@@ -213,8 +213,16 @@ fn test_358_cancel_already() {
             .header("content-type", "application/json")
             .body(Body::from(r#"{"invoice_id":"INV-T2"}"#))
             .unwrap();
-        let (status, _) = app_request(&app, req).await;
-        assert_eq!(status, StatusCode::CONFLICT, "358: expected 409");
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "358: expected 200 OK for idempotent cancel"
+        );
+        assert!(
+            body.contains("\"already_cancelled\":true"),
+            "358: expected already_cancelled to be true"
+        );
     });
 }
 

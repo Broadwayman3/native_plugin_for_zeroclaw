@@ -19,6 +19,10 @@ pub fn register(all: &mut HashMap<&'static str, HashMap<&'static str, &'static s
         "ПДВ / Податок ({tax_rate_pct}%): ${tax_amount}",
     );
     m.insert("receipt_total", "РАЗОМ: ${amount_usdc} USDC");
+    m.insert(
+        "receipt_fiat_rate",
+        "• Фіат: {amount} {currency} (Курс: {rate})",
+    );
     m.insert("default_item", "Стандартне Замовлення");
     m.insert(
         "wallet_hint",

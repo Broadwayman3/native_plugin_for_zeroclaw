@@ -215,13 +215,18 @@ pub fn format_itemized_receipt(
     let fiat_conversion_line =
         if let (Some(curr), Some(amt), Some(rate)) = (fiat_currency, fiat_amount, exchange_rate) {
             if rate > 0.0 {
-                let curr_escaped = escape_telegram_markdown_v2(curr);
-                let amt_escaped = escape_telegram_markdown_v2(&format!("{:.2}", amt));
-                let rate_escaped = escape_telegram_markdown_v2(&format!("{:.2}", rate));
-                format!(
-                    "• Charged: {} {} \\(Rate: {}\\)\n",
-                    amt_escaped, curr_escaped, rate_escaped
-                )
+                let amt_str = format!("{:.2}", amt);
+                let rate_str = format!("{:.2}", rate);
+                let localized_line = t(
+                    "receipt_fiat_rate",
+                    Some(lang),
+                    &[
+                        ("amount", &amt_str),
+                        ("currency", curr),
+                        ("rate", &rate_str),
+                    ],
+                );
+                format!("{}\n", localized_line)
             } else {
                 String::new()
             }
