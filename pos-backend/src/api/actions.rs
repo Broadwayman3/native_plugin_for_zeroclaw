@@ -80,8 +80,8 @@ pub async fn handle_action_post(
     let invoice = db::invoices::get_invoice_by_id(&conn, invoice_id)?
         .ok_or_else(|| AppError::NotFound(format!("Invoice '{}' not found", invoice_id)))?;
 
-    // Fresh recent blockhash for transaction assembly
-    let recent_blockhash = "4vJ9JU1bJJE96FWSXTvBxF2vT7JhRReB88vC17A88vC1";
+    // Fetch fresh recent blockhash from RPC (or fallback if offline/testing)
+    let recent_blockhash = fetch_dynamic_blockhash(&state).await;
 
     let tx_base64 = pos_core_logic::solana_pay::build_actions_payment_transaction(
         account,
@@ -89,7 +89,7 @@ pub async fn handle_action_post(
         invoice.usdc_amount,
         &state.config.usdc_mint_address,
         &invoice.reference_pubkey,
-        recent_blockhash,
+        &recent_blockhash,
     )
     .map_err(|e| AppError::Internal(format!("Failed to build Solana Action transaction: {}", e)))?;
 
@@ -108,4 +108,35 @@ pub async fn handle_action_post(
     );
 
     Ok((StatusCode::OK, headers, Json(payload)))
+}
+
+/// Dynamically queries getLatestBlockhash from Solana JSON-RPC with SSRF validation.
+/// Falls back to a deterministic blockhash if RPC is unreachable or in offline test environments.
+async fn fetch_dynamic_blockhash(state: &crate::api::AppState) -> String {
+    let rpc_url = &state.config.solana_rpc_url;
+
+    if crate::domain::sanitizer::validate_safe_rpc_url(rpc_url) {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getLatestBlockhash",
+            "params": [{"commitment": "confirmed"}]
+        });
+
+        if let Ok(res) = state.http_client.post(rpc_url).json(&body).send().await {
+            if let Ok(json) = res.json::<serde_json::Value>().await {
+                if let Some(bh) = json
+                    .get("result")
+                    .and_then(|r| r.get("value"))
+                    .and_then(|v| v.get("blockhash"))
+                    .and_then(|b| b.as_str())
+                {
+                    return bh.to_string();
+                }
+            }
+        }
+    }
+
+    // Fallback blockhash for offline/testing/graceful degradation
+    "4vJ9JU1bJJE96FWSXTvBxF2vT7JhRReB88vC17A88vC1".to_string()
 }

@@ -21,12 +21,19 @@ use middleware::{AuthConfig, AuthLayer, ManagerLayer, RateLimitLayer};
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
+    pub http_client: reqwest::Client,
 }
 
 /// Builds the Axum router with all routes and middleware.
 pub async fn build_router(config: &AppConfig) -> Router {
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .unwrap_or_default();
+
     let state = AppState {
         config: Arc::new(config.clone()),
+        http_client,
     };
 
     // CORS configuration matching Python's router.py
