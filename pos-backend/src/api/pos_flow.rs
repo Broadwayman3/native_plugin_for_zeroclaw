@@ -43,7 +43,11 @@ pub async fn handle_create_order(
             "action": "prompt_price",
             "message": prompt_text,
             "items": parsed.items,
-            "parse_mode": "MarkdownV2"
+            "parse_mode": "MarkdownV2",
+            "reply_markup": {
+                "force_reply": true,
+                "selective": true
+            }
         })));
     }
 

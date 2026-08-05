@@ -30,7 +30,7 @@ cd - > /dev/null
 
 # 4. Run All Tests
 echo "🧪 Running pos-backend tests..."
-cargo test --manifest-path pos-backend/Cargo.toml
+cargo test --manifest-path pos-backend/Cargo.toml -- --test-threads=1
 
 echo "🧪 Running pos-core-logic tests..."
 cargo test --manifest-path plugins/solana-pos-core/pos-core-logic/Cargo.toml

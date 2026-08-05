@@ -144,3 +144,24 @@ fn test_367_circuit_breaker_offline_warning() {
         );
     });
 }
+
+#[test]
+fn test_368_prompt_price_includes_force_reply() {
+    let guard = TempDbGuard::new("pos_368");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/pos/create-order")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"chat_id":1,"text":"Latte"}"#))
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "368: expected 200, got {}", status);
+        assert!(
+            body.contains("force_reply") && body.contains("selective"),
+            "368: response should contain force_reply and selective reply_markup"
+        );
+    });
+}
