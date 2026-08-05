@@ -16,16 +16,22 @@ pub async fn handle_nonce_allocate(
             StatusCode::OK,
             Json(serde_json::json!({
                 "success": true,
-                "nonce_pubkey": pubkey
+                "nonce_pubkey": pubkey,
+                "fallback_to_recent_blockhash": false
             })),
         )),
-        None => Ok((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "success": false,
-                "error": "No free durable nonce account available in pool"
-            })),
-        )),
+        None => {
+            tracing::warn!("Durable nonce pool exhausted. Falling back to standard recent blockhash (90s TTL).");
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "success": true,
+                    "nonce_pubkey": serde_json::Value::Null,
+                    "fallback_to_recent_blockhash": true,
+                    "warning": "Nonce pool exhausted. Falling back to standard recent blockhash (90s TTL)."
+                })),
+            ))
+        }
     }
 }
 

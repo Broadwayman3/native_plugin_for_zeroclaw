@@ -1,11 +1,15 @@
 use crate::domain::constants::BASE58_ALPHABET;
 
 /// Truncates long Base58 pubkeys/signatures for clean display (e.g. 8xAZ...mQ11).
+/// UTF-8 safe: uses character iterator instead of byte slicing.
 pub fn format_pubkey_short(pubkey: &str) -> String {
-    if pubkey.len() < 12 {
+    let char_count = pubkey.chars().count();
+    if char_count < 12 {
         return pubkey.to_string();
     }
-    format!("{}...{}", &pubkey[..4], &pubkey[pubkey.len() - 4..])
+    let head: String = pubkey.chars().take(4).collect();
+    let tail: String = pubkey.chars().skip(char_count - 4).collect();
+    format!("{}...{}", head, tail)
 }
 
 /// Generates direct transaction link to Solscan Explorer.
@@ -76,5 +80,27 @@ pub fn format_paid_receipt_caption(
     format!(
         "✅ *ОПЛАЧЕНО* \\| Чек \\#{}\n• Позиції: {}\n• Сума: *{} USDC*\n• Транзакція: [{}]({})",
         esc_id, esc_items, esc_usdc, esc_sig_short, solscan_url
+    )
+}
+
+/// Formats initial cashier receipt text supporting dual payment options (Solana Pay USDC + PIX BRL).
+pub fn format_dual_payment_receipt_caption(
+    invoice_id: &str,
+    items: &str,
+    usdc_amount: f64,
+    brl_amount: f64,
+    pix_emv_payload: &str,
+) -> String {
+    use crate::domain::sanitizer::escape_telegram_markdown_v2;
+
+    let esc_id = escape_telegram_markdown_v2(invoice_id);
+    let esc_items = escape_telegram_markdown_v2(items);
+    let esc_usdc = escape_telegram_markdown_v2(&format!("{:.2}", usdc_amount));
+    let esc_brl = escape_telegram_markdown_v2(&format!("{:.2}", brl_amount));
+    let esc_pix = escape_telegram_markdown_v2(pix_emv_payload);
+
+    format!(
+        "🧾 *РАХУНОК \\#{}*\n• Позиції: {}\n\n💳 *Оплата Solana Pay \\(USDC\\):*\n• Сума: *{} USDC*\n\n🇧🇷 *Оплата PIX \\(BRL\\):*\n• Сума: *R$ {}*\n• Код PIX: `{}`",
+        esc_id, esc_items, esc_usdc, esc_brl, esc_pix
     )
 }

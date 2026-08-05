@@ -38,6 +38,31 @@ pub fn get_static_fiat_rates() -> HashMap<String, f64> {
     rates
 }
 
+/// Parses Pyth Hermes V2 REST response JSON into normalized rate and timestamp.
+/// Response structure: parsed[0].price.price (i64) and parsed[0].price.expo (i32).
+/// Includes overflow/underflow protection, is_finite() check, and exponent bounds validation.
+pub fn parse_pyth_hermes_v2_price(pyth_json: &serde_json::Value) -> Option<(f64, i64)> {
+    let parsed_array = pyth_json.get("parsed")?.as_array()?;
+    let first_entry = parsed_array.first()?;
+    let price_obj = first_entry.get("price")?;
+
+    let price_raw = price_obj.get("price")?.as_str()?.parse::<f64>().ok()?;
+    let expo = price_obj.get("expo")?.as_i64()?;
+    let publish_time = price_obj.get("publish_time")?.as_i64()?;
+
+    // Bound exponent check (-30..=30) to prevent overflow/underflow
+    if !(-30..=30).contains(&expo) {
+        return None;
+    }
+
+    let rate = price_raw * 10f64.powi(expo as i32);
+    if rate > 0.0 && rate.is_finite() {
+        Some((rate, publish_time))
+    } else {
+        None
+    }
+}
+
 /// Multi-tier price feed fallback circuit breaker.
 pub fn get_multitier_fiat_rate(
     fiat_currency: &str,

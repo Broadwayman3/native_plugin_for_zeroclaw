@@ -119,7 +119,7 @@ pub fn validate_llm_json_output(
     Ok(data)
 }
 
-/// Trims non-essential metadata fields to keep tokens under ~150.
+/// Trims non-essential metadata fields to keep tokens under ~150 (max_chars = max_tokens * 4).
 pub fn truncate_for_context(data: &serde_json::Value, max_tokens: usize) -> serde_json::Value {
     let json_str = serde_json::to_string(data).unwrap_or_default();
     let max_chars = max_tokens * 4;
@@ -136,6 +136,9 @@ pub fn truncate_for_context(data: &serde_json::Value, max_tokens: usize) -> serd
         "reference_pubkey",
         "signature",
         "proposal_index",
+        "error",
+        "message",
+        "code",
     ];
 
     let mut pruned = serde_json::Map::new();
@@ -143,8 +146,8 @@ pub fn truncate_for_context(data: &serde_json::Value, max_tokens: usize) -> serd
         for key in &essential_keys {
             if let Some(value) = obj.get(*key) {
                 if let Some(s) = value.as_str() {
-                    if s.len() > 44 {
-                        let truncated: String = s.chars().take(41).collect();
+                    if s.len() > 64 {
+                        let truncated: String = s.chars().take(61).collect();
                         pruned.insert(
                             key.to_string(),
                             serde_json::Value::String(format!("{}...", truncated)),
@@ -157,7 +160,21 @@ pub fn truncate_for_context(data: &serde_json::Value, max_tokens: usize) -> serd
                 }
             }
         }
+    } else if let Some(s) = data.as_str() {
+        if s.len() > max_chars {
+            let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
+            return serde_json::json!({
+                "truncated_text": format!("{}...", truncated)
+            });
+        }
     }
 
-    serde_json::Value::Object(pruned)
+    if pruned.is_empty() {
+        serde_json::json!({
+            "status": "truncated",
+            "summary": "Output truncated to preserve context token budget"
+        })
+    } else {
+        serde_json::Value::Object(pruned)
+    }
 }

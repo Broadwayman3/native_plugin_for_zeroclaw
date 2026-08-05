@@ -1,0 +1,50 @@
+# ZeroClaw Solana POS Agent — Operator Deployment Manifest (zeroclaw.example.toml)
+
+[agent]
+name = "ZeroClaw POS Cashier & Payment Terminal"
+model = "anthropic/claude-3-5-sonnet-20241022"
+system_prompt = """
+You are ZeroClaw Solana POS Cashier Agent. You manage store invoices, generate Solana Pay links and PIX BRL payloads, track on-chain settlements via SOP cron loops, and route refund requests to Squads v4 multisig threshold approval. Always fail-closed on security policy violations.
+"""
+
+# Dynamic Environment Variables & Secrets
+[config]
+merchant_wallet_pubkey = "8xAZmQ11...MerchantPubkeyHere"
+usdc_mint_pubkey = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+solana_rpc_url = "https://api.mainnet-beta.solana.com"
+max_single_refund_usdc = 50.0
+manager_telegram_id = 123456789
+
+# WASM Plugin (Tier 3 Sandbox Execution)
+[plugins.solana_pos_core]
+enabled = true
+wasm_path = "plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm"
+permissions = ["http_client", "config_read"]
+
+# ZeroClaw SOP Cron Procedures & Approval Checkpoints
+[[sops]]
+id = "check_payments_cron"
+schedule = "*/15 * * * * *"
+procedure_path = "sops/check_payments.json"
+
+[[sops]]
+id = "refund_approval_checkpoint"
+trigger = "manual_approval"
+procedure_path = "sops/refund_approval.json"
+
+# Agent Capability Skills
+[skills]
+directory = "skills/"
+files = [
+    "skills/solana_pay.md",
+    "skills/durable_nonce.md",
+    "skills/squads_multisig.md",
+    "skills/price_feed.md",
+    "skills/pix_brl.md"
+]
+
+# MCP Server Integration (Tier 2 External Intelligence)
+[mcp_servers.helius]
+command = "npx"
+args = ["-y", "@helius-labs/mcp-server"]
+env = { HELIUS_API_KEY = "your-helius-api-key" }

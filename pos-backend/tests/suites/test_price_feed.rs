@@ -372,3 +372,33 @@ fn test_080_cache_rate_returned_correctly() {
         Err(e) => panic!("080: {}", e),
     }
 }
+
+#[test]
+fn test_081_pyth_hermes_v2_valid() {
+    let json = serde_json::json!({
+        "parsed": [{
+            "price": {
+                "price": "5450000",
+                "expo": -6,
+                "publish_time": 1700000000
+            }
+        }]
+    });
+    let parsed = pos_backend::domain::price_feed::parse_pyth_hermes_v2_price(&json);
+    assert_eq!(parsed, Some((5.45, 1700000000)));
+}
+
+#[test]
+fn test_082_pyth_hermes_v2_exponent_overflow() {
+    let json = serde_json::json!({
+        "parsed": [{
+            "price": {
+                "price": "5450000",
+                "expo": 100,
+                "publish_time": 1700000000
+            }
+        }]
+    });
+    let parsed = pos_backend::domain::price_feed::parse_pyth_hermes_v2_price(&json);
+    assert_eq!(parsed, None);
+}

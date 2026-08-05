@@ -19,6 +19,34 @@ static RE_API_KEY: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(api[_-]?key|token|secret)=[^&\s]+").unwrap());
 static RE_BYTE_ARRAY: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\[\s*\d{1,3}\s*(?:,\s*\d{1,3}\s*){31,}\]").unwrap());
+static RPC_HOST_CACHE: Lazy<
+    std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+> = Lazy::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Transliterates Cyrillic/Greek homoglyphs that visually mimic ASCII letters to defeat jailbreaks.
+pub fn transliterate_homoglyphs(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| match c {
+            'а' => 'a',
+            'е' => 'e',
+            'о' | 'ο' => 'o',
+            'р' | 'ρ' => 'p',
+            'с' => 'c',
+            'х' | 'χ' => 'x',
+            'у' => 'y',
+            'і' | 'ι' => 'i',
+            'А' => 'A',
+            'Е' => 'E',
+            'О' | 'Ο' => 'O',
+            'Р' | 'Ρ' => 'P',
+            'С' => 'C',
+            'Х' | 'Χ' => 'X',
+            'У' => 'Y',
+            other => other,
+        })
+        .collect()
+}
 
 /// Cleans external untrusted strings from control characters, system tags, and prompt injection patterns.
 pub fn sanitize_external_input(user_string: &str, max_length: usize) -> String {
@@ -36,8 +64,13 @@ pub fn sanitize_external_input(user_string: &str, max_length: usize) -> String {
     // 2. Strip invisible zero-width and directional Unicode characters
     cleaned = RE_INVISIBLE.replace_all(&cleaned, "").to_string();
 
-    // 3. Case-insensitive removal of prompt injection keywords
-    cleaned = RE_INJECTION.replace_all(&cleaned, "").to_string();
+    // 3. Case-insensitive removal of prompt injection keywords (with homoglyph normalization)
+    let homoglyph_safe = transliterate_homoglyphs(&cleaned);
+    if RE_INJECTION.is_match(&homoglyph_safe) {
+        cleaned = RE_INJECTION.replace_all(&homoglyph_safe, "").to_string();
+    } else {
+        cleaned = RE_INJECTION.replace_all(&cleaned, "").to_string();
+    }
 
     // 4. Strip leading/trailing whitespace and limit length
     cleaned.trim().chars().take(max_length).collect()
@@ -145,6 +178,15 @@ pub fn validate_safe_rpc_url_with_config(url_str: &str, allow_local_rpc: bool) -
             return false;
         }
 
+        // Check in-memory 60s cache first
+        if let Ok(cache) = RPC_HOST_CACHE.lock() {
+            if let Some(timestamp) = cache.get(hostname) {
+                if timestamp.elapsed() < std::time::Duration::from_secs(60) {
+                    return true;
+                }
+            }
+        }
+
         // DNS resolution check with timeout (500ms max)
         // Uses a background thread + mpsc recv_timeout for non-blocking resolution.
         // Returns immediately when DNS resolves, only waits up to 500ms if slow.
@@ -165,6 +207,9 @@ pub fn validate_safe_rpc_url_with_config(url_str: &str, allow_local_rpc: bool) -
                     if v4.is_private() || is_reserved_v4(&v4) {
                         return false;
                     }
+                }
+                if let Ok(mut cache) = RPC_HOST_CACHE.lock() {
+                    cache.insert(hostname.to_string(), std::time::Instant::now());
                 }
             }
             _ => {

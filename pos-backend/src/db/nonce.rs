@@ -1,16 +1,17 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
-/// Nonce account TTL in minutes
-const NONCE_TTL_MINUTES: i64 = 15;
+/// Nonce account TTL in minutes for stale lock auto-healing
+const NONCE_TTL_MINUTES: i64 = 2;
 
 /// Atomically allocates a free Nonce account with TTL auto-release.
 /// Supports SQLite >= 3.35.0 (RETURNING) with fallback for older versions.
 pub fn allocate_free_nonce(conn: &Connection) -> Result<Option<String>, rusqlite::Error> {
-    // 1. Auto-release locks hanging for >15 minutes
+    // 1. Auto-release locks hanging for >2 minutes or stale_needs_refresh >2 minutes
     let interval = format!("-{} minutes", NONCE_TTL_MINUTES);
     conn.execute(
         "UPDATE nonce_accounts SET status = 'free', locked_at = NULL
-         WHERE status = 'locked' AND locked_at < datetime('now', ?1)",
+         WHERE (status = 'locked' OR status = 'stale_needs_refresh')
+           AND locked_at < datetime('now', ?1)",
         params![interval],
     )?;
 
