@@ -27,3 +27,8 @@ scripts/data/
 
 # OS metadata
 .DS_Store
+
+# Local private operator notes & keys
+docs/PRIVATE_OPERATOR_NOTES.md
+*.local.md
+
