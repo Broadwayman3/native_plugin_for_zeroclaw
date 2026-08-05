@@ -163,3 +163,110 @@ pub async fn handle_refund_reject(
         })),
     ))
 }
+
+/// Request payload for verify-transaction endpoint.
+#[derive(Debug, serde::Deserialize)]
+pub struct VerifyTxRequest {
+    pub invoice_id: String,
+    pub tx_json: serde_json::Value,
+    pub merchant_ata: Option<String>,
+}
+
+/// POST /api/v1/invoices/verify-transaction - Verifies transaction via Triple Verification and updates invoice status
+pub async fn handle_verify_transaction(
+    State(state): State<crate::api::AppState>,
+    Json(data): Json<VerifyTxRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let conn = db::get_db_connection(&state.config.db_path)?;
+
+    let invoice = db::invoices::get_invoice_by_id(&conn, &data.invoice_id)?
+        .ok_or_else(|| AppError::NotFound(format!("Invoice '{}' not found", data.invoice_id)))?;
+
+    let expected_usdc_atomic =
+        pos_core_logic::safe_f64_to_u64_atomic(invoice.usdc_amount, 6) as i64;
+    let target_merchant_ata = data
+        .merchant_ata
+        .as_deref()
+        .unwrap_or(&state.config.merchant_wallet_pubkey);
+
+    let verification_result = crate::domain::verification::verify_solana_transaction(
+        &data.tx_json,
+        target_merchant_ata,
+        expected_usdc_atomic,
+        &state.config.usdc_mint_address,
+    );
+
+    let is_valid = verification_result
+        .get("is_valid")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if is_valid {
+        let tx_sig = data
+            .tx_json
+            .get("transaction")
+            .and_then(|t| t.get("signatures"))
+            .and_then(|s| s.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|val| val.as_str())
+            .or_else(|| data.tx_json.get("signature").and_then(|s| s.as_str()));
+
+        db::invoices::update_invoice_status(&conn, &data.invoice_id, "paid", tx_sig)?;
+    }
+
+    Ok((StatusCode::OK, Json(verification_result)))
+}
+
+/// Request payload for settings update.
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateSettingsRequest {
+    pub quick_receipt_amount: Option<f64>,
+    pub quick_receipt_currency: Option<String>,
+}
+
+/// POST /api/v1/settings/update - Update system settings (Manager only)
+pub async fn handle_update_settings(
+    State(state): State<crate::api::AppState>,
+    Json(data): Json<UpdateSettingsRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let conn = db::get_db_connection(&state.config.db_path)?;
+
+    if let Some(amt) = data.quick_receipt_amount {
+        if amt <= 0.0 || !amt.is_finite() {
+            return Err(AppError::BadRequest("Amount must be positive".to_string()));
+        }
+        db::settings::set_setting(&conn, "quick_receipt_amount", &amt.to_string())?;
+    }
+
+    if let Some(ref curr) = data.quick_receipt_currency {
+        let clean_curr = curr.trim().to_uppercase();
+        if clean_curr.is_empty() || clean_curr.len() > 10 {
+            return Err(AppError::BadRequest("Invalid currency code".to_string()));
+        }
+        db::settings::set_setting(&conn, "quick_receipt_currency", &clean_curr)?;
+    }
+
+    let (current_amount, current_currency) = db::settings::get_quick_receipt_config(&conn);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "quick_receipt_amount": current_amount,
+            "quick_receipt_currency": current_currency
+        })),
+    ))
+}
+
+/// GET /api/v1/settings - Get current system settings
+pub async fn handle_get_settings(
+    State(state): State<crate::api::AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let conn = db::get_db_connection(&state.config.db_path)?;
+    let (amount, currency) = db::settings::get_quick_receipt_config(&conn);
+
+    Ok(Json(serde_json::json!({
+        "quick_receipt_amount": amount,
+        "quick_receipt_currency": currency
+    })))
+}

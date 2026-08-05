@@ -329,3 +329,17 @@ fn test_162_base58_invalid_chars() {
     let r = pos_backend::domain::formatters::is_valid_base58(&"0OIl".repeat(10));
     assert!(!r, "162: Base58 with invalid chars rejected");
 }
+
+#[test]
+fn test_163_order_parser_multi_items() {
+    let r = pos_backend::domain::order_parser::parse_pos_order_input(
+        "Latte 120 UAH + Croissant 80 UAH",
+        "Order",
+        None,
+    );
+    assert!(
+        r.has_price && r.amount == Some(200.0) && r.currency.as_deref() == Some("UAH"),
+        "163: multi items parsed & aggregated to 200 UAH, result: {:?}",
+        r
+    );
+}

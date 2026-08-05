@@ -52,11 +52,11 @@ pub const ALLOWED_INVOICE_STATUSES: &[&str] = &[
     "failed",
 ];
 
-/// Cleans up expired pending invoices (older than 24 hours).
+/// Cleans up expired pending invoices (older than 15 minutes).
 pub fn cleanup_expired_pending_invoices(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute(
         "UPDATE invoices SET status = 'expired', updated_at = CURRENT_TIMESTAMP
-         WHERE status = 'pending' AND created_at < datetime('now', '-24 hours')",
+         WHERE status = 'pending' AND created_at < datetime('now', '-15 minutes')",
         [],
     )?;
     Ok(())
@@ -161,7 +161,7 @@ pub fn get_invoices_list(
             "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
                     status, tx_signature, customer_address, pix_id, pix_payload,
                     tax_rate_pct, items_breakdown, created_at, updated_at
-             FROM invoices WHERE id = ?1 ORDER BY created_at DESC",
+             FROM invoices WHERE id = ?1 ORDER BY updated_at DESC, created_at DESC",
         )?;
         let rows = s.query_map(params![id], row_to_invoice)?;
         rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
@@ -170,7 +170,7 @@ pub fn get_invoices_list(
             "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
                     status, tx_signature, customer_address, pix_id, pix_payload,
                     tax_rate_pct, items_breakdown, created_at, updated_at
-             FROM invoices WHERE status = ?1 ORDER BY created_at DESC",
+             FROM invoices WHERE status = ?1 ORDER BY updated_at DESC, created_at DESC",
         )?;
         let rows = s.query_map(params![st], row_to_invoice)?;
         rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
@@ -179,7 +179,7 @@ pub fn get_invoices_list(
             "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
                     status, tx_signature, customer_address, pix_id, pix_payload,
                     tax_rate_pct, items_breakdown, created_at, updated_at
-             FROM invoices ORDER BY created_at DESC",
+             FROM invoices ORDER BY updated_at DESC, created_at DESC",
         )?;
         let rows = s.query_map([], row_to_invoice)?;
         rows.filter_map(|r| r.ok()).collect::<Vec<_>>()

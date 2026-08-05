@@ -131,3 +131,12 @@ pub fn get_multitier_fiat_rate(
     // Fail-Closed Guard
     Err("FAIL_CLOSED: Unsupported or unmapped fiat currency")
 }
+
+/// Returns true if the price feed result indicates static offline fallback was used.
+pub fn is_static_fallback(rate_data: &serde_json::Value) -> bool {
+    rate_data
+        .get("tier")
+        .and_then(|v| v.as_str())
+        .map(|t| t == "quaternary_static_fallback")
+        .unwrap_or(false)
+}

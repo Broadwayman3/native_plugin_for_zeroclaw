@@ -52,6 +52,11 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );",
     )?;
 
@@ -77,6 +82,17 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
                 ('Nonce111111111111111111111111111111111111111', 'free'),
                 ('Nonce222222222222222222222222222222222222222', 'free'),
                 ('Nonce333333333333333333333333333333333333333', 'free');",
+        )?;
+    }
+
+    // Seed system settings if empty
+    let settings_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM system_settings", [], |row| row.get(0))?;
+    if settings_count == 0 {
+        conn.execute_batch(
+            "INSERT INTO system_settings (key, value) VALUES
+                ('quick_receipt_amount', '200.0'),
+                ('quick_receipt_currency', 'UAH');",
         )?;
     }
 

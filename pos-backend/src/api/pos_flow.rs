@@ -120,15 +120,37 @@ pub async fn handle_create_order(
         Some(rate),
     );
 
+    let is_offline = domain::price_feed::is_static_fallback(&rate_info);
+    if is_offline {
+        tracing::warn!(
+            currency = fiat_curr,
+            rate = rate,
+            manager_id = state.config.manager_telegram_id,
+            "Circuit Breaker Alert: Price feed fallbacked to static offline rate"
+        );
+    }
+
     let keyboard = domain::i18n::get_cancel_invoice_inline_keyboard(&inv_id, lang);
 
-    Ok(Json(serde_json::json!({
+    let mut response_json = serde_json::json!({
         "action": "invoice_created",
         "invoice_id": inv_id,
         "receipt": receipt,
         "qr_url": qr_url,
         "solana_pay_url": solana_url,
         "reply_markup": keyboard,
-        "parse_mode": "MarkdownV2"
-    })))
+        "parse_mode": "MarkdownV2",
+        "offline_warning": is_offline
+    });
+
+    if is_offline {
+        if let Some(obj) = response_json.as_object_mut() {
+            obj.insert(
+                "offline_warning_message".to_string(),
+                serde_json::json!("⚠️ Notice: Oracle price feed unavailable. POS terminal using static offline fallback rate."),
+            );
+        }
+    }
+
+    Ok(Json(response_json))
 }

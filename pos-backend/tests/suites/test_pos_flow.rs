@@ -123,3 +123,24 @@ fn test_364_order_zero_amount() {
         assert!(body.contains("prompt_price"), "364: expected prompt_price");
     });
 }
+
+#[test]
+fn test_367_circuit_breaker_offline_warning() {
+    let guard = TempDbGuard::new("pos_367");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let req = Request::builder()
+            .uri("/api/v1/pos/create-order")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"chat_id":1,"text":"100 UAH"}"#))
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "367: expected 200, got {}", status);
+        assert!(
+            body.contains("offline_warning"),
+            "367: should include offline_warning key in response"
+        );
+    });
+}

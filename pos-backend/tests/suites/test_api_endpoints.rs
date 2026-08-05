@@ -284,3 +284,34 @@ fn test_365_sales_summary() {
         );
     });
 }
+
+#[test]
+fn test_366_verify_transaction_endpoint() {
+    let guard = TempDbGuard::new("api_366");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+
+        let payload = serde_json::json!({
+            "invoice_id": "INV-T1",
+            "tx_json": {
+                "meta": { "err": null },
+                "transaction": { "message": { "accountKeys": [] } }
+            }
+        });
+
+        let req = Request::builder()
+            .uri("/api/v1/invoices/verify-transaction")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .unwrap();
+
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "366: expected 200");
+        assert!(
+            body.contains("is_valid"),
+            "366: response should contain is_valid key"
+        );
+    });
+}

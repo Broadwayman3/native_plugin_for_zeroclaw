@@ -68,7 +68,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
         },
     };
 
-    // Manager-only routes (refund approve/reject)
+    // Manager-only routes (refund approve/reject, settings update)
     let manager_routes = Router::new()
         .route(
             "/api/v1/refund/approve",
@@ -77,6 +77,10 @@ pub async fn build_router(config: &AppConfig) -> Router {
         .route(
             "/api/v1/refund/reject",
             post(invoices::handle_refund_reject),
+        )
+        .route(
+            "/api/v1/settings/update",
+            post(invoices::handle_update_settings),
         )
         .layer(ManagerLayer::new(auth_config.manager_telegram_id))
         .layer(AuthLayer::new(auth_config.clone()));
@@ -96,6 +100,10 @@ pub async fn build_router(config: &AppConfig) -> Router {
             post(invoices::handle_cancel_invoice),
         )
         .route(
+            "/api/v1/invoices/verify-transaction",
+            post(invoices::handle_verify_transaction),
+        )
+        .route(
             "/api/v1/pos/create-order",
             post(pos_flow::handle_create_order),
         )
@@ -113,6 +121,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
         )
         .route("/api/v1/sales/summary", get(sales::handle_sales_summary))
         .route("/api/v1/invoices", get(invoices::handle_get_invoices))
+        .route("/api/v1/settings", get(invoices::handle_get_settings))
         .route(
             "/api/v1/sales/premium_analytics",
             get(x402::handle_premium_analytics),

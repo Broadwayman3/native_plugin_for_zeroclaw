@@ -56,34 +56,27 @@
           "on_error": "retry_with_backoff"
         },
         {
-          "id": "parse_rpc_response",
-          "step_id": "parse_rpc_response",
-          "action": "transform_data",
-          "processor": "compact_json_parser",
-          "max_tokens": 150,
-          "extract": {
-            "signature": "fetch_signatures.0.signature",
-            "status": "fetch_signatures.0.confirmationStatus",
-            "destination": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.destination",
-            "mint": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.mint",
-            "paid_amount": "fetch_transaction_detail.transaction.message.instructions.0.parsed.info.amount"
+          "id": "verify_via_backend",
+          "step_id": "verify_via_backend",
+          "action": "http_request",
+          "method": "POST",
+          "url": "${POS_BACKEND_URL:-http://127.0.0.1:8080}/api/v1/invoices/verify-transaction",
+          "body": {
+            "invoice_id": "${fetch_pending_invoices.body.0.id}",
+            "tx_json": "${fetch_transaction_detail}"
           }
         },
         {
           "id": "evaluate_payment",
           "step_id": "evaluate_payment",
           "action": "condition",
-          "if": "(parse_rpc_response.status == 'confirmed' || parse_rpc_response.status == 'finalized') && parse_rpc_response.destination == '${MERCHANT_USDC_ATA}'",
+          "if": "verify_via_backend.body.is_valid == true",
           "then": [
             {
               "action": "send_channel_message",
               "channel": "telegram",
               "recipient": "${MANAGER_TELEGRAM_ID}",
-              "message": "✅ **Оплату підтверджено!**\n• Чек: #${INVOICE_ID}\n• Сума: ${AMOUNT_USDC} USDC\n• Сигнатура: `${parse_rpc_response.signature}`\n• Explorer: https://solscan.io/tx/${parse_rpc_response.signature}"
-            },
-            {
-              "action": "mark_invoice_paid",
-              "invoice_id": "${INVOICE_ID}"
+              "message": "✅ **Оплату підтверджено!**\n• Чек: #${fetch_pending_invoices.body.0.id}\n• Сигнатура: `${fetch_signatures.0.signature}`\n• Explorer: https://solscan.io/tx/${fetch_signatures.0.signature}"
             }
           ],
           "else": [

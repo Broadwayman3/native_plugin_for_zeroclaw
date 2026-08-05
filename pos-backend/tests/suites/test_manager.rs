@@ -159,3 +159,41 @@ fn test_manager_reject_correct_user() {
         );
     });
 }
+
+#[test]
+fn test_manager_update_settings() {
+    let guard = TempDbGuard::new("manager_settings");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+
+        let req = Request::builder()
+            .uri("/api/v1/settings/update")
+            .method("POST")
+            .header("content-type", "application/json")
+            .header("X-Telegram-Bot-Api-Secret-Token", "test-secret")
+            .header("X-Telegram-User-Id", "99999")
+            .body(Body::from(
+                r#"{"quick_receipt_amount":250.0,"quick_receipt_currency":"UAH"}"#,
+            ))
+            .unwrap();
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "expected 200 for settings update");
+        assert!(
+            body.contains("250"),
+            "should reflect updated quick receipt amount"
+        );
+
+        let req_get = Request::builder()
+            .uri("/api/v1/settings")
+            .method("GET")
+            .body(Body::empty())
+            .unwrap();
+        let (status_get, body_get) = app_request(&app, req_get).await;
+        assert_eq!(status_get, StatusCode::OK, "expected 200 for get settings");
+        assert!(
+            body_get.contains("250"),
+            "GET /api/v1/settings should return updated amount"
+        );
+    });
+}

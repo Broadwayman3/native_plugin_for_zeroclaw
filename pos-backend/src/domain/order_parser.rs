@@ -30,6 +30,64 @@ pub fn parse_pos_order_input(
 ) -> ParsedOrder {
     let text_clean = text.trim();
 
+    // Multiple price aggregation (e.g. "Latte 120 UAH + Croissant 80 UAH")
+    let matches: Vec<_> = RE_CURRENCY.captures_iter(text_clean).collect();
+    if matches.len() > 1 {
+        let mut total_amt = 0.0;
+        let mut main_curr = None;
+        let mut valid_count = 0;
+
+        for caps in &matches {
+            let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or_default();
+
+            let match_start = caps.get(0).unwrap().start();
+            if match_start > 0 {
+                let prev_char = text_clean.chars().nth(match_start - 1);
+                if prev_char == Some('-') {
+                    continue;
+                }
+            }
+
+            if amt > 0.0 && amt.is_finite() && amt <= 999_999.99 {
+                total_amt += amt;
+                valid_count += 1;
+
+                let curr_str = caps.get(2).unwrap().as_str();
+                let curr = match curr_str {
+                    "₴" => "UAH",
+                    "$" => "USD",
+                    "€" => "EUR",
+                    "R$" | "REAL" => "BRL",
+                    "ZŁ" => "PLN",
+                    _ => curr_str,
+                }
+                .to_uppercase();
+                main_curr = Some(curr);
+            }
+        }
+
+        if valid_count > 0 && total_amt <= 999_999.99 {
+            let items_clean = RE_CURRENCY.replace_all(text_clean, "").to_string();
+            let final_item = items_clean
+                .split('+')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" + ");
+
+            return ParsedOrder {
+                has_price: true,
+                amount: Some(total_amt),
+                currency: main_curr,
+                items: if final_item.is_empty() {
+                    text_clean.to_string()
+                } else {
+                    final_item
+                },
+            };
+        }
+    }
+
     // Try to match currency patterns: "150 UAH", "35.50 BRL", "12 USD", "$100", "€50", etc.
     if let Some(caps) = RE_CURRENCY.captures(text_clean) {
         let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or_default();

@@ -188,3 +188,29 @@ fn test_226_invoice_update_status_invalid() {
         "226: should not update paid invoice to cancelled"
     );
 }
+
+#[test]
+fn test_227_cleanup_expired_15_minutes() {
+    let conn = setup_test_db();
+    conn.execute(
+        "INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at)
+         VALUES ('INV-20MIN', 'ref_20min', 'UAH', 100.0, 2.41, 'pending', datetime('now', '-20 minutes'))",
+        [],
+    )
+    .unwrap();
+
+    pos_backend::db::invoices::cleanup_expired_pending_invoices(&conn).unwrap();
+
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM invoices WHERE id = 'INV-20MIN'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(
+        status, "expired",
+        "227: invoice older than 15 minutes should be expired"
+    );
+}

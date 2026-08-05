@@ -27,7 +27,7 @@ fi
 
 echo ""
 echo "3. Running pos-backend Tests..."
-cargo test --manifest-path pos-backend/Cargo.toml
+cargo test --manifest-path pos-backend/Cargo.toml -- --test-threads=1
 
 echo ""
 echo "4. Running pos-core-logic Tests..."

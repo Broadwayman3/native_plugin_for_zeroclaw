@@ -2,6 +2,7 @@ pub mod invoices;
 pub mod nonce;
 pub mod schema;
 pub mod seed;
+pub mod settings;
 pub mod sop_checkpoints;
 pub mod squads;
 pub mod updates;
