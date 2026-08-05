@@ -46,7 +46,7 @@ Copy and paste the template below into the `#solana-bounty` channel on the ZeroC
 
 **Use Case**: Self-Hosted AI Cashier & Payment Terminal for Local Merchants (Telegram/WhatsApp + Solana Pay + Squads v4)
 
-- **GitHub Repository**: https://github.com/your-username/native_plugin_for_zeroclaw
+- **GitHub Repository**: https://github.com/Broadwayman3/native_plugin_for_zeroclaw
 - **Custody Tier**: Tier 1 (Non-Custodial Solana Pay) + Tier 3 WASM (Squads v4 Multisig Proposer Role)
 - **ZeroClaw Features Used**: WASM Plugins (`wasm32-wasip2`), SOP Cron Engine (`check_payments.json`, `refund_approval.json`), Memory, Input Sanitizer, SSRF Guard, MCP Client Support.
 
@@ -63,7 +63,7 @@ Refunds operate under Squads v4 governance: the agent creates an Anchor-complian
 - **SSRF Protection**: `validate_safe_rpc_url` blocks private IPs, metadata endpoints (`169.254.169.254`), and loopback addresses.
 
 ### Reproducibility (15-min Setup)
-1. Clone repo: `git clone https://github.com/your-username/native_plugin_for_zeroclaw`
+1. Clone repo: `git clone https://github.com/Broadwayman3/native_plugin_for_zeroclaw`
 2. Verify test suite (352 tests): `./scripts/verify_all.sh`
 3. Configure `.env`: Set `MERCHANT_WALLET_PUBKEY` and `TELEGRAM_BOT_TOKEN`.
 4. Launch: `docker-compose up -d`
