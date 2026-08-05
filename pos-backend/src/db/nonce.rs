@@ -83,6 +83,19 @@ pub fn refresh_stale_nonce(conn: &Connection, pubkey: &str) -> Result<(), rusqli
     Ok(())
 }
 
+/// Updates the stored nonce_blockhash for a nonce account after RPC synchronization.
+pub fn update_nonce_blockhash(
+    conn: &Connection,
+    pubkey: &str,
+    new_blockhash: &str,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE nonce_accounts SET nonce_blockhash = ?1, status = 'free', locked_at = NULL WHERE pubkey = ?2",
+        params![new_blockhash, pubkey],
+    )?;
+    Ok(())
+}
+
 /// Validates Solana Runtime rule: AdvanceNonceAccount must be the first non-budget execution instruction.
 pub fn verify_nonce_instruction_ordering(instructions: &[serde_json::Value]) -> bool {
     if instructions.is_empty() {

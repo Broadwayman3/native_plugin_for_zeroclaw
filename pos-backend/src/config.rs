@@ -22,6 +22,8 @@ pub struct AppConfig {
     pub quick_receipt_amount: f64,
     /// Quick receipt button currency (default: "UAH").
     pub quick_receipt_currency: String,
+    /// Allow local HTTP RPC endpoints for dev testing (default: false).
+    pub allow_local_rpc: bool,
 }
 
 impl AppConfig {
@@ -62,6 +64,13 @@ impl AppConfig {
             .unwrap_or(200.0);
         let quick_receipt_currency = env_or_default("QUICK_RECEIPT_CURRENCY", "UAH");
 
+        let allow_local_rpc = matches!(
+            env_or_default("ALLOW_LOCAL_RPC", "false")
+                .to_lowercase()
+                .as_str(),
+            "true" | "1" | "yes"
+        );
+
         Ok(Self {
             manager_telegram_id,
             merchant_wallet_pubkey,
@@ -86,6 +95,7 @@ impl AppConfig {
             api_keys,
             quick_receipt_amount,
             quick_receipt_currency,
+            allow_local_rpc,
         })
     }
 }

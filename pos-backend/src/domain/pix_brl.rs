@@ -22,6 +22,16 @@ pub fn calculate_pix_crc16(payload_without_crc: &str) -> String {
 
 /// Generates Brazil EMV QRCPS PIX payload with valid CRC16 checksum.
 pub fn generate_pix_emv_payload(pix_key: &str, amount_brl: f64, merchant_name: &str) -> String {
+    generate_pix_emv_payload_with_txid(pix_key, amount_brl, merchant_name, "101")
+}
+
+/// Generates Brazil EMV QRCPS PIX payload with dynamic invoice TxID reference and recalculates Tag 62 length.
+pub fn generate_pix_emv_payload_with_txid(
+    pix_key: &str,
+    amount_brl: f64,
+    merchant_name: &str,
+    invoice_id: &str,
+) -> String {
     let amount_str = format!("{:.2}", amount_brl);
     let merchant_name = if merchant_name.is_empty() {
         "ZeroClaw POS"
@@ -31,12 +41,31 @@ pub fn generate_pix_emv_payload(pix_key: &str, amount_brl: f64, merchant_name: &
 
     // Truncate merchant name to 99 chars (UTF-8 safe)
     let merchant_truncated: String = merchant_name.chars().take(99).collect();
-
     // Truncate pix key to 99 chars (UTF-8 safe)
     let pix_key_truncated: String = pix_key.chars().take(99).collect();
 
     let merchant_len = merchant_truncated.len();
     let pix_key_len = pix_key_truncated.len();
+
+    // Construct Field 05 (TxID reference) inside Tag 62
+    let raw_txid = if invoice_id.is_empty() {
+        "101".to_string()
+    } else {
+        format!(
+            "INV{}",
+            invoice_id
+                .trim_start_matches("INV-")
+                .trim_start_matches('#')
+        )
+    };
+    let txid_clean: String = raw_txid
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(25)
+        .collect();
+
+    let field05 = format!("05{:02}{}", txid_clean.len(), txid_clean);
+    let tag62 = format!("62{:02}{}", field05.len(), field05);
 
     let payload_base = format!(
         "00020126580014br.gov.bcb.pix\
@@ -46,13 +75,14 @@ pub fn generate_pix_emv_payload(pix_key: &str, amount_brl: f64, merchant_name: &
          5802BR\
          59{:02}{}\
          6009SAO PAULO\
-         62070503***",
+         {}",
         pix_key_len,
         pix_key_truncated,
         amount_str.len(),
         amount_str,
         merchant_len,
-        merchant_truncated
+        merchant_truncated,
+        tag62
     );
 
     let crc_hex = calculate_pix_crc16(&payload_base);

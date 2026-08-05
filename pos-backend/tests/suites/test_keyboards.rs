@@ -37,10 +37,9 @@ fn test_327_lang_keyboard_all_langs() {
     }
     found.sort();
     assert_eq!(
-        found.len(),
-        13,
-        "327: expected 13 languages, found {:?}",
-        found
+        found, expected,
+        "327: expected 13 languages {:?}, found {:?}",
+        expected, found
     );
 }
 

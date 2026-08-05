@@ -108,6 +108,41 @@ pub fn verify_solana_transaction(
     expected_usdc_atomic: i64,
     expected_mint: &str,
 ) -> Value {
+    verify_solana_transaction_with_fee_bps(
+        tx_json,
+        expected_merchant_ata,
+        expected_usdc_atomic,
+        expected_mint,
+        0,
+        0,
+    )
+}
+
+/// Triple Payment Protection with Token-2022 Transfer Fee Net Amount Reconciliation.
+pub fn verify_solana_transaction_with_fee_bps(
+    tx_json: &Value,
+    expected_merchant_ata: &str,
+    expected_usdc_atomic: i64,
+    expected_mint: &str,
+    fee_basis_points: u16,
+    max_fee_units: u64,
+) -> Value {
+    // Calculate expected net atomic amount after Token-2022 transfer fee deduction
+    let expected_net_atomic = if expected_usdc_atomic > 0 {
+        let fee_units = pos_core_logic::token2022::calculate_token2022_fee(
+            expected_usdc_atomic as u64,
+            fee_basis_points,
+            if max_fee_units > 0 {
+                max_fee_units
+            } else {
+                expected_usdc_atomic as u64
+            },
+        ) as i64;
+        expected_usdc_atomic - fee_units
+    } else {
+        expected_usdc_atomic
+    };
+
     // Invalid payload
     if tx_json.is_null() || !tx_json.is_object() {
         return serde_json::json!({
@@ -154,7 +189,7 @@ pub fn verify_solana_transaction(
             let pubkey = key.get("pubkey").and_then(|v| v.as_str()).unwrap_or("");
             if pubkey == expected_merchant_ata {
                 let delta = deltas.get(&(i as i64)).copied().unwrap_or(0);
-                if delta >= expected_usdc_atomic {
+                if delta >= expected_net_atomic {
                     return serde_json::json!({
                         "is_valid": true,
                         "paid_atomic": delta,
@@ -170,7 +205,7 @@ pub fn verify_solana_transaction(
             if let Some(paid) = inspect_instructions_for_transfer(
                 instructions,
                 expected_merchant_ata,
-                expected_usdc_atomic,
+                expected_net_atomic,
             ) {
                 return serde_json::json!({
                     "is_valid": true,
@@ -188,7 +223,7 @@ pub fn verify_solana_transaction(
                 if let Some(paid) = inspect_instructions_for_transfer(
                     instructions,
                     expected_merchant_ata,
-                    expected_usdc_atomic,
+                    expected_net_atomic,
                 ) {
                     return serde_json::json!({
                         "is_valid": true,

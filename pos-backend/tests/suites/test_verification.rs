@@ -286,3 +286,30 @@ fn test_394_verify_nested_instructions() {
         r
     );
 }
+
+#[test]
+fn test_329_verify_token2022_transfer_fee_net_amount() {
+    let tx = serde_json::json!({
+        "meta": {
+            "err": null,
+            "preTokenBalances": [{"accountIndex": 1, "mint": "mint2022", "uiTokenAmount": {"amount": "0"}}],
+            "postTokenBalances": [{"accountIndex": 1, "mint": "mint2022", "uiTokenAmount": {"amount": "999000"}}],
+            "innerInstructions": []
+        },
+        "transaction": {"message": {"accountKeys": [{"pubkey": "payer"}, {"pubkey": "merchant_ata"}]}}
+    });
+    // Expected gross: 1_000_000 (1 USDC). Fee: 10 bp = 1000 atomic units. Net: 999_000 atomic units.
+    let r = pos_backend::domain::verification::verify_solana_transaction_with_fee_bps(
+        &tx,
+        "merchant_ata",
+        1000000,
+        "mint2022",
+        10,
+        1000000,
+    );
+    assert_eq!(
+        r["is_valid"], true,
+        "329: token2022 net amount verification should succeed, got: {}",
+        r
+    );
+}

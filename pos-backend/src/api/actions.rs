@@ -36,6 +36,7 @@ pub async fn handle_action_get(
     });
 
     let mut headers = HeaderMap::new();
+    headers.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
     headers.insert("X-Action-Version", "2.1.3".parse().unwrap());
     headers.insert(
         "X-Blockchain-Ids",
@@ -99,6 +100,7 @@ pub async fn handle_action_post(
     });
 
     let mut headers = HeaderMap::new();
+    headers.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
     headers.insert("X-Action-Version", "2.1.3".parse().unwrap());
     headers.insert(
         "X-Blockchain-Ids",
@@ -115,7 +117,10 @@ pub async fn handle_action_post(
 async fn fetch_dynamic_blockhash(state: &crate::api::AppState) -> String {
     let rpc_url = &state.config.solana_rpc_url;
 
-    if crate::domain::sanitizer::validate_safe_rpc_url(rpc_url) {
+    if crate::domain::sanitizer::validate_safe_rpc_url_with_config(
+        rpc_url,
+        state.config.allow_local_rpc,
+    ) {
         let body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,

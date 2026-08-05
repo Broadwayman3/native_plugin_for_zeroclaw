@@ -169,3 +169,30 @@ fn test_068_crc16_different_inputs_differ() {
         crc1, crc2
     );
 }
+
+#[test]
+fn test_326_pix_dynamic_tag62() {
+    let payload = pos_backend::domain::pix_brl::generate_pix_emv_payload_with_txid(
+        "key123",
+        50.0,
+        "Test Merchant",
+        "INV-102",
+    );
+    assert!(
+        payload.contains("62100506INV102"),
+        "326: PIX payload contains dynamically calculated Tag 62 with invoice TxID, payload: {}",
+        payload
+    );
+}
+
+#[test]
+fn test_327_pix_txid_formatting() {
+    let payload = pos_backend::domain::pix_brl::generate_pix_emv_payload_with_txid(
+        "key123", 15.0, "ZeroClaw", "404",
+    );
+    assert!(
+        payload.contains("62100506INV404"),
+        "327: PIX payload formats TxID INV404 in Tag 62, payload: {}",
+        payload
+    );
+}

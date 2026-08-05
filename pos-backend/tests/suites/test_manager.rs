@@ -22,6 +22,7 @@ fn test_config(guard: &TempDbGuard) -> AppConfig {
         api_keys: vec!["test-key".into()],
         quick_receipt_amount: 200.0,
         quick_receipt_currency: "UAH".into(),
+        allow_local_rpc: false,
     }
 }
 

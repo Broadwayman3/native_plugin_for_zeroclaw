@@ -35,6 +35,7 @@ fn test_306_x402_payment_required() {
         api_keys: vec![],
         quick_receipt_amount: 200.0,
         quick_receipt_currency: "UAH".into(),
+        allow_local_rpc: false,
     };
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _router = rt.block_on(pos_backend::api::build_router(&config));
@@ -57,6 +58,7 @@ fn test_307_cors_preflight() {
         api_keys: vec![],
         quick_receipt_amount: 200.0,
         quick_receipt_currency: "UAH".into(),
+        allow_local_rpc: false,
     };
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _router = rt.block_on(pos_backend::api::build_router(&config));

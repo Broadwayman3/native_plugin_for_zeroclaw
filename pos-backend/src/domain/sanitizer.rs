@@ -66,8 +66,19 @@ pub fn escape_telegram_markdown_v2(text: &str) -> String {
 
 /// Evaluates Solana RPC URL to prevent SSRF attacks.
 pub fn validate_safe_rpc_url(url_str: &str) -> bool {
+    validate_safe_rpc_url_with_config(url_str, false)
+}
+
+/// Evaluates Solana RPC URL to prevent SSRF attacks with optional local RPC dev toggle.
+pub fn validate_safe_rpc_url_with_config(url_str: &str, allow_local_rpc: bool) -> bool {
     if url_str.is_empty() {
         return false;
+    }
+
+    if allow_local_rpc
+        && (url_str.starts_with("http://127.0.0.1") || url_str.starts_with("http://localhost"))
+    {
+        return true;
     }
 
     // Must be HTTPS

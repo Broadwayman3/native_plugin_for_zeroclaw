@@ -53,6 +53,8 @@ pub async fn build_router(config: &AppConfig) -> Router {
             "X-Telegram-Bot-Api-Secret-Token".parse().unwrap(),
             "X-Api-Key".parse().unwrap(),
             "X-Telegram-User-Id".parse().unwrap(),
+            "X-Action-Version".parse().unwrap(),
+            "X-Blockchain-Ids".parse().unwrap(),
             "Content-Encoding".parse().unwrap(),
             "Accept-Encoding".parse().unwrap(),
         ])
@@ -116,6 +118,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
         )
         .route("/api/v1/nonce/allocate", post(nonce::handle_nonce_allocate))
         .route("/api/v1/nonce/release", post(nonce::handle_nonce_release))
+        .route("/api/v1/nonce/sync", post(nonce::handle_nonce_sync))
         .layer(AuthLayer::new(auth_config));
 
     // Read-only routes (no auth required)

@@ -73,3 +73,25 @@ fn test_281_is_payment_amount_valid() {
         "281: 9.8 outside 1% of 10.0 should be invalid"
     );
 }
+
+#[test]
+fn test_328_validate_rpc_url_local_toggle() {
+    assert!(
+        !pos_backend::domain::sanitizer::validate_safe_rpc_url("http://127.0.0.1:8899"),
+        "328: default validate_safe_rpc_url blocks http://127.0.0.1"
+    );
+    assert!(
+        pos_backend::domain::sanitizer::validate_safe_rpc_url_with_config(
+            "http://127.0.0.1:8899",
+            true
+        ),
+        "328: validate_safe_rpc_url_with_config allows http://127.0.0.1 when allow_local_rpc=true"
+    );
+    assert!(
+        pos_backend::domain::sanitizer::validate_safe_rpc_url_with_config(
+            "http://localhost:8899",
+            true
+        ),
+        "328: validate_safe_rpc_url_with_config allows http://localhost when allow_local_rpc=true"
+    );
+}
