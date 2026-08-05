@@ -214,3 +214,32 @@ fn test_227_cleanup_expired_15_minutes() {
         "227: invoice older than 15 minutes should be expired"
     );
 }
+
+#[test]
+fn test_228_invoice_update_status_from_expired_to_paid() {
+    let conn = setup_test_db();
+    conn.execute(
+        "INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at)
+         VALUES ('INV-EXP', 'ref_exp', 'UAH', 100.0, 2.41, 'expired', datetime('now', '-20 minutes'))",
+        [],
+    )
+    .unwrap();
+
+    let updated =
+        pos_backend::db::invoices::update_invoice_status(&conn, "INV-EXP", "paid", Some("sig1"))
+            .unwrap();
+    assert_eq!(
+        updated, 1,
+        "228: expired invoice should transition to paid status"
+    );
+
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM invoices WHERE id = 'INV-EXP'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(status, "paid", "228: status should be updated to paid");
+}

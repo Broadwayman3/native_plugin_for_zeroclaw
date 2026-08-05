@@ -95,7 +95,7 @@ pub fn update_invoice_status(
     let updated = conn.execute(
         "UPDATE invoices
          SET status = ?1, tx_signature = ?2, updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?3 AND (status = 'pending' OR status = 'partially_paid' OR status = ?1)",
+         WHERE id = ?3 AND (status = 'pending' OR status = 'partially_paid' OR status = 'expired' OR status = ?1)",
         params![status, tx_signature, invoice_id],
     )?;
     Ok(updated)
