@@ -156,7 +156,13 @@ pub fn validate_safe_rpc_url(url_str: &str) -> bool {
                     }
                 }
             }
-            _ => return false,
+            _ => {
+                tracing::warn!(
+                    hostname = %hostname,
+                    "SSRF Guard Warning: DNS resolution timed out (>500ms) or failed for RPC URL"
+                );
+                return false;
+            }
         }
     }
 

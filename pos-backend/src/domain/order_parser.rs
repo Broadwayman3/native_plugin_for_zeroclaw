@@ -34,8 +34,9 @@ pub fn parse_pos_order_input(
     let matches: Vec<_> = RE_CURRENCY.captures_iter(text_clean).collect();
     if matches.len() > 1 {
         let mut total_amt = 0.0;
-        let mut main_curr = None;
+        let mut main_curr: Option<String> = None;
         let mut valid_count = 0;
+        let mut has_mixed_currency = false;
 
         for caps in &matches {
             let amt: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or_default();
@@ -49,9 +50,6 @@ pub fn parse_pos_order_input(
             }
 
             if amt > 0.0 && amt.is_finite() && amt <= 999_999.99 {
-                total_amt += amt;
-                valid_count += 1;
-
                 let curr_str = caps.get(2).unwrap().as_str();
                 let curr = match curr_str {
                     "₴" => "UAH",
@@ -62,8 +60,28 @@ pub fn parse_pos_order_input(
                     _ => curr_str,
                 }
                 .to_uppercase();
-                main_curr = Some(curr);
+
+                if let Some(ref existing) = main_curr {
+                    if existing != &curr {
+                        has_mixed_currency = true;
+                        break;
+                    }
+                } else {
+                    main_curr = Some(curr);
+                }
+
+                total_amt += amt;
+                valid_count += 1;
             }
+        }
+
+        if has_mixed_currency {
+            return ParsedOrder {
+                has_price: false,
+                amount: None,
+                currency: None,
+                items: text_clean.to_string(),
+            };
         }
 
         if valid_count > 0 && total_amt <= 999_999.99 {

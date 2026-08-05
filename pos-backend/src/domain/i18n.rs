@@ -91,6 +91,21 @@ fn t_impl(key: &str, lang: Option<&str>, escape_markdown: bool, kwargs: &[(&str,
     }
 }
 
+/// Maps ISO currency codes to localized display symbols, with fallback to the ISO string itself.
+pub fn currency_to_symbol(curr: &str) -> &str {
+    match curr.to_uppercase().as_str() {
+        "UAH" => "₴",
+        "USD" => "$",
+        "EUR" => "€",
+        "BRL" => "R$",
+        "PLN" => "zł",
+        "GBP" => "£",
+        "JPY" => "¥",
+        "TRY" => "₺",
+        _ => curr,
+    }
+}
+
 /// Generates localized cashier persistent reply keyboard.
 pub fn get_main_reply_keyboard(
     lang: &str,
@@ -103,10 +118,8 @@ pub fn get_main_reply_keyboard(
     } else {
         format!("{}", quick_amount)
     };
-    let quick_kwargs = &[
-        ("amount", amount_str.as_str()),
-        ("currency", quick_currency),
-    ];
+    let symbol = currency_to_symbol(quick_currency);
+    let quick_kwargs = &[("amount", amount_str.as_str()), ("currency", symbol)];
     serde_json::json!({
         "keyboard": [
             [{"text": t_raw("btn_custom", Some(&clean), &[])}, {"text": t_raw("btn_quick_uah", Some(&clean), quick_kwargs)}],

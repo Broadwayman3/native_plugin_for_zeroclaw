@@ -343,3 +343,33 @@ fn test_163_order_parser_multi_items() {
         r
     );
 }
+
+#[test]
+fn test_164_order_parser_normalized_same_currency() {
+    let r =
+        pos_backend::domain::order_parser::parse_pos_order_input("100 ₴ + 50 UAH", "Order", None);
+    assert!(
+        r.has_price && r.amount == Some(150.0) && r.currency.as_deref() == Some("UAH"),
+        "164: normalized ₴ and UAH should combine to 150 UAH, result: {:?}",
+        r
+    );
+}
+
+#[test]
+fn test_165_order_parser_mixed_currency_rejected() {
+    let r =
+        pos_backend::domain::order_parser::parse_pos_order_input("100 UAH + 5 USD", "Order", None);
+    assert!(
+        !r.has_price,
+        "165: mixed currency input (UAH vs USD) should be rejected, result: {:?}",
+        r
+    );
+}
+
+#[test]
+fn test_166_currency_symbol_mapping_fallback() {
+    assert_eq!(pos_backend::domain::i18n::currency_to_symbol("UAH"), "₴");
+    assert_eq!(pos_backend::domain::i18n::currency_to_symbol("USD"), "$");
+    assert_eq!(pos_backend::domain::i18n::currency_to_symbol("EUR"), "€");
+    assert_eq!(pos_backend::domain::i18n::currency_to_symbol("BHD"), "BHD");
+}

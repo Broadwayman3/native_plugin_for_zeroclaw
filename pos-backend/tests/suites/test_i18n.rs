@@ -110,7 +110,7 @@ fn test_108_get_main_reply_keyboard() {
     // Verify quick receipt button contains configured amount and currency
     let btn_text = kb["keyboard"][0][1]["text"].as_str().unwrap_or("");
     assert!(
-        btn_text.contains("200") && btn_text.contains("UAH"),
+        btn_text.contains("200") && (btn_text.contains("₴") || btn_text.contains("UAH")),
         "quick btn: {}",
         btn_text
     );
