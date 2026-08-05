@@ -140,6 +140,102 @@ pub fn validate_squads_multisig_account(
     Ok(tx_index + 1)
 }
 
+/// Decodes a Base58 string into a 32-byte array.
+fn decode_bs58_32(input: &str) -> Result<[u8; 32], &'static str> {
+    const ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut bytes = Vec::new();
+    for c in input.bytes() {
+        let val = match ALPHABET.iter().position(|&b| b == c) {
+            Some(v) => v as u64,
+            None => return Err("Invalid Base58 character"),
+        };
+        let mut carry = val;
+        for byte in bytes.iter_mut().rev() {
+            let temp = (*byte as u64) * 58 + carry;
+            *byte = (temp & 0xFF) as u8;
+            carry = temp >> 8;
+        }
+        while carry > 0 {
+            bytes.insert(0, (carry & 0xFF) as u8);
+            carry >>= 8;
+        }
+    }
+    for c in input.bytes() {
+        if c == b'1' {
+            bytes.insert(0, 0);
+        } else {
+            break;
+        }
+    }
+    if bytes.len() > 32 {
+        return Err("Base58 string exceeds 32 bytes");
+    }
+    let mut out = [0u8; 32];
+    let offset = 32 - bytes.len();
+    out[offset..].copy_from_slice(&bytes);
+    Ok(out)
+}
+
+/// Builds an unsigned Solana Actions (Blink) wire transaction for USDC SPL Token transfer.
+///
+/// Features:
+/// - User wallet set as fee_payer at index 0 (num_required_signatures = 1)
+/// - Single signature slot reserved with 64 zero bytes
+/// - Reference key included as non-signer, non-writable account for Triple Payment Protection
+/// - Encoded to Base64 (Solana Actions spec v2.1.3 compliant)
+pub fn build_actions_payment_transaction(
+    user_wallet_pubkey: &str,
+    merchant_ata_pubkey: &str,
+    amount_usdc: f64,
+    usdc_mint_pubkey: &str,
+    reference_pubkey: &str,
+    recent_blockhash: &str,
+) -> Result<String, &'static str> {
+    let user_pk = decode_bs58_32(user_wallet_pubkey)?;
+    let merchant_pk = decode_bs58_32(merchant_ata_pubkey)?;
+    let reference_pk = decode_bs58_32(reference_pubkey)?;
+    let mint_pk = decode_bs58_32(usdc_mint_pubkey)?;
+    let blockhash_bytes = decode_bs58_32(recent_blockhash)?;
+
+    let token_program_pk = decode_bs58_32("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")?;
+    let usdc_atomic = crate::token2022::safe_f64_to_u64_atomic(amount_usdc, 6);
+
+    let mut ix_data = Vec::with_capacity(10);
+    ix_data.push(12u8);
+    ix_data.extend_from_slice(&usdc_atomic.to_le_bytes());
+    ix_data.push(6u8);
+
+    let mut message = Vec::new();
+    message.push(1u8);
+    message.push(0u8);
+    message.push(3u8);
+
+    message.push(5u8);
+    message.extend_from_slice(&user_pk);
+    message.extend_from_slice(&merchant_pk);
+    message.extend_from_slice(&reference_pk);
+    message.extend_from_slice(&mint_pk);
+    message.extend_from_slice(&token_program_pk);
+
+    message.extend_from_slice(&blockhash_bytes);
+
+    message.push(1u8);
+    message.push(4u8);
+
+    message.push(5u8);
+    message.extend_from_slice(&[0u8, 3u8, 1u8, 0u8, 2u8]);
+
+    message.push(10u8);
+    message.extend_from_slice(&ix_data);
+
+    let mut tx_bytes = Vec::with_capacity(1 + 64 + message.len());
+    tx_bytes.push(1u8);
+    tx_bytes.extend_from_slice(&[0u8; 64]);
+    tx_bytes.extend_from_slice(&message);
+
+    Ok(crate::squads::base64_encode(&tx_bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,5 +344,19 @@ mod tests {
             None,
         );
         assert_eq!(ix.len(), 2);
+    }
+
+    #[test]
+    fn test_build_actions_payment_transaction_valid() {
+        let tx_base64 = build_actions_payment_transaction(
+            "8xAZmQ1111111111111111111111111111111111111",
+            "8xAZmQ1111111111111111111111111111111111111",
+            15.5,
+            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "7xRefKey11111111111111111111111111111111111",
+            "4vJ9JU1bJJE96FWSXTvBxF2vT7JhRReB88vC17A88vC1",
+        )
+        .unwrap();
+        assert!(!tx_base64.is_empty(), "base64 transaction string should not be empty");
     }
 }

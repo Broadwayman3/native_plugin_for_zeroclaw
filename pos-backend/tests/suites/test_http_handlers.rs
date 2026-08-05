@@ -97,19 +97,33 @@ fn test_350_action_post_valid() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
         let app = setup_app(&guard).await;
+        let conn = pos_backend::db::get_db_connection(guard.path()).unwrap();
+        let inv = pos_backend::db::invoices::CreateInvoiceRequest {
+            id: "INV-BLINK".into(),
+            reference_pubkey: "7xRefKey11111111111111111111111111111111111".into(),
+            fiat_currency: Some("UAH".into()),
+            fiat_amount: Some(200.0),
+            usdc_amount: 5.0,
+        };
+        pos_backend::db::invoices::create_invoice(&conn, &inv).unwrap();
+
         let req = Request::builder()
-            .uri("/api/v1/actions/pay_invoice")
+            .uri("/api/v1/actions/pay_invoice?invoice_id=INV-BLINK")
             .method("POST")
             .header("content-type", "application/json")
             .body(Body::from(
-                r#"{"account":"8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s"}"#,
+                r#"{"account":"8xAZmQ1111111111111111111111111111111111111"}"#,
             ))
             .unwrap();
-        let (status, _) = app_request(&app, req).await;
+        let (status, body) = app_request(&app, req).await;
         assert_eq!(
             status,
-            StatusCode::NOT_IMPLEMENTED,
-            "350: expected 501 (stub)"
+            StatusCode::OK,
+            "350: expected 200 OK for implemented Blink POST action"
+        );
+        assert!(
+            body.contains("transaction"),
+            "350: response should contain transaction payload"
         );
     });
 }

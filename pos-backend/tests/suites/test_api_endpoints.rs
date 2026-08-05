@@ -315,3 +315,39 @@ fn test_366_verify_transaction_endpoint() {
         );
     });
 }
+
+#[test]
+fn test_369_actions_post_payment_transaction() {
+    let guard = TempDbGuard::new("api_369");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let app = setup_app(&guard).await;
+        let conn = pos_backend::db::get_db_connection(guard.path()).unwrap();
+        let inv = pos_backend::db::invoices::CreateInvoiceRequest {
+            id: "INV-BLINK-369".into(),
+            reference_pubkey: "7xRefKey11111111111111111111111111111111111".into(),
+            fiat_currency: Some("UAH".into()),
+            fiat_amount: Some(200.0),
+            usdc_amount: 5.0,
+        };
+        pos_backend::db::invoices::create_invoice(&conn, &inv).unwrap();
+
+        let payload = serde_json::json!({
+            "account": "8xAZmQ1111111111111111111111111111111111111"
+        });
+
+        let req = Request::builder()
+            .uri("/api/v1/actions/pay_invoice?invoice_id=INV-BLINK-369")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .unwrap();
+
+        let (status, body) = app_request(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "369: expected 200");
+        assert!(
+            body.contains("transaction"),
+            "369: response should contain base64 transaction"
+        );
+    });
+}
