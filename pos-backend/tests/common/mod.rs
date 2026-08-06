@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 
 /// File-based test database guard. Creates a temp DB in system temp dir.
