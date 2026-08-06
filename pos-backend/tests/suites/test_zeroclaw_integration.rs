@@ -19,6 +19,8 @@ fn test_293_sop_get_pending_invoices() {
                 fiat_currency: Some("UAH".to_string()),
                 fiat_amount: Some(100.0),
                 usdc_amount: 2.41,
+                telegram_chat_id: None,
+                telegram_msg_id: None,
             },
         )
         .unwrap();
@@ -56,6 +58,8 @@ fn test_294_sop_create_invoice() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(200.0),
             usdc_amount: 4.82,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     );
 
@@ -76,6 +80,8 @@ fn test_295_sop_update_invoice_status() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -111,6 +117,8 @@ fn test_296_sop_cancel_invoice() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -187,6 +195,8 @@ fn test_299_sop_refund_flow() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -220,6 +230,8 @@ fn test_300_sop_invoice_lifecycle() {
             fiat_currency: Some("BRL".to_string()),
             fiat_amount: Some(50.0),
             usdc_amount: 9.17,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();

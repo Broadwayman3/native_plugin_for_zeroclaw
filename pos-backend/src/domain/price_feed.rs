@@ -35,6 +35,8 @@ pub fn get_static_fiat_rates() -> HashMap<String, f64> {
     rates.insert("CLP".to_string(), 940.00);
     rates.insert("COP".to_string(), 4050.00);
     rates.insert("ARS".to_string(), 930.00);
+    rates.insert("SOL".to_string(), 0.00555);
+    rates.insert("USDC".to_string(), 1.00);
     rates
 }
 

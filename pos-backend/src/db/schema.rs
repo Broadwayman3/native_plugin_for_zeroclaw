@@ -1,8 +1,15 @@
 use rusqlite::Connection;
 
-/// Creates all database tables and runs migrations.
+/// Creates all database tables, configures WAL mode, and runs schema migrations.
 pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite::Error> {
-    // Create tables
+    // 1. Enforce SQLite WAL mode and busy timeout pragmas for high-concurrency safety
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL;
+         PRAGMA busy_timeout=5000;
+         PRAGMA synchronous=NORMAL;",
+    )?;
+
+    // 2. Create base tables
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS invoices (
             id TEXT PRIMARY KEY,
@@ -60,7 +67,7 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
         );",
     )?;
 
-    // Schema migration: add tax_rate_pct and items_breakdown columns if missing
+    // 3. Safe Schema Migrations (Check existing columns before ALTER TABLE)
     let columns: Vec<String> = {
         let mut stmt = conn.prepare("PRAGMA table_info(invoices)")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
@@ -72,6 +79,17 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
     }
     if !columns.contains(&"items_breakdown".to_string()) {
         conn.execute_batch("ALTER TABLE invoices ADD COLUMN items_breakdown TEXT")?;
+    }
+    if !columns.contains(&"telegram_chat_id".to_string()) {
+        conn.execute_batch("ALTER TABLE invoices ADD COLUMN telegram_chat_id INTEGER")?;
+    }
+    if !columns.contains(&"telegram_msg_id".to_string()) {
+        conn.execute_batch("ALTER TABLE invoices ADD COLUMN telegram_msg_id INTEGER")?;
+    }
+    if !columns.contains(&"telegram_expired_notified".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE invoices ADD COLUMN telegram_expired_notified INTEGER DEFAULT 0",
+        )?;
     }
 
     // Seed nonce accounts if empty

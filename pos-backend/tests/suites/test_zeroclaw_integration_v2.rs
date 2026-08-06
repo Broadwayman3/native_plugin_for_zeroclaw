@@ -22,6 +22,7 @@ fn test_305_markdownv2_receipt() {
 fn test_306_x402_payment_required() {
     let config = pos_backend::config::AppConfig {
         manager_telegram_id: 0,
+        telegram_bot_token: String::new(),
         merchant_wallet_pubkey: "test".to_string(),
         solana_rpc_url: "https://api.devnet.solana.com".to_string(),
         fallback_rpc_url: "https://api.devnet.solana.com".to_string(),
@@ -45,6 +46,7 @@ fn test_306_x402_payment_required() {
 fn test_307_cors_preflight() {
     let config = pos_backend::config::AppConfig {
         manager_telegram_id: 0,
+        telegram_bot_token: String::new(),
         merchant_wallet_pubkey: "test".to_string(),
         solana_rpc_url: "https://api.devnet.solana.com".to_string(),
         fallback_rpc_url: "https://api.devnet.solana.com".to_string(),
@@ -75,6 +77,8 @@ fn test_308_api_response_format() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -106,6 +110,8 @@ fn test_309_concurrent_requests() {
                         fiat_currency: Some("UAH".to_string()),
                         fiat_amount: Some(100.0),
                         usdc_amount: 2.41,
+                        telegram_chat_id: None,
+                        telegram_msg_id: None,
                     },
                 )
                 .unwrap();

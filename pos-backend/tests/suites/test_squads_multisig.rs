@@ -13,6 +13,8 @@ fn create_test_invoice(conn: &rusqlite::Connection, id: &str) {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     );
 }

@@ -68,7 +68,10 @@ fn test_034_solana_pay_url_special_chars() {
 #[test]
 fn test_035_reference_key_length() {
     let key = pos_core_logic::generate_secure_reference_key();
-    assert_eq!(key.len(), 44, "035: reference key is 44 chars");
+    assert!(
+        key.len() >= 43 && key.len() <= 44,
+        "035: reference key is 43-44 chars"
+    );
 }
 
 #[test]
@@ -76,8 +79,12 @@ fn test_036_reference_key_charset() {
     let key = pos_core_logic::generate_secure_reference_key();
     let valid = key
         .chars()
-        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
-    assert!(valid, "036: reference key charset is valid, key: {}", key);
+        .all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c));
+    assert!(
+        valid,
+        "036: reference key charset is valid Base58, key: {}",
+        key
+    );
 }
 
 #[test]

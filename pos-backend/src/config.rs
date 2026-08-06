@@ -4,6 +4,7 @@ use std::env;
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub manager_telegram_id: i64,
+    pub telegram_bot_token: String,
     pub merchant_wallet_pubkey: String,
     pub solana_rpc_url: String,
     pub fallback_rpc_url: String,
@@ -71,8 +72,11 @@ impl AppConfig {
             "true" | "1" | "yes"
         );
 
+        let telegram_bot_token = env_or_default("TELEGRAM_BOT_TOKEN", "");
+
         Ok(Self {
             manager_telegram_id,
+            telegram_bot_token,
             merchant_wallet_pubkey,
             solana_rpc_url: env_or_default(
                 "SOLANA_RPC_URL",

@@ -9,6 +9,7 @@ use pos_backend::config::AppConfig;
 fn test_config(guard: &TempDbGuard) -> AppConfig {
     AppConfig {
         manager_telegram_id: 99999,
+        telegram_bot_token: String::new(),
         merchant_wallet_pubkey: "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s".into(),
         solana_rpc_url: "https://api.mainnet.solana.com".into(),
         fallback_rpc_url: "https://api.mainnet.solana.com".into(),
@@ -97,6 +98,8 @@ fn test_manager_approve_correct_user() {
                 fiat_currency: Some("USD".into()),
                 fiat_amount: Some(10.0),
                 usdc_amount: 10.0,
+                telegram_chat_id: None,
+                telegram_msg_id: None,
             },
         )
         .unwrap();
@@ -136,6 +139,8 @@ fn test_manager_reject_correct_user() {
                 fiat_currency: Some("USD".into()),
                 fiat_amount: Some(10.0),
                 usdc_amount: 10.0,
+                telegram_chat_id: None,
+                telegram_msg_id: None,
             },
         )
         .unwrap();

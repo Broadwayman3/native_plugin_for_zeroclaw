@@ -139,11 +139,17 @@ pub fn get_cancel_invoice_inline_keyboard(
     let clean = normalize_lang(lang);
     let cancel_btn_label = t_raw("cancel_btn_text", Some(&clean), &[]);
     let phantom_btn_label = t_raw("btn_pay_phantom", Some(&clean), &[]);
+    let phantom_btn_text = if phantom_btn_label.is_empty() || phantom_btn_label == "btn_pay_phantom"
+    {
+        "📲 Phantom Wallet"
+    } else {
+        &phantom_btn_label
+    };
 
     let mut row = Vec::new();
     if let Some(url) = phantom_url {
         row.push(serde_json::json!({
-            "text": if phantom_btn_label.is_empty() { "📲 Phantom Wallet" } else { &phantom_btn_label },
+            "text": phantom_btn_text,
             "url": url
         }));
     }

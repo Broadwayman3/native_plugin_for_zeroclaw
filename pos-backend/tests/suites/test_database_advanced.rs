@@ -13,6 +13,8 @@ fn test_370_partially_paid_transition() {
             fiat_currency: Some("USD".into()),
             fiat_amount: Some(50.0),
             usdc_amount: 50.0,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -46,6 +48,8 @@ fn test_371_initiate_refund_non_paid() {
             fiat_currency: Some("USD".into()),
             fiat_amount: Some(20.0),
             usdc_amount: 20.0,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -70,6 +74,8 @@ fn test_372_sales_summary_all_cancelled() {
             fiat_currency: Some("USD".into()),
             fiat_amount: Some(10.0),
             usdc_amount: 10.0,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();

@@ -4,6 +4,7 @@ pub mod middleware;
 pub mod nonce;
 pub mod pos_flow;
 pub mod sales;
+pub mod telegram;
 pub mod x402;
 
 use axum::http::{header, Method, StatusCode};

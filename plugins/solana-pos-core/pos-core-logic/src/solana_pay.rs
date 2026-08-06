@@ -1,35 +1,11 @@
 use crate::constants::SOL_MINT;
 
-/// Generates a cryptographically secure 32-byte reference key encoded as base32 (truncated to 44 chars).
+/// Generates a cryptographically secure 32-byte reference key encoded as Base58 (valid Solana Public Key format).
 pub fn generate_secure_reference_key() -> String {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let bytes: [u8; 32] = rng.gen();
-    let full = base32_encode(&bytes);
-    full[..44].to_string()
-}
-
-/// Encodes bytes to uppercase base32 (RFC 4648) without padding.
-fn base32_encode(input: &[u8]) -> String {
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-    let mut result = String::with_capacity((input.len() * 8 + 4) / 5);
-    let mut bits: u32 = 0;
-    let mut bits_left: i32 = 0;
-
-    for &byte in input {
-        bits = (bits << 8) | byte as u32;
-        bits_left += 8;
-        while bits_left >= 5 {
-            bits_left -= 5;
-            result.push(CHARSET[((bits >> bits_left) & 0x1F) as usize] as char);
-        }
-    }
-
-    if bits_left > 0 {
-        result.push(CHARSET[((bits << (5 - bits_left)) & 0x1F) as usize] as char);
-    }
-
-    result
+    bs58::encode(bytes).into_string()
 }
 
 /// SIP-0001 compliant Solana Pay URL generator.
@@ -243,8 +219,8 @@ mod tests {
     #[test]
     fn test_reference_key_length() {
         let key = generate_secure_reference_key();
-        assert_eq!(key.len(), 44);
-        assert!(key.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
+        assert!(key.len() >= 43 && key.len() <= 44);
+        assert!(key.chars().all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)));
     }
 
     #[test]

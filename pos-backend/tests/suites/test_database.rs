@@ -46,6 +46,8 @@ fn test_113_create_invoice() {
         fiat_currency: Some("UAH".to_string()),
         fiat_amount: Some(200.0),
         usdc_amount: 4.82,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     let id = pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
     assert_eq!(id, "TEST-101", "113: wrong invoice id");
@@ -60,6 +62,8 @@ fn test_114_get_invoices_list() {
         fiat_currency: Some("UAH".to_string()),
         fiat_amount: Some(100.0),
         usdc_amount: 2.41,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
     let list = pos_backend::db::invoices::get_invoices_list(&conn, None, None).unwrap();
@@ -75,6 +79,8 @@ fn test_115_update_invoice_status() {
         fiat_currency: Some("UAH".to_string()),
         fiat_amount: Some(100.0),
         usdc_amount: 2.41,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
     let updated =
@@ -91,6 +97,8 @@ fn test_116_cancel_invoice() {
         fiat_currency: Some("USD".to_string()),
         fiat_amount: Some(10.0),
         usdc_amount: 10.0,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
     let cancelled = pos_backend::db::invoices::cancel_invoice(&conn, "TEST-116").unwrap();
@@ -106,6 +114,8 @@ fn test_117_duplicate_invoice_id() {
         fiat_currency: Some("EUR".to_string()),
         fiat_amount: Some(5.0),
         usdc_amount: 5.0,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
     let req2 = pos_backend::db::invoices::CreateInvoiceRequest {
@@ -114,6 +124,8 @@ fn test_117_duplicate_invoice_id() {
         fiat_currency: Some("EUR".to_string()),
         fiat_amount: Some(5.0),
         usdc_amount: 5.0,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     assert!(
         pos_backend::db::invoices::create_invoice(&conn, &req2).is_err(),
@@ -190,6 +202,8 @@ fn test_127_invalid_status() {
         fiat_currency: Some("USD".to_string()),
         fiat_amount: Some(10.0),
         usdc_amount: 10.0,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
     assert!(

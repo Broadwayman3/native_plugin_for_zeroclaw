@@ -3,6 +3,7 @@ fn test_288_cors_headers() {
     let config =
         pos_backend::config::AppConfig::from_env().unwrap_or(pos_backend::config::AppConfig {
             manager_telegram_id: 0,
+            telegram_bot_token: String::new(),
             merchant_wallet_pubkey: "test".to_string(),
             solana_rpc_url: "https://api.devnet.solana.com".to_string(),
             fallback_rpc_url: "https://api.devnet.solana.com".to_string(),
@@ -62,6 +63,8 @@ fn test_291_cancel_idempotency() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -84,6 +87,8 @@ fn test_292_invoice_id_filtering() {
                 fiat_currency: Some("UAH".to_string()),
                 fiat_amount: Some(100.0),
                 usdc_amount: 2.41,
+                telegram_chat_id: None,
+                telegram_msg_id: None,
             },
         )
         .unwrap();

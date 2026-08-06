@@ -9,6 +9,7 @@ use pos_backend::config::AppConfig;
 fn test_config(guard: &TempDbGuard) -> AppConfig {
     AppConfig {
         manager_telegram_id: 12345,
+        telegram_bot_token: String::new(),
         merchant_wallet_pubkey: "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s".into(),
         solana_rpc_url: "https://api.mainnet.solana.com".into(),
         fallback_rpc_url: "https://api.mainnet.solana.com".into(),
@@ -105,6 +106,8 @@ fn test_350_action_post_valid() {
             fiat_currency: Some("UAH".into()),
             fiat_amount: Some(200.0),
             usdc_amount: 5.0,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         };
         pos_backend::db::invoices::create_invoice(&conn, &inv).unwrap();
 

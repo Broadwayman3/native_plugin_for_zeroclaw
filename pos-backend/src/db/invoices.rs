@@ -16,17 +16,22 @@ pub struct Invoice {
     pub pix_payload: Option<String>,
     pub tax_rate_pct: Option<f64>,
     pub items_breakdown: Option<String>,
+    pub telegram_chat_id: Option<i64>,
+    pub telegram_msg_id: Option<i64>,
+    pub telegram_expired_notified: Option<i64>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct CreateInvoiceRequest {
     pub id: String,
     pub reference_pubkey: String,
     pub fiat_currency: Option<String>,
     pub fiat_amount: Option<f64>,
     pub usdc_amount: f64,
+    pub telegram_chat_id: Option<i64>,
+    pub telegram_msg_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,11 +76,24 @@ pub fn create_invoice(
     let fiat_amount = req.fiat_amount.unwrap_or(req.usdc_amount);
 
     conn.execute(
-        "INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-        params![req.id, req.reference_pubkey, fiat_currency, fiat_amount, req.usdc_amount],
+        "INSERT INTO invoices (id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount, status, telegram_chat_id, telegram_msg_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        params![req.id, req.reference_pubkey, fiat_currency, fiat_amount, req.usdc_amount, req.telegram_chat_id, req.telegram_msg_id],
     )?;
     Ok(req.id.clone())
+}
+
+/// Updates invoice's Telegram chat and message IDs after sendPhoto.
+pub fn update_invoice_telegram_context(
+    conn: &Connection,
+    invoice_id: &str,
+    chat_id: i64,
+    msg_id: i64,
+) -> Result<usize, rusqlite::Error> {
+    conn.execute(
+        "UPDATE invoices SET telegram_chat_id = ?1, telegram_msg_id = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
+        params![chat_id, msg_id, invoice_id],
+    )
 }
 
 /// Updates invoice status atomically if transition is valid.
@@ -112,6 +130,17 @@ pub fn cancel_invoice(conn: &Connection, invoice_id: &str) -> Result<usize, rusq
     Ok(cancelled)
 }
 
+/// Marks expired invoice notification as sent in SQLite to prevent infinite notification loops.
+pub fn mark_invoice_expired_notified(
+    conn: &Connection,
+    invoice_id: &str,
+) -> Result<usize, rusqlite::Error> {
+    conn.execute(
+        "UPDATE invoices SET telegram_expired_notified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        params![invoice_id],
+    )
+}
+
 /// Maps a rusqlite Row to an Invoice struct.
 fn row_to_invoice(row: &rusqlite::Row) -> Result<Invoice, rusqlite::Error> {
     Ok(Invoice {
@@ -127,8 +156,11 @@ fn row_to_invoice(row: &rusqlite::Row) -> Result<Invoice, rusqlite::Error> {
         pix_payload: row.get(9)?,
         tax_rate_pct: row.get(10)?,
         items_breakdown: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        telegram_chat_id: row.get(12)?,
+        telegram_msg_id: row.get(13)?,
+        telegram_expired_notified: row.get(14)?,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
     })
 }
 
@@ -140,7 +172,8 @@ pub fn get_invoice_by_id(
     conn.query_row(
         "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
                 status, tx_signature, customer_address, pix_id, pix_payload,
-                tax_rate_pct, items_breakdown, created_at, updated_at
+                tax_rate_pct, items_breakdown, telegram_chat_id, telegram_msg_id,
+                telegram_expired_notified, created_at, updated_at
          FROM invoices WHERE id = ?1",
         params![invoice_id],
         row_to_invoice,
@@ -160,7 +193,8 @@ pub fn get_invoices_list(
         let mut s = conn.prepare(
             "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
                     status, tx_signature, customer_address, pix_id, pix_payload,
-                    tax_rate_pct, items_breakdown, created_at, updated_at
+                    tax_rate_pct, items_breakdown, telegram_chat_id, telegram_msg_id,
+                    telegram_expired_notified, created_at, updated_at
              FROM invoices WHERE id = ?1 ORDER BY updated_at DESC, created_at DESC",
         )?;
         let rows = s.query_map(params![id], row_to_invoice)?;
@@ -169,7 +203,8 @@ pub fn get_invoices_list(
         let mut s = conn.prepare(
             "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
                     status, tx_signature, customer_address, pix_id, pix_payload,
-                    tax_rate_pct, items_breakdown, created_at, updated_at
+                    tax_rate_pct, items_breakdown, telegram_chat_id, telegram_msg_id,
+                    telegram_expired_notified, created_at, updated_at
              FROM invoices WHERE status = ?1 ORDER BY updated_at DESC, created_at DESC",
         )?;
         let rows = s.query_map(params![st], row_to_invoice)?;
@@ -178,7 +213,8 @@ pub fn get_invoices_list(
         let mut s = conn.prepare(
             "SELECT id, reference_pubkey, fiat_currency, fiat_amount, usdc_amount,
                     status, tx_signature, customer_address, pix_id, pix_payload,
-                    tax_rate_pct, items_breakdown, created_at, updated_at
+                    tax_rate_pct, items_breakdown, telegram_chat_id, telegram_msg_id,
+                    telegram_expired_notified, created_at, updated_at
              FROM invoices ORDER BY updated_at DESC, created_at DESC",
         )?;
         let rows = s.query_map([], row_to_invoice)?;
@@ -288,4 +324,30 @@ pub fn revert_refund_to_paid(conn: &Connection, invoice_id: &str) -> Result<bool
         params![invoice_id],
     )?;
     Ok(updated > 0)
+}
+
+/// Retrieves a value from system_settings table by key.
+pub fn get_system_setting(conn: &Connection, key: &str) -> Result<Option<String>, rusqlite::Error> {
+    let mut stmt = conn.prepare("SELECT value FROM system_settings WHERE key = ?1")?;
+    let mut rows = stmt.query(params![key])?;
+    if let Some(row) = rows.next()? {
+        let val: String = row.get(0)?;
+        Ok(Some(val))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Sets or updates a key-value pair in system_settings table.
+pub fn set_system_setting(
+    conn: &Connection,
+    key: &str,
+    value: &str,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT INTO system_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
 }

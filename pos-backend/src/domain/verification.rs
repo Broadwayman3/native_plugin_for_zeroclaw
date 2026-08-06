@@ -101,18 +101,38 @@ fn inspect_instructions_for_transfer(
     None
 }
 
-/// Triple Payment Protection: Reverted Tx Guard, Balance Delta, Recursive Instruction Inspection.
+/// Triple Payment Protection for Solana transactions.
 pub fn verify_solana_transaction(
     tx_json: &Value,
     expected_merchant_ata: &str,
     expected_usdc_atomic: i64,
     expected_mint: &str,
 ) -> Value {
-    verify_solana_transaction_with_fee_bps(
+    verify_solana_transaction_full(
         tx_json,
         expected_merchant_ata,
         expected_usdc_atomic,
         expected_mint,
+        None,
+        0,
+        0,
+    )
+}
+
+/// Triple Payment Protection with Reference Key matching to prevent cross-invoice false positives.
+pub fn verify_solana_transaction_with_reference(
+    tx_json: &Value,
+    expected_merchant_ata: &str,
+    expected_usdc_atomic: i64,
+    expected_mint: &str,
+    expected_reference_pubkey: Option<&str>,
+) -> Value {
+    verify_solana_transaction_full(
+        tx_json,
+        expected_merchant_ata,
+        expected_usdc_atomic,
+        expected_mint,
+        expected_reference_pubkey,
         0,
         0,
     )
@@ -124,6 +144,27 @@ pub fn verify_solana_transaction_with_fee_bps(
     expected_merchant_ata: &str,
     expected_usdc_atomic: i64,
     expected_mint: &str,
+    fee_basis_points: u16,
+    max_fee_units: u64,
+) -> Value {
+    verify_solana_transaction_full(
+        tx_json,
+        expected_merchant_ata,
+        expected_usdc_atomic,
+        expected_mint,
+        None,
+        fee_basis_points,
+        max_fee_units,
+    )
+}
+
+/// Master Triple Payment Protection Verification Implementation.
+pub fn verify_solana_transaction_full(
+    tx_json: &Value,
+    expected_merchant_ata: &str,
+    expected_usdc_atomic: i64,
+    expected_mint: &str,
+    expected_reference_pubkey: Option<&str>,
     fee_basis_points: u16,
     max_fee_units: u64,
 ) -> Value {
@@ -169,12 +210,43 @@ pub fn verify_solana_transaction_with_fee_bps(
         });
     }
 
-    // Balance delta verification
-    let deltas = extract_token_balance_deltas(meta, expected_mint);
     let transaction = tx_json.get("transaction").and_then(|t| t.as_object());
     let message = transaction
         .and_then(|t| t.get("message"))
         .and_then(|m| m.as_object());
+
+    // Reference Key Cross-Invoice Security Guard
+    if let Some(ref_key) = expected_reference_pubkey {
+        let mut ref_found = false;
+        if let Some(msg) = message {
+            let account_keys = msg
+                .get("accountKeys")
+                .or_else(|| msg.get("staticAccountKeys"))
+                .and_then(|k| k.as_array())
+                .map(|a| a.as_slice())
+                .unwrap_or(&[]);
+            for key in account_keys {
+                let pubkey = if key.is_string() {
+                    key.as_str().unwrap_or("")
+                } else {
+                    key.get("pubkey").and_then(|v| v.as_str()).unwrap_or("")
+                };
+                if pubkey == ref_key {
+                    ref_found = true;
+                    break;
+                }
+            }
+        }
+        if !ref_found {
+            return serde_json::json!({
+                "is_valid": false,
+                "error": "Reference key missing from transaction account keys (Cross-invoice payment mismatch guard)"
+            });
+        }
+    }
+
+    // Balance delta verification
+    let deltas = extract_token_balance_deltas(meta, expected_mint);
 
     if let Some(msg) = message {
         let account_keys = msg
@@ -184,9 +256,13 @@ pub fn verify_solana_transaction_with_fee_bps(
             .map(|a| a.as_slice())
             .unwrap_or(&[]);
 
-        // Find merchant ATA index
+        // Find merchant ATA / wallet index for token balance delta
         for (i, key) in account_keys.iter().enumerate() {
-            let pubkey = key.get("pubkey").and_then(|v| v.as_str()).unwrap_or("");
+            let pubkey = if key.is_string() {
+                key.as_str().unwrap_or("")
+            } else {
+                key.get("pubkey").and_then(|v| v.as_str()).unwrap_or("")
+            };
             if pubkey == expected_merchant_ata {
                 let delta = deltas.get(&(i as i64)).copied().unwrap_or(0);
                 if delta >= expected_net_atomic {
@@ -197,6 +273,31 @@ pub fn verify_solana_transaction_with_fee_bps(
                     });
                 }
                 break;
+            }
+        }
+
+        // Native SOL balance delta verification
+        let pre_lamports = meta.get("preBalances").and_then(|v| v.as_array());
+        let post_lamports = meta.get("postBalances").and_then(|v| v.as_array());
+        if let (Some(pre), Some(post)) = (pre_lamports, post_lamports) {
+            for (i, key) in account_keys.iter().enumerate() {
+                let pubkey = if key.is_string() {
+                    key.as_str().unwrap_or("")
+                } else {
+                    key.get("pubkey").and_then(|v| v.as_str()).unwrap_or("")
+                };
+                if pubkey == expected_merchant_ata {
+                    let pre_bal = pre.get(i).and_then(|v| v.as_i64()).unwrap_or(0);
+                    let post_bal = post.get(i).and_then(|v| v.as_i64()).unwrap_or(0);
+                    let native_delta = post_bal - pre_bal;
+                    if native_delta > 0 && native_delta >= expected_net_atomic {
+                        return serde_json::json!({
+                            "is_valid": true,
+                            "paid_atomic": native_delta,
+                            "verification_method": "native_sol_balance_delta"
+                        });
+                    }
+                }
             }
         }
 

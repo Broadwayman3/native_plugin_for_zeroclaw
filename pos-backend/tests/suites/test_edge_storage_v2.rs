@@ -27,6 +27,8 @@ fn test_228_sales_summary_with_data() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -50,6 +52,8 @@ fn test_229_sales_summary_by_currency() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -71,6 +75,8 @@ fn test_230_sales_summary_rounding() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.416,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -125,6 +131,8 @@ fn test_233_get_invoices_list_with_data() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -149,6 +157,8 @@ fn test_234_get_invoices_by_id() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -241,6 +251,8 @@ fn test_240_squads_proposal_create() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -260,6 +272,8 @@ fn test_241_squads_proposal_update() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -294,6 +308,8 @@ fn test_243_propose_refund_rejects_non_refunding() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();

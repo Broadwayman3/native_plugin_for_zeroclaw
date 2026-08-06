@@ -39,6 +39,8 @@ fn test_381_cancel_invoice_idempotent() {
         fiat_currency: Some("USD".to_string()),
         fiat_amount: Some(10.0),
         usdc_amount: 10.0,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
 
@@ -70,6 +72,8 @@ fn test_382_cancel_paid_invoice_conflict() {
         fiat_currency: Some("USD".to_string()),
         fiat_amount: Some(15.0),
         usdc_amount: 15.0,
+        telegram_chat_id: None,
+        telegram_msg_id: None,
     };
     pos_backend::db::invoices::create_invoice(&conn, &req).unwrap();
     pos_backend::db::invoices::update_invoice_status(&conn, "INV-PAID-382", "paid", Some("sig382"))

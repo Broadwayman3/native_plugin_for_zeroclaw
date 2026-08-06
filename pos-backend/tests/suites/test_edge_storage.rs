@@ -90,6 +90,8 @@ fn test_220_concurrent_db_writes() {
                         fiat_currency: Some("UAH".to_string()),
                         fiat_amount: Some(100.0),
                         usdc_amount: 2.41,
+                        telegram_chat_id: None,
+                        telegram_msg_id: None,
                     },
                 )
                 .unwrap();
@@ -125,6 +127,8 @@ fn test_221_invoice_status_transitions() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -155,6 +159,8 @@ fn test_224_invoice_cancel_paid() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();
@@ -175,6 +181,8 @@ fn test_226_invoice_update_status_invalid() {
             fiat_currency: Some("UAH".to_string()),
             fiat_amount: Some(100.0),
             usdc_amount: 2.41,
+            telegram_chat_id: None,
+            telegram_msg_id: None,
         },
     )
     .unwrap();

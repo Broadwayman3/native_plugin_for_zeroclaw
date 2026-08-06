@@ -99,6 +99,8 @@ pub async fn handle_create_order(
             fiat_currency: Some(fiat_curr.to_string()),
             fiat_amount: Some(fiat_amt),
             usdc_amount: usdc_amt,
+            telegram_chat_id: Some(req.chat_id),
+            telegram_msg_id: None,
         },
     )?;
 
