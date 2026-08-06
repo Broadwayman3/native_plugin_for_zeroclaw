@@ -20,6 +20,7 @@ fn test_config(guard: &TempDbGuard) -> AppConfig {
         db_path: guard.path().into(),
         rate_limit_rps: 100,
         telegram_bot_secret_token: Some("test-secret".into()),
+        telegram_webhook_url: None,
         api_keys: vec!["test-key".into()],
         quick_receipt_amount: 200.0,
         quick_receipt_currency: "UAH".into(),

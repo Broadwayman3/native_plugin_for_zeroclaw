@@ -14,6 +14,7 @@ fn test_288_cors_headers() {
             db_path: ":memory:".to_string(),
             rate_limit_rps: 100,
             telegram_bot_secret_token: None,
+            telegram_webhook_url: None,
             api_keys: vec![],
             quick_receipt_amount: 200.0,
             quick_receipt_currency: "UAH".into(),

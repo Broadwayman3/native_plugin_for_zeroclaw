@@ -1,3 +1,4 @@
+pub mod fsm_dao;
 pub mod invoices;
 pub mod nonce;
 pub mod schema;

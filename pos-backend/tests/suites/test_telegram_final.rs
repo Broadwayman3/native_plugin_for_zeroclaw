@@ -4,13 +4,12 @@ use pos_backend::api::telegram::state::{get_update_offset, set_update_offset};
 use pos_backend::api::telegram::ChatLocks;
 use pos_backend::db;
 use pos_backend::domain::sanitizer::strip_bot_mention;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex as AsyncMutex;
 
 #[tokio::test]
 async fn test_390_fsm_composite_key_and_ttl() {
-    let fsm = FsmStore::new();
+    let guard = common::TempDbGuard::new("test_390");
+    let fsm = FsmStore::new_with_db(guard.path().into());
 
     let group_chat_id = -100123456789;
     let user_a = 111;
@@ -133,30 +132,19 @@ fn test_394_atomic_invoice_cancellation() {
 
 #[test]
 fn test_395_chat_locks_gc_cleanup() {
-    let chat_locks: ChatLocks = Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let chat_locks = ChatLocks::new();
     let target_chat_id = 9988776655;
 
-    // Acquire lock
-    let chat_lock = {
-        let mut map = chat_locks.lock().unwrap();
-        map.entry(target_chat_id)
-            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-            .clone()
-    };
+    let lock1 = chat_locks.get_or_create(target_chat_id);
+    let lock2 = chat_locks.get_or_create(target_chat_id);
 
-    assert_eq!(chat_locks.lock().unwrap().len(), 1);
+    assert!(Arc::ptr_eq(&lock1, &lock2));
+    let weak2 = Arc::downgrade(&lock2);
+    drop(lock1);
+    drop(lock2);
 
-    // Release lock & run GC
-    {
-        let mut map = chat_locks.lock().unwrap();
-        if Arc::strong_count(&chat_lock) <= 2 {
-            map.remove(&target_chat_id);
-        }
-    }
+    assert!(weak2.upgrade().is_none());
 
-    assert_eq!(
-        chat_locks.lock().unwrap().len(),
-        0,
-        "395: Unused chat_lock should be purged from memory by GC"
-    );
+    let lock3 = chat_locks.get_or_create(target_chat_id);
+    assert_eq!(Arc::strong_count(&lock3), 1);
 }

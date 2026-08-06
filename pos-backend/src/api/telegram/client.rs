@@ -56,15 +56,33 @@ pub fn generate_qr_code_png_bytes(payload: &str) -> Result<Vec<u8>, String> {
     Ok(png_bytes)
 }
 
+/// RAII guard for background chat action typing indicator loop.
+/// Automatically aborts the background task when dropped (on scope exit or panic).
+pub struct ChatActionGuard {
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl ChatActionGuard {
+    pub fn new(handle: tokio::task::JoinHandle<()>) -> Self {
+        Self { handle }
+    }
+}
+
+impl Drop for ChatActionGuard {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
 /// Starts a background periodic `sendChatAction` loop (e.g. "typing" or "upload_photo").
-/// Returns a `JoinHandle` that MUST be aborted via `handle.abort()` after request processing.
+/// Returns a `ChatActionGuard` that automatically aborts the background task when dropped.
 pub fn start_chat_action_loop(
     client: Client,
     base_url: String,
     chat_id: i64,
     action: &'static str,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+) -> ChatActionGuard {
+    let handle = tokio::spawn(async move {
         let action_url = format!("{}/sendChatAction", base_url);
         let payload = serde_json::json!({
             "chat_id": chat_id,
@@ -74,7 +92,8 @@ pub fn start_chat_action_loop(
             let _ = client.post(&action_url).json(&payload).send().await;
             sleep(Duration::from_secs(4)).await;
         }
-    })
+    });
+    ChatActionGuard::new(handle)
 }
 
 /// Sends a request to Telegram Bot API with rate limiting and retry handling.
@@ -193,8 +212,20 @@ pub async fn send_telegram_photo_bytes(
                         continue;
                     }
                 } else if status.as_u16() == 429 {
+                    let retry_secs = if let Ok(json) = resp.json::<Value>().await {
+                        json.get("parameters")
+                            .and_then(|p| p.get("retry_after"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(3)
+                    } else {
+                        3
+                    };
                     if attempts < 4 {
-                        sleep(Duration::from_secs(3)).await;
+                        tracing::warn!(
+                            retry_secs = retry_secs,
+                            "sendPhoto HTTP 429 rate limit hit. Backing off..."
+                        );
+                        sleep(Duration::from_secs(retry_secs + 1)).await;
                         continue;
                     }
                 } else if status.is_server_error() && attempts < 3 {

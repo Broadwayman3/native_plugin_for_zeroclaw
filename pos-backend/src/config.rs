@@ -17,6 +17,8 @@ pub struct AppConfig {
     pub rate_limit_rps: u32,
     /// Telegram Bot API secret token for webhook auth.
     pub telegram_bot_secret_token: Option<String>,
+    /// Telegram Webhook public URL (if set, webhook mode is enabled instead of long polling).
+    pub telegram_webhook_url: Option<String>,
     /// API keys for external client auth (comma-separated in env).
     pub api_keys: Vec<String>,
     /// Quick receipt button amount (default: 200.0).
@@ -52,7 +54,26 @@ impl AppConfig {
 
         let rate_limit_rps: u32 = env_or_default("RATE_LIMIT_RPS", "10").parse().unwrap_or(10);
 
-        let telegram_bot_secret_token = env::var("TELEGRAM_BOT_SECRET_TOKEN").ok();
+        let mut telegram_bot_secret_token = env::var("TELEGRAM_BOT_SECRET_TOKEN").ok();
+        let telegram_webhook_url = env::var("TELEGRAM_WEBHOOK_URL").ok();
+
+        // Enforce secret token if Webhook mode is enabled to prevent endpoint spoofing
+        if let Some(ref url) = telegram_webhook_url {
+            if !url.trim().is_empty()
+                && telegram_bot_secret_token
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .is_empty()
+            {
+                let auto_secret =
+                    format!("sec_{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
+                tracing::info!(
+                    "Auto-generated secure TELEGRAM_BOT_SECRET_TOKEN for Webhook authentication"
+                );
+                telegram_bot_secret_token = Some(auto_secret);
+            }
+        }
 
         let api_keys: Vec<String> = env_or_default("API_KEYS", "")
             .split(',')
@@ -96,6 +117,7 @@ impl AppConfig {
             db_path: env_or_default("DB_PATH", "data/pos_store.db"),
             rate_limit_rps,
             telegram_bot_secret_token,
+            telegram_webhook_url,
             api_keys,
             quick_receipt_amount,
             quick_receipt_currency,

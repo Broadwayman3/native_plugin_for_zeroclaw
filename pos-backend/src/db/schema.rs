@@ -64,6 +64,15 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
         CREATE TABLE IF NOT EXISTS system_settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS telegram_fsm_sessions (
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (chat_id, user_id)
         );",
     )?;
 

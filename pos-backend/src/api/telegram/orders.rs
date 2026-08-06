@@ -25,8 +25,8 @@ pub async fn handle_pos_order(
     let sanitized = sanitize_external_input(text, 100);
     let def_label = t_raw("default_item", Some(lang), &[]);
 
-    // Start background chat action typing indicator loop (MUST be aborted at end!)
-    let action_task = start_chat_action_loop(
+    // Start background chat action typing indicator loop (automatically aborted on Drop)
+    let _action_task = start_chat_action_loop(
         client.clone(),
         base_url.to_string(),
         chat_id,
@@ -81,7 +81,6 @@ pub async fn handle_pos_order(
         {
             tracing::error!(error = %e, "Failed to send price_needed prompt");
         }
-        action_task.abort();
         return;
     }
 
@@ -99,7 +98,6 @@ pub async fn handle_pos_order(
         {
             tracing::error!(error = %e, "Failed to send positive amount error");
         }
-        action_task.abort();
         return;
     }
 
@@ -117,7 +115,6 @@ pub async fn handle_pos_order(
             {
                 tracing::error!(error = %e, "Failed to send price feed error");
             }
-            action_task.abort();
             return;
         }
     };
@@ -233,7 +230,4 @@ pub async fn handle_pos_order(
             }
         }
     }
-
-    // Stop background chat action typing indicator loop
-    action_task.abort();
 }

@@ -1,20 +1,22 @@
 pub mod client;
 pub mod fsm;
+pub mod fsm_store;
 pub mod handlers;
+pub mod locks;
 pub mod orders;
+pub mod polling;
 pub mod state;
 pub mod verifier;
+pub mod webhook;
 
 use crate::config::AppConfig;
 use fsm::FsmStore;
-use std::collections::HashMap;
+use locks::ChatLocksManager;
 use std::sync::Arc;
-use tokio::sync::Mutex as AsyncMutex;
-use tokio::time::{sleep, Duration};
 
-pub type ChatLocks = Arc<std::sync::Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>>;
+pub type ChatLocks = locks::ChatLocksManager;
 
-/// Starts background Telegram long-poller and Solana RPC payment verifier services.
+/// Starts background Telegram listener (Webhook or Polling) and Solana RPC payment verifier services.
 pub fn start_telegram_services(config: Arc<AppConfig>) {
     let token = config.telegram_bot_token.clone();
     if token.is_empty() || token.contains("123456789:ABC") {
@@ -25,113 +27,35 @@ pub fn start_telegram_services(config: Arc<AppConfig>) {
     // 1. Start Solana RPC payment verification background worker
     verifier::start_verifier_worker(config.clone());
 
-    // 2. Instantiate in-memory FSM store with 5-minute TTL
-    let fsm_store = FsmStore::new();
+    // 2. Instantiate SQLite-backed FSM store and Weak-ref ChatLocksManager
+    let fsm_store = FsmStore::new_with_db(config.db_path.clone());
+    let chat_locks = ChatLocksManager::new();
 
-    // 3. Chat-level concurrency locks map: chat_id -> Mutex<()>
-    let chat_locks: ChatLocks = Arc::new(std::sync::Mutex::new(HashMap::new()));
-
-    // 4. Start Telegram long-polling update listener background worker
+    // 3. Dual-mode Telegram update listener startup
     let poller_config = config.clone();
     tokio::spawn(async move {
-        tracing::info!("Telegram long-poller worker started");
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(15))
-            .build()
-            .unwrap_or_default();
-
-        let base_url = format!(
-            "https://api.telegram.org/bot{}",
-            poller_config.telegram_bot_token
-        );
-        let mut offset = state::get_update_offset(&poller_config.db_path);
-
-        loop {
-            let poll_url = format!("{}/getUpdates?offset={}&timeout=10", base_url, offset);
-            match client.get(&poll_url).send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if status.as_u16() == 409 {
-                        tracing::error!("Telegram HTTP 409 Conflict: duplicate bot instance running. Retrying in 10s...");
-                        sleep(Duration::from_secs(10)).await;
-                        continue;
-                    }
-
-                    if let Ok(json) = resp.json::<serde_json::Value>().await {
-                        if let Some(result) = json.get("result").and_then(|v| v.as_array()) {
-                            let mut handles = Vec::new();
-
-                            for update in result {
-                                let update_id =
-                                    match update.get("update_id").and_then(|v| v.as_i64()) {
-                                        Some(id) => id,
-                                        None => continue,
-                                    };
-
-                                if update_id >= offset {
-                                    offset = update_id + 1;
-                                }
-
-                                // Fast pre-check: skip if update_id was already fully processed
-                                if let Ok(conn) =
-                                    crate::db::get_db_connection(&poller_config.db_path)
-                                {
-                                    if crate::db::updates::is_processed(&conn, update_id)
-                                        .unwrap_or(false)
-                                    {
-                                        continue;
-                                    }
-                                }
-
-                                let update_clone = update.clone();
-                                let poller_config_clone = poller_config.clone();
-                                let client_clone = client.clone();
-                                let base_url_clone = base_url.clone();
-                                let fsm_clone = fsm_store.clone();
-                                let chat_locks_clone = chat_locks.clone();
-
-                                // Spawn per-update task with per-chat ordering lock
-                                let handle = tokio::spawn(async move {
-                                    process_single_update(
-                                        &client_clone,
-                                        &base_url_clone,
-                                        &poller_config_clone,
-                                        &fsm_clone,
-                                        &chat_locks_clone,
-                                        &update_clone,
-                                        update_id,
-                                    )
-                                    .await;
-                                });
-                                handles.push(handle);
-                            }
-
-                            // Wait for all updates in batch to finish before persisting offset to SQLite
-                            for handle in handles {
-                                let _ = handle.await;
-                            }
-
-                            // Persist max update offset to SQLite
-                            state::set_update_offset(&poller_config.db_path, offset);
-                        }
-                    }
+        if let Some(ref webhook_url) = poller_config.telegram_webhook_url {
+            if !webhook_url.trim().is_empty() {
+                if let Err(e) = webhook::register_telegram_webhook(&poller_config).await {
+                    tracing::error!(error = %e, "Failed to register Telegram Webhook; falling back to Long Polling");
+                    polling::start_poller_worker(poller_config, fsm_store, chat_locks);
                 }
-                Err(e) => {
-                    tracing::debug!(error = %e, "Telegram getUpdates request failed, retrying...");
-                    sleep(Duration::from_secs(3)).await;
-                }
+                return;
             }
         }
+
+        // Fallback or primary Long Polling mode
+        polling::start_poller_worker(poller_config, fsm_store, chat_locks);
     });
 }
 
-/// Helper function to process a single Telegram update with per-chat locking & memory GC.
-async fn process_single_update(
+/// Helper function to process a single Telegram update with per-chat locking & async SQLite registration.
+pub async fn process_single_update(
     client: &reqwest::Client,
     base_url: &str,
     config: &AppConfig,
     fsm: &FsmStore,
-    chat_locks: &ChatLocks,
+    chat_locks: &ChatLocksManager,
     update: &serde_json::Value,
     update_id: i64,
 ) {
@@ -156,39 +80,31 @@ async fn process_single_update(
         None
     };
 
-    // If update has no chat_id (e.g. system update), process directly without per-chat lock
     if let Some(target_chat_id) = chat_id {
-        // Safely acquire per-chat lock (without holding the map lock across .await!)
-        let chat_lock = {
-            let mut map = chat_locks.lock().unwrap_or_else(|e| e.into_inner());
-            map.entry(target_chat_id)
-                .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-                .clone()
-        };
-
-        {
-            let _guard = chat_lock.lock().await;
-            dispatch_update_content(client, base_url, config, fsm, update).await;
-
-            // Memory GC: Performed under _guard AND map lock before dropping guard.
-            // Guarantees no concurrent execution if a new task inserts a new mutex.
-            let mut map = chat_locks.lock().unwrap_or_else(|e| e.into_inner());
-            if Arc::strong_count(&chat_lock) <= 2 {
-                map.remove(&target_chat_id);
-            }
-        } // Lock guard dropped here!
+        let chat_lock = chat_locks.get_or_create(target_chat_id);
+        let _guard = chat_lock.lock().await;
+        dispatch_update_content(client, base_url, config, fsm, update).await;
     } else {
         dispatch_update_content(client, base_url, config, fsm, update).await;
     }
 
-    // Mark update_id as processed in SQLite ONLY AFTER processing completes
-    if let Ok(conn) = crate::db::get_db_connection(&config.db_path) {
-        let _ = crate::db::updates::check_and_register(&conn, update_id);
-    }
+    // Register update_id as processed in SQLite via spawn_blocking
+    let db_path = config.db_path.clone();
+    let _ = tokio::task::spawn_blocking(move || match crate::db::get_db_connection(&db_path) {
+        Ok(conn) => {
+            if let Err(e) = crate::db::updates::check_and_register(&conn, update_id) {
+                tracing::warn!(update_id = update_id, error = %e, "Failed to register processed update_id");
+            }
+        }
+        Err(e) => {
+            tracing::error!(db_path = %db_path, error = %e, "Failed to connect to SQLite in process_single_update");
+        }
+    })
+    .await;
 }
 
 /// Dispatches update payload to message or callback query handlers.
-async fn dispatch_update_content(
+pub async fn dispatch_update_content(
     client: &reqwest::Client,
     base_url: &str,
     config: &AppConfig,

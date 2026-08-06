@@ -23,6 +23,9 @@ use middleware::{AuthConfig, AuthLayer, ManagerLayer, RateLimitLayer};
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub http_client: reqwest::Client,
+    pub fsm_store: telegram::fsm::FsmStore,
+    pub chat_locks: telegram::locks::ChatLocksManager,
+    pub in_flight: telegram::locks::InFlightTracker,
 }
 
 /// Builds the Axum router with all routes and middleware.
@@ -32,9 +35,16 @@ pub async fn build_router(config: &AppConfig) -> Router {
         .build()
         .unwrap_or_default();
 
+    let fsm_store = telegram::fsm::FsmStore::new_with_db(config.db_path.clone());
+    let chat_locks = telegram::locks::ChatLocksManager::new();
+    let in_flight = telegram::locks::InFlightTracker::new();
+
     let state = AppState {
         config: Arc::new(config.clone()),
         http_client,
+        fsm_store,
+        chat_locks,
+        in_flight,
     };
 
     // CORS configuration matching Python's router.py
@@ -122,9 +132,13 @@ pub async fn build_router(config: &AppConfig) -> Router {
         .route("/api/v1/nonce/sync", post(nonce::handle_nonce_sync))
         .layer(AuthLayer::new(auth_config));
 
-    // Read-only routes (no auth required)
+    // Read-only and public webhook routes (no general AuthLayer required)
     let read_routes = Router::new()
         .route("/healthz", get(health_check))
+        .route(
+            "/api/v1/telegram/webhook",
+            post(telegram::webhook::handle_telegram_webhook),
+        )
         .route("/actions.json", get(actions::handle_actions_spec))
         .route(
             "/api/v1/actions/pay_invoice",
