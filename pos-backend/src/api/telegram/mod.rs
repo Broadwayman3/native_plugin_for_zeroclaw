@@ -64,8 +64,39 @@ pub async fn process_single_update(
     update: &serde_json::Value,
     update_id: i64,
 ) -> Result<(), String> {
-    let (chat_id, user_id) = admin_session::extract_effective_user_context(update);
+    // 1. Pre-dispatch idempotency check & registration
+    let is_new = if let Some(pool) = db_pool {
+        if let Ok(conn) = pool.get().await {
+            let res = conn
+                .interact(move |c| crate::db::updates::check_and_register(c, update_id))
+                .await;
+            res.unwrap_or(Ok(false)).unwrap_or(false)
+        } else {
+            false
+        }
+    } else {
+        let db_path = config.db_path.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = crate::db::get_db_connection(&db_path) {
+                crate::db::updates::check_and_register(&conn, update_id).unwrap_or(false)
+            } else {
+                false
+            }
+        })
+        .await
+        .unwrap_or(false)
+    };
 
+    if !is_new {
+        tracing::debug!(
+            update_id = update_id,
+            "Update already registered in processed_updates, skipping duplicate dispatch"
+        );
+        return Ok(());
+    }
+
+    // 2. Dispatch content with per-session/invoice lock
+    let (chat_id, user_id) = admin_session::extract_effective_user_context(update);
     let invoice_id = extract_invoice_id(update);
 
     let dispatch_res = if let Some(ref inv_id) = invoice_id {
@@ -84,25 +115,6 @@ pub async fn process_single_update(
         tracing::error!(update_id = update_id, error = %e, "Update content dispatch failed");
         return Err(e.clone());
     }
-
-    if let Some(pool) = db_pool {
-        if let Ok(conn) = pool.get().await {
-            let _ = conn
-                .interact(move |c| {
-                    let _ = crate::db::updates::check_and_register(c, update_id);
-                })
-                .await;
-            return Ok(());
-        }
-    }
-
-    let db_path = config.db_path.clone();
-    let _ = tokio::task::spawn_blocking(move || {
-        if let Ok(conn) = crate::db::get_db_connection(&db_path) {
-            let _ = crate::db::updates::check_and_register(&conn, update_id);
-        }
-    })
-    .await;
 
     Ok(())
 }

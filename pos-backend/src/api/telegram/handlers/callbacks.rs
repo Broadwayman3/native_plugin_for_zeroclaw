@@ -22,7 +22,12 @@ pub async fn handle_callback_query(
 ) -> Result<(), String> {
     let sanitized_data = sanitize_external_input(raw_data, 100);
 
-    if sanitized_data.starts_with("cancel_") {
+    let is_admin_action = sanitized_data.starts_with("cancel_")
+        || sanitized_data.starts_with("refund_")
+        || sanitized_data.starts_with("squads_")
+        || sanitized_data.starts_with("admin_");
+
+    if is_admin_action {
         if let Err(err_msg) = is_manager_authorized(config, user_id) {
             let answer = build_answer_callback_payload(cb_id, err_msg, true);
             let _ = send_telegram_request(
@@ -33,7 +38,9 @@ pub async fn handle_callback_query(
             .await;
             return Ok(());
         }
+    }
 
+    if sanitized_data.starts_with("cancel_") {
         let inv_id = sanitized_data
             .trim_start_matches("cancel_")
             .trim_start_matches("invoice_");
@@ -84,6 +91,38 @@ pub async fn handle_callback_query(
         {
             tracing::error!(error = %e, "Failed to send cancel invoice message");
         }
+    } else if sanitized_data.starts_with("refund_") {
+        let ack_answer =
+            build_answer_callback_payload(cb_id, "⏳ Processing refund prompt...", false);
+        let _ = send_telegram_request(
+            client,
+            &format!("{}/answerCallbackQuery", base_url),
+            &ack_answer,
+        )
+        .await;
+
+        let inv_id = sanitized_data.trim_start_matches("refund_");
+        let clean_inv_id = inv_id.replace('\\', r"\\").replace('`', r"\`");
+        let help = format!(
+            "♻️ *Squads v4 Multisig Refund*\n─────────────────\nPlease enter refund command:\n`/refund {} 1.0`",
+            clean_inv_id
+        );
+        let payload = build_send_message_payload(chat_id, &help, Some("MarkdownV2"), None);
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+    } else if sanitized_data.starts_with("squads_") || sanitized_data.starts_with("admin_") {
+        let ack_answer =
+            build_answer_callback_payload(cb_id, "⏳ Administrative action processed.", false);
+        let _ = send_telegram_request(
+            client,
+            &format!("{}/answerCallbackQuery", base_url),
+            &ack_answer,
+        )
+        .await;
+
+        let esc_data = escape_telegram_markdown_v2(&sanitized_data);
+        let text = format!("✅ Administrative action `{}` recorded\\.", esc_data);
+        let payload = build_send_message_payload(chat_id, &text, Some("MarkdownV2"), None);
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
     } else if sanitized_data.starts_with("set_lang_") {
         let lang_code = sanitized_data.trim_start_matches("set_lang_");
         set_user_lang(&config.db_path, chat_id, lang_code);

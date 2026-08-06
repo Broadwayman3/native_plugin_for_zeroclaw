@@ -1,5 +1,6 @@
 use governor::{Quota, RateLimiter};
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Mutex;
 use tokio::time::{sleep, Duration, Instant};
@@ -15,6 +16,9 @@ static PER_CHAT_TELEGRAM_LIMITER: Lazy<governor::DefaultKeyedRateLimiter<i64>> =
 });
 
 static GLOBAL_PAUSE_UNTIL_INSTANT: Lazy<Mutex<Option<Instant>>> = Lazy::new(|| Mutex::new(None));
+static PER_CHAT_PAUSE_MAP: Lazy<Mutex<HashMap<i64, Instant>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static RECENT_429_CHATS: Lazy<Mutex<Vec<(i64, Instant)>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 /// Triggers a global outbound queue pause when Telegram returns HTTP 429 (Too Many Requests).
 pub fn set_global_429_pause(retry_after_secs: u64) {
@@ -28,7 +32,36 @@ pub fn set_global_429_pause(retry_after_secs: u64) {
     );
 }
 
-/// Enforces global rate limits, chat rate limits, and checks for active HTTP 429 pause signals using monotonic Instant.
+/// Records a 429 event for a specific chat, with adaptive escalation to global pause if >=3 distinct chats hit 429 within 1 second.
+pub fn record_chat_429(chat_id: Option<i64>, retry_after_secs: u64) {
+    let now = Instant::now();
+    let pause_deadline = now + Duration::from_secs(retry_after_secs + 1);
+
+    if let Some(cid) = chat_id {
+        if let Ok(mut map) = PER_CHAT_PAUSE_MAP.lock() {
+            map.insert(cid, pause_deadline);
+        }
+
+        if let Ok(mut recent) = RECENT_429_CHATS.lock() {
+            recent.retain(|(_, ts)| now.duration_since(*ts) <= Duration::from_secs(1));
+            recent.push((cid, now));
+
+            let distinct_chats: std::collections::HashSet<i64> =
+                recent.iter().map(|(id, _)| *id).collect();
+            if distinct_chats.len() >= 3 {
+                tracing::warn!(
+                    distinct_count = distinct_chats.len(),
+                    "Adaptive 429 escalation triggered: 3+ distinct chats hit 429 within 1s. Escalating to global bot pause."
+                );
+                set_global_429_pause(retry_after_secs);
+            }
+        }
+    } else {
+        set_global_429_pause(retry_after_secs);
+    }
+}
+
+/// Enforces global rate limits, per-chat rate limits, and per-chat/global 429 pause signals using monotonic Instant.
 pub async fn enforce_rate_limit(chat_id: Option<i64>) {
     let mut wait_duration = None;
     if let Ok(mut guard) = GLOBAL_PAUSE_UNTIL_INSTANT.lock() {
@@ -37,7 +70,7 @@ pub async fn enforce_rate_limit(chat_id: Option<i64>) {
             if deadline > now {
                 wait_duration = Some(deadline - now);
             } else {
-                *guard = None; // Reset expired deadline to zero out Mutex lock overhead
+                *guard = None;
             }
         }
     }
@@ -46,18 +79,42 @@ pub async fn enforce_rate_limit(chat_id: Option<i64>) {
         sleep(dur).await;
     }
 
+    if let Some(cid) = chat_id {
+        let mut chat_wait = None;
+        if let Ok(mut map) = PER_CHAT_PAUSE_MAP.lock() {
+            if let Some(deadline) = map.get(&cid) {
+                let now = Instant::now();
+                if *deadline > now {
+                    chat_wait = Some(*deadline - now);
+                } else {
+                    map.remove(&cid);
+                }
+            }
+        }
+        if let Some(dur) = chat_wait {
+            sleep(dur).await;
+        }
+    }
+
     GLOBAL_TELEGRAM_LIMITER.until_ready().await;
     if let Some(cid) = chat_id {
         PER_CHAT_TELEGRAM_LIMITER.until_key_ready(&cid).await;
     }
 }
 
-/// Periodic GC pass for Keyed Rate Limiter to remove stale chat entries and prevent memory growth.
+/// Periodic GC pass for Keyed Rate Limiter & per-chat pause map to prevent memory growth.
 pub fn retain_recent_keys() {
     PER_CHAT_TELEGRAM_LIMITER.retain_recent();
+    let now = Instant::now();
+    if let Ok(mut map) = PER_CHAT_PAUSE_MAP.lock() {
+        map.retain(|_, deadline| *deadline > now);
+    }
+    if let Ok(mut recent) = RECENT_429_CHATS.lock() {
+        recent.retain(|(_, ts)| now.duration_since(*ts) <= Duration::from_secs(1));
+    }
 }
 
-/// Starts background worker that periodically purges stale chat keys from the rate limiter map every 10 minutes.
+/// Starts background worker that periodically purges stale rate limiter keys every 10 minutes.
 pub fn start_rate_limiter_gc_worker(
     cancel_token: tokio_util::sync::CancellationToken,
 ) -> tokio::task::JoinHandle<()> {

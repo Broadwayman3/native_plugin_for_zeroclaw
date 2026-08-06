@@ -139,10 +139,11 @@ pub async fn handle_telegram_webhook(
         });
 
     let payload_str = update.to_string();
-    if payload_str.len() > 65536 {
-        tracing::warn!(
+    if payload_str.len() > 131072 {
+        tracing::error!(
             update_id = update_id,
-            "Webhook update payload exceeds 64KB limit, dropping payload safely"
+            size = payload_str.len(),
+            "Webhook update payload exceeds 128KB limit, rejecting update safely"
         );
         return StatusCode::OK;
     }

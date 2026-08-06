@@ -67,38 +67,53 @@ pub fn enqueue_webhook_update(
     Ok(count > 0)
 }
 
-/// Fetches a batch of pending/unlocked webhook updates with NULL-safe monotonic FIFO chat ordering.
+struct TransactionRollbackGuard<'a>(&'a Connection, bool);
+
+impl<'a> Drop for TransactionRollbackGuard<'a> {
+    fn drop(&mut self) {
+        if !self.1 {
+            let _ = self.0.execute("ROLLBACK", []);
+        }
+    }
+}
+
+/// Fetches a batch of pending/unlocked webhook updates atomically using UPDATE...RETURNING with 30-second lease expiration.
 pub fn fetch_pending_batch(
     conn: &Connection,
     limit: usize,
 ) -> Result<Vec<(i64, Option<i64>, String)>, rusqlite::Error> {
-    let tx = conn.unchecked_transaction()?;
-    let rows: Vec<(i64, Option<i64>, String)> = {
-        let mut stmt = tx.prepare(
-            "SELECT update_id, chat_id, payload FROM pending_webhook_updates p1
-             WHERE (p1.status = 'pending' OR (p1.status = 'retry_pending' AND (p1.next_retry_at IS NULL OR p1.next_retry_at <= datetime('now'))))
+    conn.execute("BEGIN IMMEDIATE", [])?;
+    let mut guard = TransactionRollbackGuard(conn, false);
+
+    let mut stmt = conn.prepare(
+        "UPDATE pending_webhook_updates
+         SET status = 'processing', locked_at = CURRENT_TIMESTAMP
+         WHERE update_id IN (
+             SELECT p1.update_id FROM pending_webhook_updates p1
+             WHERE (p1.status = 'pending'
+                    OR (p1.status = 'retry_pending' AND (p1.next_retry_at IS NULL OR p1.next_retry_at <= datetime('now')))
+                    OR (p1.status = 'processing' AND p1.locked_at < datetime('now', '-30 seconds')))
                AND (p1.chat_id IS NULL OR NOT EXISTS (
                    SELECT 1 FROM pending_webhook_updates p2
                    WHERE p2.chat_id = p1.chat_id
                      AND p2.update_id < p1.update_id
-                     AND (p2.status IN ('pending', 'retry_pending')
-                          OR (p2.status = 'processing' AND p2.locked_at >= datetime('now', '-5 minutes')))
+                     AND (p2.status = 'pending'
+                          OR (p2.status = 'processing' AND p2.locked_at >= datetime('now', '-30 seconds'))
+                          OR (p2.status = 'retry_pending' AND (p2.next_retry_at IS NULL OR p2.next_retry_at <= datetime('now'))))
                ))
-             ORDER BY p1.update_id ASC LIMIT ?1",
-        )?;
-        let mapped = stmt.query_map(params![limit as i64], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?;
-        mapped.collect::<Result<Vec<_>, _>>()?
-    };
+             ORDER BY p1.update_id ASC LIMIT ?1
+         ) RETURNING update_id, chat_id, payload",
+    )?;
 
-    for (update_id, _, _) in &rows {
-        tx.execute(
-            "UPDATE pending_webhook_updates SET status = 'processing', locked_at = datetime('now') WHERE update_id = ?1",
-            params![update_id],
-        )?;
-    }
-    tx.commit()?;
+    let mapped = stmt.query_map(params![limit as i64], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    })?;
+    let rows: Vec<(i64, Option<i64>, String)> = mapped.collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    conn.execute("COMMIT", [])?;
+    guard.1 = true; // Successfully committed, disable rollback guard
+
     Ok(rows)
 }
 

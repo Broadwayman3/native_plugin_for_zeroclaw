@@ -175,6 +175,7 @@ async fn execute_task_direct(client: &Client, payload: TaskPayload) -> Result<Va
 }
 
 async fn send_json_direct(client: &Client, url: &str, payload: &Value) -> Result<Value, String> {
+    let chat_id = payload.get("chat_id").and_then(|v| v.as_i64());
     let mut attempts = 0;
     loop {
         attempts += 1;
@@ -198,7 +199,7 @@ async fn send_json_direct(client: &Client, url: &str, payload: &Value) -> Result
                     } else {
                         2
                     };
-                    super::rate_limiter::set_global_429_pause(retry_secs);
+                    super::rate_limiter::record_chat_429(chat_id, retry_secs);
                     if attempts < 3 {
                         sleep(Duration::from_secs(retry_secs + 1)).await;
                         continue;
@@ -266,7 +267,7 @@ async fn send_photo_direct(
                     } else {
                         3
                     };
-                    super::rate_limiter::set_global_429_pause(retry_secs);
+                    super::rate_limiter::record_chat_429(Some(chat_id), retry_secs);
                     sleep(Duration::from_secs(retry_secs + 1)).await;
                     continue;
                 } else if status.is_server_error() && attempts < 3 {

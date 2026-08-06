@@ -174,3 +174,22 @@ fn test_097_sanitize_cyrillic_homoglyph_injection() {
     let r = pos_backend::domain::sanitizer::sanitize_external_input(cyrillic_input, 100);
     assert!(!r.to_lowercase().contains("override"), "097: result: {}", r);
 }
+
+#[test]
+fn test_098_escape_markdown_v2_preserve_links() {
+    let raw = "Pay now [Pay Invoice](https://solana.com?ref=123&item=coffe-1) for 100.0 UAH!";
+    let res = pos_backend::domain::sanitizer::escape_telegram_markdown_v2_preserve_links(raw);
+    assert!(res.contains("[Pay Invoice](https://solana.com?ref=123&item=coffe-1)"));
+    assert!(res.contains("100\\.0"));
+    assert!(res.contains("UAH\\!"));
+}
+
+#[test]
+fn test_099_escape_markdown_v2_solana_pay_link() {
+    let raw = "[Pay with Solana Pay](solana:https://pay.solana.com/123?amount=10.5)";
+    let res = pos_backend::domain::sanitizer::escape_telegram_markdown_v2_preserve_links(raw);
+    assert_eq!(
+        res,
+        "[Pay with Solana Pay](solana:https://pay.solana.com/123?amount=10.5)"
+    );
+}

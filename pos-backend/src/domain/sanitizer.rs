@@ -132,6 +132,45 @@ pub fn escape_telegram_markdown_v2(text: &str) -> String {
     RE_ESCAPE_MD.replace_all(text, r"\$1").to_string()
 }
 
+static RE_MD_LINK: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\[(?P<text>[^\]]+)\]\((?P<url>[a-zA-Z][a-zA-Z0-9+.-]*:[^\s\)]+)\)").unwrap()
+});
+
+/// Escapes Telegram MarkdownV2 text while preserving valid Markdown links `[Text](URL)`.
+pub fn escape_telegram_markdown_v2_preserve_links(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+
+    let mut result = String::new();
+    let mut last_end = 0;
+
+    for cap in RE_MD_LINK.captures_iter(text) {
+        let m = cap.get(0).unwrap();
+        let start = m.start();
+        let end = m.end();
+
+        if start > last_end {
+            result.push_str(&escape_telegram_markdown_v2(&text[last_end..start]));
+        }
+
+        let link_text = cap.name("text").map(|m| m.as_str()).unwrap_or("");
+        let url = cap.name("url").map(|m| m.as_str()).unwrap_or("");
+
+        let escaped_link_text = escape_telegram_markdown_v2(link_text);
+        let escaped_url = url.replace('\\', r"\\").replace(')', r"\)");
+
+        result.push_str(&format!("[{}]({})", escaped_link_text, escaped_url));
+        last_end = end;
+    }
+
+    if last_end < text.len() {
+        result.push_str(&escape_telegram_markdown_v2(&text[last_end..]));
+    }
+
+    result
+}
+
 /// Evaluates Solana RPC URL to prevent SSRF attacks.
 pub fn validate_safe_rpc_url(url_str: &str) -> bool {
     validate_safe_rpc_url_with_config(url_str, false)
