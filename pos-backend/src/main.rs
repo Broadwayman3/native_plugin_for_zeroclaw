@@ -54,9 +54,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Start background Telegram long-poller and Solana RPC verifier workers with single shared DB pool
     let db_pool = pos_backend::db::create_db_pool(&db_path).ok();
-    pos_backend::api::telegram::start_telegram_services(
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let telegram_handles = pos_backend::api::telegram::start_telegram_services(
         std::sync::Arc::new(config.clone()),
         db_pool,
+        cancel_token.clone(),
     );
 
     let app = pos_backend::api::build_router(&config).await;
@@ -82,6 +84,12 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+    // Graceful shutdown: signal workers to cancel and await completion within 16 seconds timeout
+    cancel_token.cancel();
+    if let Some(handles) = telegram_handles {
+        handles.shutdown_with_timeout(16).await;
+    }
 
     // Graceful shutdown: flush in-memory Telegram update offset to SQLite
     pos_backend::api::telegram::state::flush_offset_to_db(&db_path);

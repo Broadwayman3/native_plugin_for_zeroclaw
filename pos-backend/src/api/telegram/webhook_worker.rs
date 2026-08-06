@@ -12,9 +12,10 @@ pub fn start_webhook_queue_worker(
     config: Arc<AppConfig>,
     fsm: FsmStore,
     chat_locks: ChatLocksManager,
+    in_flight: super::locks::InFlightTracker,
     db_pool: Option<deadpool_sqlite::Pool>,
     cancel_token: CancellationToken,
-) {
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         tracing::info!("Telegram Webhook queue worker starting...");
         let client = reqwest::Client::builder()
@@ -68,6 +69,11 @@ pub fn start_webhook_queue_worker(
 
             // 3. Process batch concurrently without Head-of-Line Blocking
             for (update_id, chat_id, payload_str) in batch {
+                let flight_guard = match in_flight.try_claim(update_id) {
+                    Some(g) => g,
+                    None => continue,
+                };
+
                 let config_clone = config.clone();
                 let client_clone = client.clone();
                 let base_url_clone = base_url.clone();
@@ -76,7 +82,9 @@ pub fn start_webhook_queue_worker(
                 let pool_clone = db_pool.clone();
 
                 tokio::spawn(async move {
-                    // Check if update_id was already completely processed to avoid re-execution on late Telegram retry
+                    let _guard = flight_guard;
+
+                    // Check if update_id was already completely processed
                     let is_already_processed = if let Some(ref pool) = pool_clone {
                         if let Ok(conn) = pool.get().await {
                             conn.interact(move |c| {
@@ -165,57 +173,57 @@ pub fn start_webhook_queue_worker(
                             "Webhook update execution failed"
                         );
 
-                        // Record failure and check if reached max retries (3)
                         let payload_for_dlq = payload_str.clone();
                         let err_for_dlq = err_msg.clone();
 
                         let reached_dlq = if let Some(ref pool) = pool_clone {
                             if let Ok(conn) = pool.get().await {
                                 conn.interact(move |c| {
-                                    let reached =
-                                        db::updates::record_failure_and_check_max_retries(
-                                            c, update_id, 3,
-                                        )
-                                        .unwrap_or(false);
-
-                                    if reached {
-                                        let _ = db::updates::move_to_dlq(
-                                            c,
-                                            update_id,
-                                            chat_id,
-                                            &payload_for_dlq,
-                                            &err_for_dlq,
-                                            3,
-                                        );
-                                    }
-                                    reached
+                                    db::updates::record_webhook_failure(
+                                        c,
+                                        update_id,
+                                        chat_id,
+                                        &payload_for_dlq,
+                                        &err_for_dlq,
+                                        3,
+                                    )
+                                    .unwrap_or(false)
                                 })
                                 .await
                                 .unwrap_or(false)
                             } else {
-                                false
-                            }
-                        } else {
-                            let db_path = config_clone.db_path.clone();
-                            tokio::task::spawn_blocking(move || {
-                                if let Ok(conn) = db::get_db_connection(&db_path) {
-                                    let reached =
-                                        db::updates::record_failure_and_check_max_retries(
-                                            &conn, update_id, 3,
-                                        )
-                                        .unwrap_or(false);
-
-                                    if reached {
-                                        let _ = db::updates::move_to_dlq(
+                                let db_path = config_clone.db_path.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    if let Ok(conn) = db::get_db_connection(&db_path) {
+                                        db::updates::record_webhook_failure(
                                             &conn,
                                             update_id,
                                             chat_id,
                                             &payload_for_dlq,
                                             &err_for_dlq,
                                             3,
-                                        );
+                                        )
+                                        .unwrap_or(false)
+                                    } else {
+                                        false
                                     }
-                                    reached
+                                })
+                                .await
+                                .unwrap_or(false)
+                            }
+                        } else {
+                            let db_path = config_clone.db_path.clone();
+                            tokio::task::spawn_blocking(move || {
+                                if let Ok(conn) = db::get_db_connection(&db_path) {
+                                    db::updates::record_webhook_failure(
+                                        &conn,
+                                        update_id,
+                                        chat_id,
+                                        &payload_for_dlq,
+                                        &err_for_dlq,
+                                        3,
+                                    )
+                                    .unwrap_or(false)
                                 } else {
                                     false
                                 }
@@ -224,7 +232,6 @@ pub fn start_webhook_queue_worker(
                             .unwrap_or(false)
                         };
 
-                        // DLQ UX Notification: inform user if max retries exceeded
                         if reached_dlq {
                             if let Some(cid) = chat_id {
                                 let notice = crate::domain::sanitizer::escape_telegram_markdown_v2(
@@ -247,5 +254,5 @@ pub fn start_webhook_queue_worker(
                 });
             }
         }
-    });
+    })
 }

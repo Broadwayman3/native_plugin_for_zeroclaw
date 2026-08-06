@@ -137,6 +137,28 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
         )?;
     }
 
+    let pending_columns: Vec<String> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(pending_webhook_updates)")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    if !pending_columns.contains(&"next_retry_at".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE pending_webhook_updates ADD COLUMN next_retry_at TIMESTAMP",
+        )?;
+    }
+    if !pending_columns.contains(&"retry_count".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE pending_webhook_updates ADD COLUMN retry_count INTEGER DEFAULT 0",
+        )?;
+    }
+
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_pending_fifo
+         ON pending_webhook_updates(chat_id, status, update_id);",
+    )?;
+
     // Seed nonce accounts if empty
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM nonce_accounts", [], |row| row.get(0))?;
     if count == 0 {

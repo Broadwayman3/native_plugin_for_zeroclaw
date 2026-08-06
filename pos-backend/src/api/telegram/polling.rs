@@ -16,7 +16,7 @@ pub fn start_poller_worker(
     in_flight: super::locks::InFlightTracker,
     db_pool: Option<deadpool_sqlite::Pool>,
     cancel_token: CancellationToken,
-) {
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         tracing::info!("Telegram long-poller worker starting...");
 
@@ -119,7 +119,6 @@ pub fn start_poller_worker(
                                             next_offset = update_id + 1;
                                         }
 
-                                        // Fast pre-check: skip if update_id was already processed using db_pool if present
                                         let already_processed = if let Some(ref pool) = db_pool {
                                             if let Ok(conn) = pool.get().await {
                                                 let res = conn
@@ -167,66 +166,73 @@ pub fn start_poller_worker(
                                         let handle = tokio::spawn(async move {
                                             let _guard = flight_guard;
                                             let _permit = sem_clone.acquire_owned().await.ok();
-                                            process_single_update(
-                                                &client_clone,
-                                                &base_url_clone,
-                                                &config_clone,
-                                                &fsm_clone,
-                                                &chat_locks_clone,
-                                                pool_clone.as_ref(),
-                                                &update_clone,
-                                                update_id,
+                                            match tokio::time::timeout(
+                                                Duration::from_secs(15),
+                                                process_single_update(
+                                                    &client_clone,
+                                                    &base_url_clone,
+                                                    &config_clone,
+                                                    &fsm_clone,
+                                                    &chat_locks_clone,
+                                                    pool_clone.as_ref(),
+                                                    &update_clone,
+                                                    update_id,
+                                                ),
                                             )
                                             .await
+                                            {
+                                                Ok(res) => res,
+                                                Err(_) => Err("Update processing timed out (15s)".to_string()),
+                                            }
                                         });
                                         handles.push((update_id, handle));
                                     }
 
-                                     // Wait for all updates in batch to finish
-                                     let mut min_failed_offset: Option<i64> = None;
-                                     for (uid, handle) in handles {
-                                         if let Ok(Err(err_msg)) = handle.await {
-                                             let pool_clone = db_pool.clone();
-                                             let config_clone = config.clone();
-                                             let reached_dlq = if let Some(ref pool) = pool_clone {
-                                                 if let Ok(conn) = pool.get().await {
-                                                     conn.interact(move |c| {
-                                                         db::updates::record_failure_and_check_max_retries(c, uid, 3)
-                                                             .unwrap_or(false)
-                                                     })
-                                                     .await
-                                                     .unwrap_or(false)
-                                                 } else {
-                                                     false
-                                                 }
-                                             } else {
-                                                 let db_path_check = config_clone.db_path.clone();
-                                                 tokio::task::spawn_blocking(move || {
-                                                     if let Ok(conn) = db::get_db_connection(&db_path_check) {
-                                                         db::updates::record_failure_and_check_max_retries(&conn, uid, 3)
-                                                             .unwrap_or(false)
-                                                     } else {
-                                                         false
-                                                     }
-                                                 })
-                                                 .await
-                                                 .unwrap_or(false)
-                                             };
+                                    // Wait for all updates in batch to finish
+                                    let mut min_failed_offset: Option<i64> = None;
+                                    for (uid, handle) in handles {
+                                        if let Ok(Err(err_msg)) = handle.await {
+                                            let pool_clone = db_pool.clone();
+                                            let config_clone = config.clone();
+                                            let reached_dlq = if let Some(ref pool) = pool_clone {
+                                                if let Ok(conn) = pool.get().await {
+                                                    conn.interact(move |c| {
+                                                        db::updates::record_failure_and_check_max_retries(c, uid, 3)
+                                                            .unwrap_or(false)
+                                                    })
+                                                    .await
+                                                    .unwrap_or(false)
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                let db_path_check = config_clone.db_path.clone();
+                                                tokio::task::spawn_blocking(move || {
+                                                    if let Ok(conn) = db::get_db_connection(&db_path_check) {
+                                                        db::updates::record_failure_and_check_max_retries(&conn, uid, 3)
+                                                            .unwrap_or(false)
+                                                    } else {
+                                                        false
+                                                    }
+                                                })
+                                                .await
+                                                .unwrap_or(false)
+                                            };
 
-                                             if !reached_dlq {
-                                                 min_failed_offset = Some(match min_failed_offset {
-                                                     Some(curr) => curr.min(uid),
-                                                     None => uid,
-                                                 });
-                                             } else {
-                                                 tracing::warn!(
-                                                     update_id = uid,
-                                                     error = %err_msg,
-                                                     "Long Polling update reached max retries (DLQ); advancing offset past update_id."
-                                                 );
-                                             }
-                                         }
-                                     }
+                                            if !reached_dlq {
+                                                min_failed_offset = Some(match min_failed_offset {
+                                                    Some(curr) => curr.min(uid),
+                                                    None => uid,
+                                                });
+                                            } else {
+                                                tracing::warn!(
+                                                    update_id = uid,
+                                                    error = %err_msg,
+                                                    "Long Polling update reached max retries (DLQ); advancing offset past update_id."
+                                                );
+                                            }
+                                        }
+                                    }
 
                                     offset = min_failed_offset.unwrap_or(next_offset);
 
@@ -248,5 +254,5 @@ pub fn start_poller_worker(
                 }
             }
         }
-    });
+    })
 }

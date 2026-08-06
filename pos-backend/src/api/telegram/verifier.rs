@@ -8,9 +8,13 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
+use tokio_util::sync::CancellationToken;
 
 /// Starts background Solana RPC invoice payment verification worker loop.
-pub fn start_verifier_worker(config: Arc<AppConfig>) {
+pub fn start_verifier_worker(
+    config: Arc<AppConfig>,
+    cancel_token: CancellationToken,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         tracing::info!("Solana payment verifier worker started");
         let client = reqwest::Client::builder()
@@ -26,9 +30,27 @@ pub fn start_verifier_worker(config: Arc<AppConfig>) {
         };
 
         let base_url = format!("https://api.telegram.org/bot{}", config.telegram_bot_token);
+        let mut cleanup_ticks = 0u64;
 
         loop {
-            sleep(Duration::from_secs(4)).await;
+            tokio::select! {
+                _ = cancel_token.cancelled() => {
+                    tracing::info!("Solana payment verifier worker received cancellation signal. Exiting verifier worker.");
+                    break;
+                }
+                _ = sleep(Duration::from_secs(4)) => {}
+            }
+
+            cleanup_ticks = cleanup_ticks.wrapping_add(1);
+            if cleanup_ticks.is_multiple_of(900) {
+                let db_path_c = config.db_path.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(conn) = db::get_db_connection(&db_path_c) {
+                        let _ = db::updates::cleanup_old_updates(&conn);
+                    }
+                })
+                .await;
+            }
 
             // 2. Handle expired invoices ONCE (filtering telegram_expired_notified == 0)
             handle_expired_invoices(&client, &base_url, &config.db_path).await;
@@ -285,7 +307,7 @@ pub fn start_verifier_worker(config: Arc<AppConfig>) {
                 }
             }
         }
-    });
+    })
 }
 
 async fn handle_expired_invoices(client: &reqwest::Client, base_url: &str, db_path: &str) {

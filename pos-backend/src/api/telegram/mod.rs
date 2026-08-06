@@ -5,6 +5,7 @@ pub mod events;
 pub mod fsm;
 pub mod fsm_store;
 pub mod handlers;
+pub mod lifecycle;
 pub mod locks;
 pub mod orders;
 pub mod polling;
@@ -17,144 +18,9 @@ pub mod webhook_worker;
 use crate::config::AppConfig;
 use fsm::FsmStore;
 use locks::ChatLocksManager;
-use std::sync::Arc;
 
 pub type ChatLocks = locks::ChatLocksManager;
-
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-
-static FAILED_WEBHOOK_ATTEMPTS: AtomicU32 = AtomicU32::new(0);
-static WEBHOOK_COOLDOWN_UNTIL: AtomicU64 = AtomicU64::new(0);
-
-pub const MAX_WEBHOOK_FAILURES: u32 = 3;
-pub const WEBHOOK_COOLDOWN_SECS: u64 = 300;
-
-/// Starts background Telegram listener (Webhook or Polling) and Solana RPC payment verifier services.
-pub fn start_telegram_services(config: Arc<AppConfig>, db_pool: Option<deadpool_sqlite::Pool>) {
-    let token = config.telegram_bot_token.clone();
-    if token.is_empty() || token.contains("123456789:ABC") {
-        tracing::warn!("Telegram Bot token not set or placeholder. Skipping Telegram services.");
-        return;
-    }
-
-    // 1. Start Solana RPC payment verification background worker
-    verifier::start_verifier_worker(config.clone());
-
-    // 2. Instantiate SQLite-backed FSM store and Weak-ref ChatLocksManager
-    let fsm_store = if let Some(ref pool) = db_pool {
-        FsmStore::new_with_pool(config.db_path.clone(), pool.clone())
-    } else {
-        FsmStore::new_with_db(config.db_path.clone())
-    };
-    let chat_locks = ChatLocksManager::new();
-    let in_flight = locks::InFlightTracker::new();
-
-    // 3. Start Webhook queue worker for async DB queue processing
-    webhook_worker::start_webhook_queue_worker(
-        config.clone(),
-        fsm_store.clone(),
-        chat_locks.clone(),
-        db_pool.clone(),
-        tokio_util::sync::CancellationToken::new(),
-    );
-
-    // 4. Dual-mode Telegram update listener startup with Circuit Breaker and Cancellation Token
-    let poller_config = config.clone();
-    let poller_pool = db_pool.clone();
-    let poller_cancel_token = tokio_util::sync::CancellationToken::new();
-
-    let poller_cancel_token_clone = poller_cancel_token.clone();
-    tokio::spawn(async move {
-        if let Some(ref webhook_url) = poller_config.telegram_webhook_url {
-            if !webhook_url.trim().is_empty() {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let cooldown_until = WEBHOOK_COOLDOWN_UNTIL.load(Ordering::SeqCst);
-
-                if now < cooldown_until {
-                    tracing::warn!(
-                        cooldown_secs = cooldown_until - now,
-                        "Webhook circuit breaker active (cooldown). Falling back to Long Polling directly."
-                    );
-                    polling::start_poller_worker(
-                        poller_config,
-                        fsm_store,
-                        chat_locks,
-                        in_flight.clone(),
-                        poller_pool,
-                        poller_cancel_token_clone,
-                    );
-                    return;
-                }
-
-                if let Err(e) = webhook::register_telegram_webhook(&poller_config).await {
-                    let failures = FAILED_WEBHOOK_ATTEMPTS.fetch_add(1, Ordering::SeqCst) + 1;
-                    tracing::error!(
-                        error = %e,
-                        failures = failures,
-                        "Failed to register Telegram Webhook"
-                    );
-
-                    if failures >= MAX_WEBHOOK_FAILURES {
-                        let cooldown = now + WEBHOOK_COOLDOWN_SECS;
-                        WEBHOOK_COOLDOWN_UNTIL.store(cooldown, Ordering::SeqCst);
-                        tracing::error!(
-                            cooldown_secs = WEBHOOK_COOLDOWN_SECS,
-                            "Webhook registration failed 3 consecutive times. Circuit breaker TRIPPED! Falling back to Long Polling with 5-minute cooldown."
-                        );
-
-                        // Spawn background recovery task that waits for cooldown, then retries Webhook registration
-                        let recovery_config = poller_config.clone();
-                        let recovery_cancel_token = poller_cancel_token_clone.clone();
-                        tokio::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_secs(
-                                WEBHOOK_COOLDOWN_SECS,
-                            ))
-                            .await;
-                            tracing::info!("Webhook circuit breaker cooldown expired. Attempting Webhook recovery...");
-                            if let Ok(()) =
-                                webhook::register_telegram_webhook(&recovery_config).await
-                            {
-                                FAILED_WEBHOOK_ATTEMPTS.store(0, Ordering::SeqCst);
-                                WEBHOOK_COOLDOWN_UNTIL.store(0, Ordering::SeqCst);
-                                recovery_cancel_token.cancel();
-                                tracing::info!("Webhook registration recovered successfully! Webhook mode restored and Poller worker cleanly shut down.");
-                            } else {
-                                tracing::warn!("Webhook recovery re-attempt failed. Remaining in Polling mode.");
-                            }
-                        });
-                    }
-                    polling::start_poller_worker(
-                        poller_config,
-                        fsm_store,
-                        chat_locks,
-                        in_flight.clone(),
-                        poller_pool,
-                        poller_cancel_token_clone,
-                    );
-                    return;
-                }
-
-                // Reset failure counter on successful webhook registration
-                FAILED_WEBHOOK_ATTEMPTS.store(0, Ordering::SeqCst);
-                WEBHOOK_COOLDOWN_UNTIL.store(0, Ordering::SeqCst);
-                return;
-            }
-        }
-
-        // Fallback or primary Long Polling mode
-        polling::start_poller_worker(
-            poller_config,
-            fsm_store,
-            chat_locks,
-            in_flight.clone(),
-            poller_pool,
-            poller_cancel_token_clone,
-        );
-    });
-}
+pub use lifecycle::{start_telegram_services, TelegramServicesHandles};
 
 /// Helper function to process a single Telegram update with per-(chat_id, user_id) locking & async SQLite registration.
 #[allow(clippy::too_many_arguments)]

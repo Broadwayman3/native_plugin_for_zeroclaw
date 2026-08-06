@@ -140,6 +140,13 @@ pub async fn handle_telegram_webhook(
         });
 
     let payload_str = update.to_string();
+    if payload_str.len() > 65536 {
+        tracing::warn!(
+            update_id = update_id,
+            "Webhook update payload exceeds 64KB limit, dropping payload safely"
+        );
+        return StatusCode::OK;
+    }
 
     // 2. Write update payload to SQLite pending_webhook_updates queue
     let enqueue_res = if let Some(ref pool) = state.db_pool {
