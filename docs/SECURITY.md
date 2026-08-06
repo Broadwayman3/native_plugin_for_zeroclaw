@@ -14,6 +14,9 @@
 | Fake Token Spoofer | Pay with fake SPL token | Triple Payment Verification: strictly enforces USDC Mint | Mitigated |
 | Nonce Collision | Parallel refund approvals | Nonce Account Pool: unique nonce per pending approval | Mitigated |
 | Context Flooder | Flood LLM context window | Context truncator: caps payload size (<150 tokens) | Mitigated |
+| Webhook DoS Attacker | Huge body / memory exhaustion | Webhook Body Limit: strict 64 KB request body size cap | Mitigated |
+| Secret Token Spoofer | Fake Telegram webhook POSTs | Constant-time token comparison (`constant_time_eq`) on `X-Telegram-Bot-Api-Secret-Token` | Mitigated |
+| Webhook Outage | Webhook endpoint disruption | Circuit Breaker: automatic failover to Long Polling after 3 consecutive failures | Mitigated |
 
 ## Custody Architecture
 

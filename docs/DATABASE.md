@@ -27,6 +27,64 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 
 **Indexes**: `idx_invoices_tx_sig` on `tx_signature` WHERE `tx_signature IS NOT NULL` (partial unique)
 
+### pending_webhook_updates
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `update_id` | INTEGER | PRIMARY KEY |
+| `chat_id` | INTEGER | |
+| `payload` | TEXT | NOT NULL |
+| `status` | TEXT | NOT NULL DEFAULT 'pending' |
+| `attempts` | INTEGER | DEFAULT 0 |
+| `next_retry_at` | TIMESTAMP | |
+| `locked_at` | TIMESTAMP | |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
+
+**Status values**: `pending`, `processing`, `retry_pending`, `cancelled`
+
+**Indexes**: `idx_pending_fifo` composite index on `(chat_id, status, update_id)` for $O(1)$ FIFO batch query execution
+
+### failed_updates (Dead-Letter Queue / DLQ)
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `update_id` | INTEGER | PRIMARY KEY |
+| `chat_id` | INTEGER | |
+| `payload` | TEXT | NOT NULL |
+| `error_message` | TEXT | NOT NULL |
+| `retry_count` | INTEGER | DEFAULT 0 |
+| `failed_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
+
+### processed_updates
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `update_id` | INTEGER | PRIMARY KEY |
+| `processed_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
+| `status` | TEXT | DEFAULT 'processed' |
+| `retry_count` | INTEGER | DEFAULT 0 |
+
+**Status values**: `processed`, `retry_pending`, `failed`
+
+### telegram_fsm_sessions
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `chat_id` | INTEGER | NOT NULL, PART OF PRIMARY KEY |
+| `user_id` | INTEGER | NOT NULL, PART OF PRIMARY KEY |
+| `state` | TEXT | NOT NULL |
+| `payload_json` | TEXT | |
+| `updated_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
+
+**Primary Key**: Composite `PRIMARY KEY (chat_id, user_id)`
+
+### system_settings
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `key` | TEXT | PRIMARY KEY |
+| `value` | TEXT | NOT NULL |
+
 ### squads_proposals
 
 | Column | Type | Constraints |
@@ -50,13 +108,6 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 **Status values**: `free`, `locked`, `stale_needs_refresh`
 
 **Seed data**: 3 nonce accounts auto-inserted if table is empty.
-
-### processed_updates
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `update_id` | INTEGER | PRIMARY KEY |
-| `processed_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 
 ### sop_checkpoints
 

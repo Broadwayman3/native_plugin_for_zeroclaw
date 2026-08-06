@@ -2,7 +2,7 @@
 
 > **Tier 3 WASM Native Plugin + Squads v4 Multisig Governance**
 
-![Tests](https://img.shields.io/badge/Tests-486%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
+![Tests](https://img.shields.io/badge/Tests-520%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
 ![WASM Sandbox](https://img.shields.io/badge/Sandbox-Tier%203%20WASM%20wasip2-orange?style=for-the-badge&logo=webassembly)
 ![Custody](https://img.shields.io/badge/Custody-T1%20Invoicing%20%2B%20Squads%20v4-blue?style=for-the-badge&logo=solana)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
@@ -10,7 +10,7 @@
 ## 10-Second Verification
 
 ```bash
-# Complete automated verification (486 tests, WASM build, security checks)
+# Complete automated verification (520 tests, WASM build, security checks)
 ./scripts/verify_all.sh
 ```
 
@@ -37,8 +37,8 @@
 
 ## Quickstart (15 min)
 
-1. **Create Telegram Bot**: Chat with [@BotFather](https://t.me/BotFather), copy token to `.env`
-2. **Set Merchant Wallet**: Paste Solana wallet address in `.env`
+1. **Create Telegram Bot**: Chat with [@BotFather](https://t.me/BotFather), copy token to `.env` (`TELEGRAM_BOT_TOKEN`).
+2. **Set Merchant Wallet & Webhook (Optional)**: Paste Solana wallet address and optional `TELEGRAM_WEBHOOK_URL` / `TELEGRAM_BOT_SECRET_TOKEN` in `.env`.
 3. **Launch**: `docker-compose up -d` or `cargo run --manifest-path pos-backend/Cargo.toml`
 4. **Start**: Send `/start` to your Telegram bot
 
@@ -73,6 +73,7 @@
 | WASM Plugin | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate → `wasm32-wasip2` via WIT |
 | Core Logic | [`pos-core-logic`](./plugins/solana-pos-core/pos-core-logic) | Shared business logic |
 | REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server, SQLite, domain logic |
+| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook queue worker, Long Polling, FSM |
 | Skills | [`skills/`](./skills) | LLM skill definitions (Solana Pay, Nonce, PIX, etc.) |
 | SOPs | [`sops/`](./sops) | Standard Operating Procedures (JSON) |
 | WIT Interface | [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) | WASI Component Model contract |
@@ -82,7 +83,7 @@
 | Document | Description |
 |----------|-------------|
 | [Architecture](./docs/ARCHITECTURE.md) | Crate structure, WIT ABI, data flow |
-| [API Reference](./docs/API.md) | REST API (12 endpoints) |
+| [API Reference](./docs/API.md) | REST API & Webhook specification |
 | [Security](./docs/SECURITY.md) | Threat model, defense matrix |
 | [Database](./docs/DATABASE.md) | Schema, migrations, pragmas |
 | [Deployment](./docs/DEPLOYMENT.md) | Docker, local dev, env vars |
@@ -94,7 +95,7 @@
 - **Tier 3 WASM Sandbox**: Rust plugin in isolated `wasm32-wasip2` environment
 - **Squads v4 Multisig**: Agent = Proposer only; managers hold threshold signers
 - **Triple Payment Verification**: Reference key + token mint + amount check
-- **486 automated tests** (447 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core WASM) including prompt injection defense
+- **520 automated tests** (481 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core WASM) including prompt injection defense
 
 ## License
 

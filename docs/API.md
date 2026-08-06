@@ -1,8 +1,23 @@
-# REST API Reference
+# REST API & Webhook Reference
 
 Base URL: `http://localhost:8080`
 
 ## Endpoints
+
+### Telegram Webhook
+
+#### Receive Update (POST)
+
+```
+POST /api/v1/telegram/webhook
+```
+
+Enqueues incoming Telegram updates into SQLite FIFO processing queue.
+- **Header**: `X-Telegram-Bot-Api-Secret-Token` (validated via constant-time comparison `constant_time_eq`)
+- **Body Limit**: 64 KB maximum request payload (requests exceeding 64 KB return HTTP 400)
+- **Response**: Always returns `HTTP 200 OK` for valid secret tokens to prevent Telegram API disabling webhooks.
+
+---
 
 ### Actions / Blinks
 
@@ -123,7 +138,8 @@ Creates an order from parsed POS text input (replaces Telegram text message hand
 ## Middleware
 
 - **CORS**: Origin `Any`, methods GET/POST/PUT/DELETE/OPTIONS
-- **Payload Limit**: 1MB maximum request body
+- **Rate Limiting**: Sliding window rate limiter (`RateLimiter`), returns HTTP 429 on burst limit violations
+- **Payload Limit**: 1MB maximum request body (64 KB for Telegram Webhook)
 - **Headers**: Content-Type, Authorization, X-ACCEPT-PAYMENT, X-Telegram-Bot-Api-Secret-Token, Content-Encoding, Accept-Encoding
 
 ## Error Responses
@@ -131,9 +147,11 @@ Creates an order from parsed POS text input (replaces Telegram text message hand
 | Code | Meaning |
 |------|---------|
 | 200 | Success |
-| 400 | Bad Request (invalid input) |
+| 400 | Bad Request (invalid input or payload size violation) |
+| 401 | Unauthorized (invalid Telegram webhook secret token) |
 | 402 | Payment Required (x402) |
 | 404 | Not Found |
 | 409 | Conflict (invoice already exists) |
+| 429 | Too Many Requests (rate limit exceeded) |
 | 500 | Internal Server Error |
 | 503 | Service Unavailable (nonce pool exhausted) |

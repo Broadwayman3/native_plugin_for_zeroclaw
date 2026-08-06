@@ -39,29 +39,45 @@ pos-backend/src/
 ├── lib.rs               # Crate root
 ├── config.rs            # AppConfig struct, env-var loader
 ├── error.rs             # AppError enum (thiserror)
-├── api/                 # REST endpoints (Axum handlers)
+├── api/                 # REST endpoints & Telegram listener
 │   ├── mod.rs           # Router builder, CORS, AppState
 │   ├── actions.rs       # Solana Actions/Blinks
 │   ├── invoices.rs      # Invoice CRUD
 │   ├── nonce.rs         # Durable nonce pool
 │   ├── pos_flow.rs      # POS order creation
 │   ├── sales.rs         # Sales summary
-│   └── x402.rs          # x402 machine commerce
+│   ├── x402.rs          # x402 machine commerce
+│   └── telegram/        # Telegram Bot API integration & listener
+│       ├── mod.rs       # Telegram module exports & update processor
+│       ├── lifecycle.rs # Service spawner & graceful shutdown handles
+│       ├── polling.rs   # Long Polling loop worker with ACK safety
+│       ├── webhook.rs   # Webhook endpoint POST handler (64KB cap)
+│       ├── webhook_worker.rs # Webhook FIFO queue background worker
+│       ├── verifier.rs  # Solana RPC invoice payment verifier loop
+│       ├── locks.rs     # ChatLocksManager & InFlightTracker
+│       ├── fsm_store.rs # Persistent Telegram FSM DAO
+│       ├── client.rs    # Reqwest Telegram API client & helpers
+│       ├── client_queue.rs # Rate-limited outbound message queue
+│       ├── handlers/    # Telegram command & callback query handlers
+│       ├── orders.rs    # POS text order parsing & receipt builder
+│       ├── qr.rs        # Inline QR code receipt builder
+│       └── events.rs    # Telegram update event dispatching
 ├── db/                  # SQLite data access
 │   ├── mod.rs           # Connection factory (WAL mode)
-│   ├── schema.rs        # DDL, migrations, nonce seeding
+│   ├── schema.rs        # DDL, migrations, nonce seeding, idx_pending_fifo
 │   ├── invoices.rs      # Invoice DAO
 │   ├── nonce.rs         # Nonce account pool
 │   ├── squads.rs        # Squads v4 proposals
+│   ├── fsm_dao.rs       # Telegram FSM sessions DAO
 │   ├── sop_checkpoints.rs
-│   ├── updates.rs       # Processed-update deduplication
+│   ├── updates.rs       # FIFO update queue, DLQ, processed deduplication
 │   └── seed.rs          # Sample data
 └── domain/              # Business logic
     ├── constants.rs     # USDC/SOL mints, Base58 alphabet
     ├── sanitizer.rs     # SSRF guard, input sanitization
     ├── verification.rs  # Triple Payment Verification
     ├── i18n.rs          # 13-language i18n dispatcher
-    ├── i18n_strings.rs  # Translation tables
+    ├── i18n_strings/    # Translation tables (13 languages)
     ├── validators.rs    # Input validators
     ├── price_feed.rs    # Multi-tier fiat rate fallback
     ├── keyboards.rs     # Telegram inline keyboards
@@ -146,14 +162,14 @@ world plugin {
 
 ### Payment Flow
 
-1. Customer sends invoice request via Telegram
-2. `pos_flow.rs` parses text → order JSON
+1. Customer sends invoice request via Telegram (Webhook queue or Long Polling)
+2. `pos_flow.rs` / `orders.rs` parses text → order JSON
 3. `price_feed.rs` fetches fiat→USDC rate (Jupiter → Switchboard → cache → static fallback)
 4. `pos-core-logic` builds Solana Pay URL + calculates Token-2022 fee
 5. Invoice saved to SQLite (status: `pending`)
-6. QR code returned to customer
+6. QR code returned to customer via Telegram inline keyboard
 7. Customer pays via Solana wallet
-8. SOP cron polls `getSignaturesForAddress` for reference key
+8. In-process Tokio verifier worker (`verifier.rs`) polls Solana RPC for reference key signatures
 9. Triple Payment Verification confirms: reference key + token mint + amount
 10. Invoice status → `paid`
 
