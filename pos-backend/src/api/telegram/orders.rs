@@ -1,24 +1,59 @@
-use serde_json::Value;
-
+use super::client::send_telegram_request;
+use super::fsm::FsmStore;
 use crate::config::AppConfig;
 use crate::db;
 use crate::domain::i18n::{format_itemized_receipt, get_cancel_invoice_inline_keyboard, t, t_raw};
 use crate::domain::sanitizer::sanitize_external_input;
 
-/// Processes an incoming POS order text message.
+/// Processes an incoming POS order text message with FSM context & reply_to_message support.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_pos_order(
     client: &reqwest::Client,
     base_url: &str,
     config: &AppConfig,
+    fsm: &FsmStore,
     chat_id: i64,
+    user_id: i64,
     lang: &str,
     text: &str,
+    _reply_to_text: Option<&str>,
 ) {
     let sanitized = sanitize_external_input(text, 100);
     let def_label = t_raw("default_item", Some(lang), &[]);
-    let parsed = crate::domain::order_parser::parse_pos_order_input(&sanitized, &def_label, None);
+
+    // 1. Check FSM for existing pending item for this (chat_id, user_id)
+    let pending_session = if user_id > 0 {
+        fsm.get_pending(chat_id, user_id).await
+    } else {
+        None
+    };
+
+    let mut parsed =
+        crate::domain::order_parser::parse_pos_order_input(&sanitized, &def_label, None);
+
+    // Merge pending item name ONLY if user input supplied price only (e.g. "50 UAH")
+    // and contains no explicit custom item name.
+    if parsed.has_price && parsed.items == def_label {
+        if let Some(ref pending) = pending_session {
+            parsed.items = pending.item_name.clone();
+            if parsed.currency.is_none() {
+                parsed.currency = pending.currency.clone();
+            }
+        }
+    }
 
     if !parsed.has_price {
+        // Save pending item name in FSM store (only for valid user_id > 0)
+        if user_id > 0 {
+            fsm.set_pending(
+                chat_id,
+                user_id,
+                parsed.items.clone(),
+                parsed.currency.clone(),
+            )
+            .await;
+        }
+
         let prompt_text = t("price_needed", Some(lang), &[("items", &parsed.items)]);
         let payload = serde_json::json!({
             "chat_id": chat_id,
@@ -29,27 +64,20 @@ pub async fn handle_pos_order(
                 "selective": true
             }
         });
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
     let fiat_amt = parsed.amount.unwrap_or_default();
     let fiat_curr = parsed.currency.as_deref().unwrap_or("UAH");
 
+    // Validate amount BEFORE clearing FSM state so user can re-enter price on error!
     if fiat_amt <= 0.0 || !fiat_amt.is_finite() {
         let payload = serde_json::json!({
             "chat_id": chat_id,
             "text": "Error: Amount must be positive.",
         });
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
@@ -62,14 +90,16 @@ pub async fn handle_pos_order(
                 "chat_id": chat_id,
                 "text": "Error: Price feed unavailable for this currency.",
             });
-            let _ = client
-                .post(format!("{}/sendMessage", base_url))
-                .json(&payload)
-                .send()
-                .await;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
             return;
         }
     };
+
+    // Clear FSM state ONLY AFTER price validation and price feed lookup succeed
+    if user_id > 0 {
+        fsm.clear(chat_id, user_id).await;
+    }
 
     let rate = rate_info
         .get("rate")
@@ -81,7 +111,7 @@ pub async fn handle_pos_order(
     let inv_id = format!("INV-{}", &uuid::Uuid::new_v4().to_string()[..8]);
     let ref_key = pos_core_logic::generate_secure_reference_key();
 
-    // 1. Create invoice record in SQLite with chat_id (telegram_msg_id populated after sendPhoto)
+    // Persist invoice record in SQLite
     if let Ok(conn) = db::get_db_connection(&config.db_path) {
         let _ = db::invoices::create_invoice(
             &conn,
@@ -129,24 +159,17 @@ pub async fn handle_pos_order(
         "reply_markup": keyboard
     });
 
-    // 2. Send photo and update telegram_msg_id in SQLite upon response
-    if let Ok(resp) = client
-        .post(format!("{}/sendPhoto", base_url))
-        .json(&photo_payload)
-        .send()
-        .await
+    if let Ok(json) =
+        send_telegram_request(client, &format!("{}/sendPhoto", base_url), &photo_payload).await
     {
-        if let Ok(json) = resp.json::<Value>().await {
-            if let Some(msg_id) = json
-                .get("result")
-                .and_then(|r| r.get("message_id"))
-                .and_then(|v| v.as_i64())
-            {
-                if let Ok(conn) = db::get_db_connection(&config.db_path) {
-                    let _ = db::invoices::update_invoice_telegram_context(
-                        &conn, &inv_id, chat_id, msg_id,
-                    );
-                }
+        if let Some(msg_id) = json
+            .get("result")
+            .and_then(|r| r.get("message_id"))
+            .and_then(|v| v.as_i64())
+        {
+            if let Ok(conn) = db::get_db_connection(&config.db_path) {
+                let _ =
+                    db::invoices::update_invoice_telegram_context(&conn, &inv_id, chat_id, msg_id);
             }
         }
     }

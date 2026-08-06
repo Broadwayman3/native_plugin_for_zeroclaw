@@ -21,9 +21,14 @@ pub fn get_update_offset(db_path: &str) -> i64 {
     0
 }
 
-/// Updates the in-memory offset.
-pub fn set_update_offset(offset: i64) {
+/// Updates offset in memory AND immediately persists to SQLite system_settings.
+pub fn set_update_offset(db_path: &str, offset: i64) {
     IN_MEMORY_OFFSET.store(offset, Ordering::SeqCst);
+    if offset > 0 {
+        if let Ok(conn) = db::get_db_connection(db_path) {
+            let _ = db::settings::set_setting(&conn, "telegram_update_offset", &offset.to_string());
+        }
+    }
 }
 
 /// Flushes current update offset to SQLite on graceful shutdown.

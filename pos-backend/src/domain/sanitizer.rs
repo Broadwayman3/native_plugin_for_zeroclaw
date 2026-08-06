@@ -250,3 +250,30 @@ pub fn is_payment_amount_valid(
 ) -> bool {
     pos_core_logic::is_payment_amount_valid(paid_usdc, expected_usdc, slippage_tolerance_pct)
 }
+
+/// Normalizes Telegram bot commands in group chats by stripping '@bot_username' suffixes.
+/// E.g. "/start@my_pos_bot" -> "/start", "/refund@my_pos_bot INV-1 5" -> "/refund INV-1 5".
+pub fn strip_bot_mention(text: &str) -> String {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('/') {
+        return trimmed.to_string();
+    }
+
+    let mut parts = trimmed.split_whitespace();
+    if let Some(cmd) = parts.next() {
+        let clean_cmd = if let Some(at_idx) = cmd.find('@') {
+            &cmd[..at_idx]
+        } else {
+            cmd
+        };
+
+        let rest: Vec<&str> = parts.collect();
+        if rest.is_empty() {
+            clean_cmd.to_string()
+        } else {
+            format!("{} {}", clean_cmd, rest.join(" "))
+        }
+    } else {
+        trimmed.to_string()
+    }
+}

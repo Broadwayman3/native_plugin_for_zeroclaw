@@ -119,8 +119,9 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
         super::seed::seed_sample_data(conn)?;
     }
 
-    // Cleanup expired pending invoices
+    // Cleanup expired pending invoices & old update IDs (>24h)
     super::invoices::cleanup_expired_pending_invoices(conn)?;
+    let _ = super::updates::cleanup_old_updates(conn);
 
     Ok(())
 }

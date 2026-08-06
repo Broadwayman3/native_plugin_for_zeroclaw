@@ -1,3 +1,5 @@
+use super::client::send_telegram_request;
+use super::fsm::FsmStore;
 use super::orders::handle_pos_order;
 use super::state::{get_user_lang, set_user_lang};
 use crate::config::AppConfig;
@@ -7,18 +9,36 @@ use crate::domain::keyboards::{
     build_answer_callback_payload, build_send_message_payload, generate_lang_inline_keyboard,
     is_btn_click,
 };
-use crate::domain::sanitizer::escape_telegram_markdown_v2;
+use crate::domain::sanitizer::{escape_telegram_markdown_v2, strip_bot_mention};
+
+/// Validates whether the user ID matches the configured store manager ID.
+fn is_manager_authorized(config: &AppConfig, user_id: i64) -> Result<(), &'static str> {
+    if user_id == 1087788105 {
+        return Err("⛔ Anonymous group admin authorization is not supported. Please use your personal Telegram account.");
+    }
+    if config.manager_telegram_id == 0 {
+        return Err("⛔ Forbidden. MANAGER_TELEGRAM_ID is not configured in server settings.");
+    }
+    if user_id <= 0 || user_id != config.manager_telegram_id {
+        return Err("⛔ Forbidden. Action requires store manager authorization.");
+    }
+    Ok(())
+}
 
 /// Handles incoming user text messages.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_user_message(
     client: &reqwest::Client,
     base_url: &str,
     config: &AppConfig,
+    fsm: &FsmStore,
     chat_id: i64,
     user_id: i64,
     raw_text: &str,
+    reply_to_text: Option<&str>,
 ) {
-    let text = raw_text.trim();
+    let normalized = strip_bot_mention(raw_text);
+    let text = normalized.trim();
     let lang = get_user_lang(&config.db_path, chat_id);
 
     if text == "/start" {
@@ -36,11 +56,7 @@ pub async fn handle_user_message(
             Some("MarkdownV2"),
             Some(&main_keyboard),
         );
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
 
         let select_msg = t("select_lang", Some(&lang), &[]);
         let lang_payload = build_send_message_payload(
@@ -49,11 +65,18 @@ pub async fn handle_user_message(
             Some("MarkdownV2"),
             Some(&lang_keyboard),
         );
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&lang_payload)
-            .send()
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &lang_payload)
             .await;
+        return;
+    }
+
+    if text == "/cancel" {
+        fsm.clear(chat_id, user_id).await;
+        let payload = serde_json::json!({
+            "chat_id": chat_id,
+            "text": "❌ Action cancelled. Current session reset.",
+        });
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
@@ -72,11 +95,7 @@ pub async fn handle_user_message(
             Some("MarkdownV2"),
             Some(&lang_keyboard),
         );
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
@@ -88,11 +107,7 @@ pub async fn handle_user_message(
     {
         let help_text = t("custom_help", Some(&lang), &[]);
         let payload = build_send_message_payload(chat_id, &help_text, Some("MarkdownV2"), None);
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
@@ -102,27 +117,20 @@ pub async fn handle_user_message(
         || text.contains("Повернення")
         || text.contains("Rückerstattung")
     {
-        if config.manager_telegram_id > 0 && user_id != config.manager_telegram_id {
+        if let Err(err_msg) = is_manager_authorized(config, user_id) {
             let payload = serde_json::json!({
                 "chat_id": chat_id,
-                "text": "⛔ Forbidden. Refund requires store manager authorization.",
+                "text": err_msg,
             });
-            let _ = client
-                .post(format!("{}/sendMessage", base_url))
-                .json(&payload)
-                .send()
-                .await;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
             return;
         }
 
         let help = "♻️ *Squads v4 Multisig Refund*\n─────────────────\nPlease enter the refund command:\n`/refund <invoice_id> <amount_usdc>`\n\nExample:\n`/refund INV-a6f49762 1.80`";
         let esc = escape_telegram_markdown_v2(help);
         let payload = build_send_message_payload(chat_id, &esc, Some("MarkdownV2"), None);
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
@@ -132,32 +140,35 @@ pub async fn handle_user_message(
         || text.contains("Звіт")
         || text.contains("Verkaufsübersicht")
     {
+        if let Err(err_msg) = is_manager_authorized(config, user_id) {
+            let payload = serde_json::json!({
+                "chat_id": chat_id,
+                "text": err_msg,
+            });
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+            return;
+        }
+
         let summary_text = format!(
             "📊 *Sales Summary*\nMerchant: `{}`",
             &config.merchant_wallet_pubkey[..8]
         );
         let escaped = escape_telegram_markdown_v2(&summary_text);
         let payload = build_send_message_payload(chat_id, &escaped, Some("MarkdownV2"), None);
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
-    // Refund command: /refund INV-101 20.0 (Manager Auth via user_id)
+    // Refund command: /refund INV-101 20.0 (Strict Manager Auth)
     if text.starts_with("/refund") || (text.starts_with("INV-") && text.contains(" ")) {
-        if config.manager_telegram_id > 0 && user_id != config.manager_telegram_id {
+        if let Err(err_msg) = is_manager_authorized(config, user_id) {
             let payload = serde_json::json!({
                 "chat_id": chat_id,
-                "text": "⛔ Forbidden. Refund requires store manager authorization.",
+                "text": err_msg,
             });
-            let _ = client
-                .post(format!("{}/sendMessage", base_url))
-                .json(&payload)
-                .send()
-                .await;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
             return;
         }
 
@@ -173,11 +184,8 @@ pub async fn handle_user_message(
                 "chat_id": chat_id,
                 "text": "Usage: /refund <invoice_id> <amount_usdc>",
             });
-            let _ = client
-                .post(format!("{}/sendMessage", base_url))
-                .json(&payload)
-                .send()
-                .await;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
             return;
         }
 
@@ -195,15 +203,11 @@ pub async fn handle_user_message(
                 "chat_id": chat_id,
                 "text": "❌ Error: Refund amount exceeds max allowable threshold ($50.00 USDC).",
             });
-            let _ = client
-                .post(format!("{}/sendMessage", base_url))
-                .json(&payload)
-                .send()
-                .await;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
             return;
         }
 
-        // Persist Squads v4 Proposal in SQLite database
         let proposal_idx = if let Ok(conn) = db::get_db_connection(&config.db_path) {
             db::squads::create_proposal(&conn, inv_id, &config.merchant_wallet_pubkey, amt)
                 .unwrap_or(1)
@@ -217,15 +221,10 @@ pub async fn handle_user_message(
 
         let resp_msg = format!("✅ *Squads v4 Refund Proposal \\#{} Created*\n─────────────────\n• Invoice: `{}`\n• Amount: *{} USDC*\n• Status: *Pending Threshold Approval*", esc_idx, esc_inv, esc_amt);
         let payload = build_send_message_payload(chat_id, &resp_msg, Some("MarkdownV2"), None);
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
-    // Intent Classifier for unrecognized greetings without price/numbers
     let has_digit = text.chars().any(|c| c.is_ascii_digit());
     if !has_digit
         && (text.eq_ignore_ascii_case("hello")
@@ -235,19 +234,26 @@ pub async fn handle_user_message(
     {
         let help_text = t("custom_help", Some(&lang), &[]);
         let payload = build_send_message_payload(chat_id, &help_text, Some("MarkdownV2"), None);
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return;
     }
 
-    // Process POS Order Creation
-    handle_pos_order(client, base_url, config, chat_id, &lang, text).await;
+    // Process POS Order Creation with FSM Context
+    handle_pos_order(
+        client,
+        base_url,
+        config,
+        fsm,
+        chat_id,
+        user_id,
+        &lang,
+        text,
+        reply_to_text,
+    )
+    .await;
 }
 
-/// Handles incoming Telegram callback queries with guaranteed answerCallbackQuery.
+/// Handles incoming Telegram callback queries with guaranteed answerCallbackQuery and atomic cancellation.
 pub async fn handle_callback_query(
     client: &reqwest::Client,
     base_url: &str,
@@ -260,26 +266,42 @@ pub async fn handle_callback_query(
         let inv_id = data
             .trim_start_matches("cancel_")
             .trim_start_matches("invoice_");
+
+        let mut cancel_success = false;
         if let Ok(conn) = db::get_db_connection(&config.db_path) {
-            let _ = db::invoices::update_invoice_status(&conn, inv_id, "CANCELLED", None);
+            if let Ok(count) = db::invoices::cancel_invoice(&conn, inv_id) {
+                cancel_success = count > 0;
+            }
         }
 
-        let answer = build_answer_callback_payload(cb_id, "Invoice Cancelled ❌", false);
-        let _ = client
-            .post(format!("{}/answerCallbackQuery", base_url))
-            .json(&answer)
-            .send()
-            .await;
+        let (toast_text, msg_text) = if cancel_success {
+            (
+                "Invoice Cancelled ❌",
+                format!("❌ Invoice {} has been cancelled.", inv_id),
+            )
+        } else {
+            (
+                "Cancellation Failed ⚠️",
+                format!(
+                    "⚠️ Cannot cancel invoice {} (already paid or expired).",
+                    inv_id
+                ),
+            )
+        };
+
+        let answer = build_answer_callback_payload(cb_id, toast_text, false);
+        let _ = send_telegram_request(
+            client,
+            &format!("{}/answerCallbackQuery", base_url),
+            &answer,
+        )
+        .await;
 
         let payload = serde_json::json!({
             "chat_id": chat_id,
-            "text": format!("❌ Invoice {} has been cancelled.", inv_id),
+            "text": msg_text,
         });
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
     } else if data.starts_with("set_lang_") {
         let lang_code = data.trim_start_matches("set_lang_");
         set_user_lang(&config.db_path, chat_id, lang_code);
@@ -297,11 +319,12 @@ pub async fn handle_callback_query(
             &format!("Language set to {}", lang_code.to_uppercase()),
             false,
         );
-        let _ = client
-            .post(format!("{}/answerCallbackQuery", base_url))
-            .json(&answer)
-            .send()
-            .await;
+        let _ = send_telegram_request(
+            client,
+            &format!("{}/answerCallbackQuery", base_url),
+            &answer,
+        )
+        .await;
 
         let payload = build_send_message_payload(
             chat_id,
@@ -309,18 +332,14 @@ pub async fn handle_callback_query(
             Some("MarkdownV2"),
             Some(&new_reply_keyboard),
         );
-        let _ = client
-            .post(format!("{}/sendMessage", base_url))
-            .json(&payload)
-            .send()
-            .await;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
     } else {
-        // Guarantee answerCallbackQuery even for unrecognized callback queries
         let answer = build_answer_callback_payload(cb_id, "OK", false);
-        let _ = client
-            .post(format!("{}/answerCallbackQuery", base_url))
-            .json(&answer)
-            .send()
-            .await;
+        let _ = send_telegram_request(
+            client,
+            &format!("{}/answerCallbackQuery", base_url),
+            &answer,
+        )
+        .await;
     }
 }

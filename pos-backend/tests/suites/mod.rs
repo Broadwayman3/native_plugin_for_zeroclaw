@@ -26,6 +26,7 @@ pub mod test_squads_multisig;
 pub mod test_squads_multisig_v2;
 pub mod test_ssrf_extended;
 pub mod test_telegram_edge_cases;
+pub mod test_telegram_final;
 pub mod test_telegram_listener;
 pub mod test_token2022;
 pub mod test_validators;
