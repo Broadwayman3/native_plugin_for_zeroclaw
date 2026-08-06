@@ -77,7 +77,7 @@ pub async fn handle_refund_command(
     user_id: i64,
     lang: &str,
     raw_text: &str,
-) {
+) -> Result<(), String> {
     let sanitized = sanitize_external_input(raw_text, 100);
 
     if let Err(err_msg) = is_manager_authorized(config, user_id) {
@@ -85,12 +85,8 @@ pub async fn handle_refund_command(
             "chat_id": chat_id,
             "text": err_msg,
         });
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send manager authorization error");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     let clean_text = if sanitized.starts_with("/refund") {
@@ -110,12 +106,8 @@ pub async fn handle_refund_command(
             "chat_id": chat_id,
             "text": usage_msg,
         });
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send refund usage message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     let inv_id = parts[1];
@@ -128,12 +120,9 @@ pub async fn handle_refund_command(
                 "chat_id": chat_id,
                 "text": "❌ Error: Invalid refund amount format.",
             });
-            if let Err(e) =
-                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-            {
-                tracing::error!(error = %e, "Failed to send invalid refund format error");
-            }
-            return;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+            return Ok(());
         }
     };
 
@@ -144,21 +133,26 @@ pub async fn handle_refund_command(
             "chat_id": chat_id,
             "text": "❌ Error: Refund amount exceeds max allowable threshold ($50.00 USDC).",
         });
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send max refund threshold error");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     let usdc_float = usdc_atomic as f64 / 1_000_000.0;
 
-    let proposal_idx = if let Ok(conn) = db::get_db_connection(&config.db_path) {
+    let proposal_idx = match db::get_db_connection(&config.db_path).and_then(|conn| {
         db::squads::create_proposal(&conn, inv_id, &config.merchant_wallet_pubkey, usdc_float)
-            .unwrap_or(1)
-    } else {
-        1
+    }) {
+        Ok(idx) => idx,
+        Err(e) => {
+            let err_text = format!(
+                "❌ Error: Failed to create refund proposal in database: {}",
+                e
+            );
+            let payload = build_send_message_payload(chat_id, &err_text, None, None);
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+            return Err(format!("Failed to create refund proposal: {}", e));
+        }
     };
 
     let esc_inv = escape_telegram_markdown_v2(inv_id);
@@ -174,7 +168,10 @@ pub async fn handle_refund_command(
         send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
     {
         tracing::error!(error = %e, "Failed to send refund proposal creation message");
+        return Err(e);
     }
+
+    Ok(())
 }
 
 #[cfg(test)]

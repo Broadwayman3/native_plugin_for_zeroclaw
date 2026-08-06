@@ -26,10 +26,15 @@ pub fn check_and_register(conn: &Connection, update_id: i64) -> Result<bool, rus
         params![update_id],
     ) {
         Ok(_) => Ok(true),
-        Err(rusqlite::Error::SqliteFailure(_, _)) => {
-            // UNIQUE constraint violation = already processed
+        Err(rusqlite::Error::SqliteFailure(err, _))
+            if err.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_PRIMARYKEY
+                || err.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+                || err.extended_code == 1555
+                || err.extended_code == 2067 =>
+        {
+            // UNIQUE / PRIMARY KEY constraint violation = already processed
             Ok(false)
         }
-        Err(e) => Err(e), // Propagate real DB errors
+        Err(e) => Err(e), // Propagate real DB errors (e.g. SQLITE_BUSY)
     }
 }

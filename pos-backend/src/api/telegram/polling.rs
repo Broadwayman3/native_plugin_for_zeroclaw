@@ -13,6 +13,7 @@ pub fn start_poller_worker(
     config: Arc<AppConfig>,
     fsm: FsmStore,
     chat_locks: ChatLocksManager,
+    in_flight: super::locks::InFlightTracker,
     db_pool: Option<deadpool_sqlite::Pool>,
     cancel_token: CancellationToken,
 ) {
@@ -146,6 +147,11 @@ pub fn start_poller_worker(
                                             continue;
                                         }
 
+                                        let flight_guard = match in_flight.try_claim(update_id) {
+                                            Some(g) => g,
+                                            None => continue,
+                                        };
+
                                         let update_clone = update.clone();
                                         let config_clone = config.clone();
                                         let client_clone = client.clone();
@@ -156,6 +162,7 @@ pub fn start_poller_worker(
                                         let pool_clone = db_pool.clone();
 
                                         let handle = tokio::spawn(async move {
+                                            let _guard = flight_guard;
                                             let _permit = sem_clone.acquire_owned().await.ok();
                                             process_single_update(
                                                 &client_clone,

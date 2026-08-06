@@ -23,13 +23,13 @@ pub async fn handle_pos_order(
     lang: &str,
     text: &str,
     _reply_to_text: Option<&str>,
-) {
+) -> Result<(), String> {
     // In group/supergroup chats, ignore unauthenticated random numeric input without slash command
     if chat_type != "private"
         && !text.starts_with('/')
         && is_manager_authorized(config, user_id).is_err()
     {
-        return;
+        return Ok(());
     }
 
     let sanitized = sanitize_item_name(text);
@@ -86,12 +86,8 @@ pub async fn handle_pos_order(
                 "selective": true
             }
         });
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send price_needed prompt");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     let fiat_amt = parsed.amount.unwrap_or_default();
@@ -103,29 +99,22 @@ pub async fn handle_pos_order(
             "chat_id": chat_id,
             "text": "Error: Amount must be positive.",
         });
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send positive amount error");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     let rate_info = match crate::domain::price_feed::get_multitier_fiat_rate(
         fiat_curr, None, None, None, None, true,
     ) {
         Ok(r) => r,
-        Err(_) => {
+        Err(e) => {
             let payload = serde_json::json!({
                 "chat_id": chat_id,
                 "text": "Error: Price feed unavailable for this currency.",
             });
-            if let Err(e) =
-                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-            {
-                tracing::error!(error = %e, "Failed to send price feed error");
-            }
-            return;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+            return Err(format!("Price feed unavailable: {}", e));
         }
     };
 
@@ -155,15 +144,25 @@ pub async fn handle_pos_order(
     };
 
     // Persist invoice record in SQLite via deadpool-sqlite interact
-    if let Some(pool) = fsm.pool() {
+    let db_saved = if let Some(pool) = fsm.pool() {
         if let Ok(conn) = pool.get().await {
             let req_clone = req.clone();
-            let _ = conn
+            let res = conn
                 .interact(move |c| db::invoices::create_invoice(c, &req_clone))
                 .await;
+            matches!(res, Ok(Ok(_)))
+        } else {
+            false
         }
     } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
-        let _ = db::invoices::create_invoice(&conn, &req);
+        db::invoices::create_invoice(&conn, &req).is_ok()
+    } else {
+        false
+    };
+
+    if !db_saved {
+        tracing::error!(inv_id = %inv_id, "Failed to persist invoice to database");
+        return Err(format!("Failed to persist invoice {} to database", inv_id));
     }
 
     let solana_url = pos_core_logic::build_solana_pay_url(
@@ -189,17 +188,14 @@ pub async fn handle_pos_order(
 
     let keyboard = get_cancel_invoice_inline_keyboard(&inv_id, Some(&phantom_link), lang);
 
-    // Generate local QR code PNG bytes
-    let qr_bytes_res = generate_qr_code_png_bytes(&solana_url);
-
     let mut msg_sent = false;
-    if let Ok(qr_bytes) = qr_bytes_res {
+    if let Ok(photo_bytes) = generate_qr_code_png_bytes(&solana_url) {
         if let Ok(json) = send_telegram_photo_bytes(
             client,
             base_url,
             chat_id,
-            qr_bytes,
-            "qr.png",
+            photo_bytes,
+            "qr_code.png",
             "image/png",
             &receipt,
             Some(&keyboard),
@@ -247,6 +243,7 @@ pub async fn handle_pos_order(
         if let Ok(json) =
             send_telegram_request(client, &format!("{}/sendMessage", base_url), &msg_payload).await
         {
+            msg_sent = true;
             if let Some(msg_id) = json
                 .get("result")
                 .and_then(|r| r.get("message_id"))
@@ -274,4 +271,14 @@ pub async fn handle_pos_order(
             }
         }
     }
+
+    if !msg_sent {
+        tracing::error!(inv_id = %inv_id, "Failed to deliver invoice receipt to Telegram API");
+        return Err(format!(
+            "Failed to deliver invoice {} receipt to Telegram API",
+            inv_id
+        ));
+    }
+
+    Ok(())
 }

@@ -24,9 +24,9 @@ pub async fn handle_user_message(
     chat_type: &str,
     raw_text: &str,
     reply_to_text: Option<&str>,
-) {
+) -> Result<(), String> {
     let stripped = strip_bot_mention(raw_text);
-    let sanitized = sanitize_external_input(&stripped, 100);
+    let sanitized = sanitize_external_input(&stripped, 500);
     let text = sanitized.trim();
     let lang = get_user_lang(&config.db_path, chat_id);
 
@@ -45,11 +45,7 @@ pub async fn handle_user_message(
             Some("MarkdownV2"),
             Some(&main_keyboard),
         );
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send welcome message");
-        }
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
 
         let select_msg = t("select_lang", Some(&lang), &[]);
         let lang_payload = build_send_message_payload(
@@ -58,12 +54,9 @@ pub async fn handle_user_message(
             Some("MarkdownV2"),
             Some(&lang_keyboard),
         );
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &lang_payload).await
-        {
-            tracing::error!(error = %e, "Failed to send select_lang message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &lang_payload)
+            .await;
+        return Ok(());
     }
 
     if text == "/cancel" {
@@ -72,12 +65,8 @@ pub async fn handle_user_message(
             "chat_id": chat_id,
             "text": "❌ Action cancelled. Current session reset.",
         });
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send cancel message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     // Handle button clicks across all 13 languages
@@ -95,12 +84,8 @@ pub async fn handle_user_message(
             Some("MarkdownV2"),
             Some(&lang_keyboard),
         );
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send language menu message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     if is_btn_click(text, "btn_custom")
@@ -111,12 +96,8 @@ pub async fn handle_user_message(
     {
         let help_text = t("custom_help", Some(&lang), &[]);
         let payload = build_send_message_payload(chat_id, &help_text, Some("MarkdownV2"), None);
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send custom help message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     if is_btn_click(text, "btn_refund")
@@ -130,23 +111,16 @@ pub async fn handle_user_message(
                 "chat_id": chat_id,
                 "text": err_msg,
             });
-            if let Err(e) =
-                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-            {
-                tracing::error!(error = %e, "Failed to send manager auth error");
-            }
-            return;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+            return Ok(());
         }
 
         let help = "♻️ *Squads v4 Multisig Refund*\n─────────────────\nPlease enter the refund command:\n`/refund <invoice_id> <amount_usdc>`\n\nExample:\n`/refund INV-a6f49762 1.80`";
         let esc = escape_telegram_markdown_v2(help);
         let payload = build_send_message_payload(chat_id, &esc, Some("MarkdownV2"), None);
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send refund help message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     if is_btn_click(text, "btn_sales")
@@ -160,12 +134,9 @@ pub async fn handle_user_message(
                 "chat_id": chat_id,
                 "text": err_msg,
             });
-            if let Err(e) =
-                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-            {
-                tracing::error!(error = %e, "Failed to send sales summary auth error");
-            }
-            return;
+            let _ =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+            return Ok(());
         }
 
         let summary_text = format!(
@@ -174,18 +145,14 @@ pub async fn handle_user_message(
         );
         let escaped = escape_telegram_markdown_v2(&summary_text);
         let payload = build_send_message_payload(chat_id, &escaped, Some("MarkdownV2"), None);
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send sales summary message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     // Refund command routing
     if text.starts_with("/refund") || (text.starts_with("INV-") && text.contains(' ')) {
-        handle_refund_command(client, base_url, config, chat_id, user_id, &lang, text).await;
-        return;
+        return handle_refund_command(client, base_url, config, chat_id, user_id, &lang, text)
+            .await;
     }
 
     let has_digit = text.chars().any(|c| c.is_ascii_digit());
@@ -197,12 +164,8 @@ pub async fn handle_user_message(
     {
         let help_text = t("custom_help", Some(&lang), &[]);
         let payload = build_send_message_payload(chat_id, &help_text, Some("MarkdownV2"), None);
-        if let Err(e) =
-            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
-        {
-            tracing::error!(error = %e, "Failed to send hello help message");
-        }
-        return;
+        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        return Ok(());
     }
 
     // Process POS Order Creation with FSM Context
@@ -218,5 +181,5 @@ pub async fn handle_user_message(
         text,
         reply_to_text,
     )
-    .await;
+    .await
 }

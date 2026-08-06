@@ -47,12 +47,17 @@ pub async fn register_telegram_webhook(config: &crate::config::AppConfig) -> Res
         "drop_pending_updates": false,
     });
 
-    if let Some(secret) = &config.telegram_bot_secret_token {
-        if !secret.is_empty() {
-            if let Some(obj) = payload.as_object_mut() {
-                obj.insert("secret_token".to_string(), serde_json::json!(secret));
-            }
+    let secret = match &config.telegram_bot_secret_token {
+        Some(s) if !s.trim().is_empty() => s.trim(),
+        _ => {
+            let err_msg = "TELEGRAM_BOT_SECRET_TOKEN is required for Webhook mode. Falling back to Long Polling.".to_string();
+            tracing::error!(error = %err_msg);
+            return Err(err_msg);
         }
+    };
+
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("secret_token".to_string(), serde_json::json!(secret));
     }
 
     let resp = client

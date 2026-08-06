@@ -1,5 +1,4 @@
 use governor::{Quota, RateLimiter};
-use image::{ImageBuffer, Luma};
 use once_cell::sync::Lazy;
 use reqwest::multipart::{Form, Part};
 use reqwest::Client;
@@ -162,61 +161,8 @@ pub async fn enforce_telegram_rate_limit(chat_id: Option<i64>) {
     }
 }
 
-/// Generates PNG image bytes for a QR code from a given string payload.
-/// Telegram sendPhoto method requires raster/vector formats (PNG/JPG/WEBP) and rejects SVG.
-pub fn generate_qr_code_png_bytes(payload: &str) -> Result<Vec<u8>, String> {
-    let code = qrcode::QrCode::new(payload).map_err(|e| format!("QR Code Error: {}", e))?;
-    let image: ImageBuffer<Luma<u8>, Vec<u8>> =
-        code.render::<Luma<u8>>().min_dimensions(300, 300).build();
-
-    let mut png_bytes = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut png_bytes);
-    image
-        .write_to(&mut cursor, image::ImageFormat::Png)
-        .map_err(|e| format!("PNG Encoding Error: {}", e))?;
-
-    Ok(png_bytes)
-}
-
-/// RAII guard for background chat action typing indicator loop.
-/// Automatically aborts the background task when dropped (on scope exit or panic).
-pub struct ChatActionGuard {
-    handle: tokio::task::JoinHandle<()>,
-}
-
-impl ChatActionGuard {
-    pub fn new(handle: tokio::task::JoinHandle<()>) -> Self {
-        Self { handle }
-    }
-}
-
-impl Drop for ChatActionGuard {
-    fn drop(&mut self) {
-        self.handle.abort();
-    }
-}
-
-/// Starts a background periodic `sendChatAction` loop (e.g. "typing" or "upload_photo").
-/// Returns a `ChatActionGuard` that automatically aborts the background task when dropped.
-pub fn start_chat_action_loop(
-    client: Client,
-    base_url: String,
-    chat_id: i64,
-    action: &'static str,
-) -> ChatActionGuard {
-    let handle = tokio::spawn(async move {
-        let action_url = format!("{}/sendChatAction", base_url);
-        let payload = serde_json::json!({
-            "chat_id": chat_id,
-            "action": action,
-        });
-        loop {
-            let _ = client.post(&action_url).json(&payload).send().await;
-            sleep(Duration::from_secs(4)).await;
-        }
-    });
-    ChatActionGuard::new(handle)
-}
+pub use super::chat_action::{start_chat_action_loop, ChatActionGuard};
+pub use super::qr::generate_qr_code_png_bytes;
 
 // Global outbound mpsc queue for rate-limited Telegram API requests
 static GLOBAL_OUTBOUND_QUEUE: Lazy<TelegramOutboundQueue> = Lazy::new(|| {

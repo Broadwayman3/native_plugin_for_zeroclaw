@@ -254,3 +254,169 @@ fn test_system_settings_key_isolation() {
     assert_eq!(lang, Some("uk".to_string()));
     assert_eq!(sig, Some("SigAlpha123".to_string()));
 }
+
+#[test]
+fn test_db_updates_primary_key_constraint_handling() {
+    let guard = common::TempDbGuard::new("db_upd_pk");
+    let conn = db::get_db_connection(guard.path()).unwrap();
+    db::init_db(&conn, false).unwrap();
+
+    // 1. First registration of update_id 1001 must return Ok(true)
+    let res1 = db::updates::check_and_register(&conn, 1001);
+    assert!(res1.is_ok());
+    assert_eq!(res1.unwrap(), true);
+
+    // 2. Duplicate registration of same update_id 1001 must return Ok(false) due to Primary Key constraint
+    let res2 = db::updates::check_and_register(&conn, 1001);
+    assert!(res2.is_ok());
+    assert_eq!(res2.unwrap(), false);
+
+    // 3. Different update_id 1002 must return Ok(true)
+    let res3 = db::updates::check_and_register(&conn, 1002);
+    assert!(res3.is_ok());
+    assert_eq!(res3.unwrap(), true);
+}
+
+fn create_test_config(db_path: &str) -> pos_backend::config::AppConfig {
+    pos_backend::config::AppConfig {
+        manager_telegram_id: 12345,
+        telegram_bot_token: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11".into(),
+        merchant_wallet_pubkey: "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s".into(),
+        solana_rpc_url: "https://api.mainnet.solana.com".into(),
+        fallback_rpc_url: "https://api.mainnet.solana.com".into(),
+        usdc_mint_address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into(),
+        nonce_account_pubkey: "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s".into(),
+        host: "127.0.0.1".into(),
+        port: 8080,
+        db_path: db_path.into(),
+        rate_limit_rps: 100,
+        telegram_bot_secret_token: None,
+        telegram_webhook_url: None,
+        api_keys: vec![],
+        quick_receipt_amount: 200.0,
+        quick_receipt_currency: "UAH".into(),
+        allow_local_rpc: false,
+    }
+}
+
+#[tokio::test]
+async fn test_webhook_registration_fails_without_secret() {
+    let mut config = create_test_config("data/test.db");
+    config.telegram_webhook_url = Some("https://example.com/api/telegram/webhook".to_string());
+    config.telegram_bot_secret_token = None; // No secret token provided
+
+    let res = pos_backend::api::telegram::webhook::register_telegram_webhook(&config).await;
+    assert!(res.is_err());
+    let err_str = res.unwrap_err();
+    assert!(err_str.contains("TELEGRAM_BOT_SECRET_TOKEN is required"));
+}
+
+#[tokio::test]
+async fn test_edited_message_ignored_for_pos_orders() {
+    let guard = common::TempDbGuard::new("edited_msg_db");
+    let conn = db::get_db_connection(guard.path()).unwrap();
+    db::init_db(&conn, false).unwrap();
+
+    let config = create_test_config(guard.path());
+    let client = reqwest::Client::new();
+    let fsm = pos_backend::api::telegram::fsm::FsmStore::new_with_db(guard.path().to_string());
+
+    let initial_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM invoices", [], |r| r.get(0))
+        .unwrap();
+
+    let edited_update = serde_json::json!({
+        "update_id": 999888,
+        "edited_message": {
+            "message_id": 42,
+            "from": { "id": 12345, "is_bot": false, "first_name": "Test" },
+            "chat": { "id": 12345, "type": "private" },
+            "date": 1600000000,
+            "text": "100"
+        }
+    });
+
+    let res = pos_backend::api::telegram::dispatch_update_content(
+        &client,
+        "https://api.telegram.org/bot123",
+        &config,
+        &fsm,
+        &edited_update,
+    )
+    .await;
+
+    assert!(res.is_ok());
+
+    let final_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM invoices", [], |r| r.get(0))
+        .unwrap();
+
+    // Verify zero invoices were created by edited_message update!
+    assert_eq!(initial_count, final_count);
+}
+
+#[test]
+fn test_homoglyph_cyrillic_injection_sanitization() {
+    // Input containing Cyrillic homoglyphs ('і', 'о', 'е', 'р') forming "ignore previous" AND valid Ukrainian text "Повернення"
+    let raw_input = "Повернення іgnоrе рrеvіоus 100";
+    let clean = sanitize_external_input(raw_input, 500);
+
+    // 1. Injection phrase MUST be stripped
+    assert!(!clean.contains("ignore previous"));
+    assert!(!clean.contains("іgnоrе"));
+
+    // 2. Ukrainian Cyrillic text "Повернення" MUST be preserved in original UTF-8 encoding
+    assert!(clean.contains("Повернення"));
+    assert!(clean.contains("100"));
+}
+
+#[tokio::test]
+async fn test_create_invoice_db_failure_returns_err() {
+    // Non-existent DB directory causes SQLite persistence to fail
+    let config = create_test_config("/invalid_path_for_testing/non_existent.db");
+    let client = reqwest::Client::new();
+    let fsm = pos_backend::api::telegram::fsm::FsmStore::new_with_db(
+        "/invalid_path_for_testing/non_existent.db".to_string(),
+    );
+
+    let res = pos_backend::api::telegram::orders::handle_pos_order(
+        &client,
+        "https://api.telegram.org/bot123",
+        &config,
+        &fsm,
+        12345,
+        1001,
+        "private",
+        "en",
+        "10.0",
+        None,
+    )
+    .await;
+
+    // Must fail with Err when database persistence fails!
+    assert!(res.is_err());
+    let err_msg = res.unwrap_err();
+    assert!(err_msg.contains("Failed to persist invoice"));
+}
+
+#[test]
+fn test_file_line_count_limits() {
+    use std::fs;
+
+    let dir = std::path::Path::new("src/api/telegram");
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                let content = fs::read_to_string(&path).unwrap();
+                let line_count = content.lines().count();
+                assert!(
+                    line_count <= 400,
+                    "File {:?} exceeds 400 lines limit: {} lines",
+                    path.file_name().unwrap(),
+                    line_count
+                );
+            }
+        }
+    }
+}

@@ -16,7 +16,7 @@ pub async fn handle_callback_query(
     chat_id: i64,
     cb_id: &str,
     raw_data: &str,
-) {
+) -> Result<(), String> {
     let sanitized_data = sanitize_external_input(raw_data, 100);
 
     if sanitized_data.starts_with("cancel_") {
@@ -126,4 +126,6 @@ pub async fn handle_callback_query(
             tracing::error!(error = %e, "Failed to send default answerCallbackQuery");
         }
     }
+
+    Ok(())
 }

@@ -64,10 +64,30 @@ pub fn sanitize_external_input(user_string: &str, max_length: usize) -> String {
     // 2. Strip invisible zero-width and directional Unicode characters
     cleaned = RE_INVISIBLE.replace_all(&cleaned, "").to_string();
 
-    // 3. Case-insensitive removal of prompt injection keywords (with homoglyph normalization)
+    // 3. Case-insensitive removal of prompt injection keywords (with homoglyph character index mapping)
     let homoglyph_safe = transliterate_homoglyphs(&cleaned);
     if RE_INJECTION.is_match(&homoglyph_safe) {
-        cleaned = RE_INJECTION.replace_all(&homoglyph_safe, "").to_string();
+        let input_chars: Vec<char> = cleaned.chars().collect();
+        let safe_chars: Vec<char> = homoglyph_safe.chars().collect();
+        if input_chars.len() == safe_chars.len() {
+            let mut keep: Vec<bool> = vec![true; input_chars.len()];
+            for mat in RE_INJECTION.find_iter(&homoglyph_safe) {
+                let start_idx = homoglyph_safe[..mat.start()].chars().count();
+                let match_len = mat.as_str().chars().count();
+                for i in start_idx..(start_idx + match_len) {
+                    if i < keep.len() {
+                        keep[i] = false;
+                    }
+                }
+            }
+            cleaned = input_chars
+                .iter()
+                .zip(keep.iter())
+                .filter_map(|(&c, &k)| if k { Some(c) } else { None })
+                .collect();
+        } else {
+            cleaned = RE_INJECTION.replace_all(&cleaned, "").to_string();
+        }
     } else {
         cleaned = RE_INJECTION.replace_all(&cleaned, "").to_string();
     }

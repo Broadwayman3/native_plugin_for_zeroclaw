@@ -1,3 +1,4 @@
+pub mod chat_action;
 pub mod client;
 pub mod fsm;
 pub mod fsm_store;
@@ -5,6 +6,7 @@ pub mod handlers;
 pub mod locks;
 pub mod orders;
 pub mod polling;
+pub mod qr;
 pub mod state;
 pub mod verifier;
 pub mod webhook;
@@ -42,6 +44,7 @@ pub fn start_telegram_services(config: Arc<AppConfig>, db_pool: Option<deadpool_
         FsmStore::new_with_db(config.db_path.clone())
     };
     let chat_locks = ChatLocksManager::new();
+    let in_flight = locks::InFlightTracker::new();
 
     // 3. Dual-mode Telegram update listener startup with Circuit Breaker and Cancellation Token
     let poller_config = config.clone();
@@ -67,6 +70,7 @@ pub fn start_telegram_services(config: Arc<AppConfig>, db_pool: Option<deadpool_
                         poller_config,
                         fsm_store,
                         chat_locks,
+                        in_flight.clone(),
                         poller_pool,
                         poller_cancel_token_clone,
                     );
@@ -114,6 +118,7 @@ pub fn start_telegram_services(config: Arc<AppConfig>, db_pool: Option<deadpool_
                         poller_config,
                         fsm_store,
                         chat_locks,
+                        in_flight.clone(),
                         poller_pool,
                         poller_cancel_token_clone,
                     );
@@ -132,6 +137,7 @@ pub fn start_telegram_services(config: Arc<AppConfig>, db_pool: Option<deadpool_
             poller_config,
             fsm_store,
             chat_locks,
+            in_flight.clone(),
             poller_pool,
             poller_cancel_token_clone,
         );
@@ -191,12 +197,17 @@ pub async fn process_single_update(
         (None, 0)
     };
 
-    if let Some(target_chat_id) = chat_id {
+    let dispatch_res = if let Some(target_chat_id) = chat_id {
         let chat_lock = chat_locks.get_or_create(target_chat_id, user_id);
         let _guard = chat_lock.lock().await;
-        dispatch_update_content(client, base_url, config, fsm, update).await;
+        dispatch_update_content(client, base_url, config, fsm, update).await
     } else {
-        dispatch_update_content(client, base_url, config, fsm, update).await;
+        dispatch_update_content(client, base_url, config, fsm, update).await
+    };
+
+    if let Err(e) = dispatch_res {
+        tracing::error!(update_id = update_id, error = %e, "Update content dispatch failed; skipping processed_updates registration to allow retry");
+        return;
     }
 
     // Register update_id as processed using deadpool-sqlite pool from AppState if available
@@ -234,12 +245,54 @@ pub async fn dispatch_update_content(
     config: &AppConfig,
     fsm: &FsmStore,
     update: &serde_json::Value,
-) {
-    // Process Message or Edited Message
-    if let Some(msg) = update
-        .get("message")
-        .or_else(|| update.get("edited_message"))
-    {
+) -> Result<(), String> {
+    // Handle edited_message: clear session on /cancel, otherwise inform user that message edits do not alter existing orders
+    if let Some(msg) = update.get("edited_message") {
+        let chat_id = msg
+            .get("chat")
+            .and_then(|c| c.get("id"))
+            .and_then(|v| v.as_i64());
+        let user_id = msg
+            .get("from")
+            .and_then(|f| f.get("id"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let text = msg.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        if let Some(chat_id) = chat_id {
+            if text.trim() == "/cancel" {
+                fsm.clear(chat_id, user_id).await;
+                let payload = serde_json::json!({
+                    "chat_id": chat_id,
+                    "text": "❌ Action cancelled. Current session reset.",
+                });
+                let _ = client::send_telegram_request(
+                    client,
+                    &format!("{}/sendMessage", base_url),
+                    &payload,
+                )
+                .await;
+            } else {
+                let notice = crate::domain::sanitizer::escape_telegram_markdown_v2(
+                    "⚠️ Editing previous messages does not modify existing invoices. Use /cancel to reset or type a new amount.",
+                );
+                let payload = serde_json::json!({
+                    "chat_id": chat_id,
+                    "text": notice,
+                    "parse_mode": "MarkdownV2"
+                });
+                let _ = client::send_telegram_request(
+                    client,
+                    &format!("{}/sendMessage", base_url),
+                    &payload,
+                )
+                .await;
+            }
+        }
+        return Ok(());
+    }
+
+    // Process Message
+    if let Some(msg) = update.get("message") {
         let chat_id = msg
             .get("chat")
             .and_then(|c| c.get("id"))
@@ -273,7 +326,7 @@ pub async fn dispatch_update_content(
                     text,
                     reply_to_text,
                 )
-                .await;
+                .await?;
             } else if chat_type == "private" {
                 // In DM/private chats, send a helpful fallback message for non-text media (photos, voice, stickers)
                 let help = crate::domain::sanitizer::escape_telegram_markdown_v2(
@@ -314,7 +367,9 @@ pub async fn dispatch_update_content(
                 cb_id,
                 data,
             )
-            .await;
+            .await?;
         }
     }
+
+    Ok(())
 }
