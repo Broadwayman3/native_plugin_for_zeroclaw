@@ -181,6 +181,41 @@ pub async fn send_telegram_photo_bytes_direct(
                     return resp.json::<Value>().await.map_err(|e| e.to_string());
                 }
 
+                if status.as_u16() == 400 {
+                    let err_body = resp.text().await.unwrap_or_default();
+                    if err_body.contains("can't parse entities")
+                        || err_body.contains("cant parse entities")
+                    {
+                        tracing::error!(
+                            chat_id = chat_id,
+                            error = %err_body,
+                            caption = %caption,
+                            "Telegram sendPhoto HTTP 400 Bad Request: MarkdownV2 entity parse error! Retrying with plain-text fallback..."
+                        );
+                        let mut fb_form = Form::new()
+                            .text("chat_id", chat_id.to_string())
+                            .text("caption", caption.to_string());
+                        if let Some(m) = reply_markup {
+                            fb_form = fb_form.text("reply_markup", m.to_string());
+                        }
+                        if let Ok(part) = Part::bytes(photo_bytes.clone())
+                            .file_name(filename.to_string())
+                            .mime_str(mime_type)
+                        {
+                            fb_form = fb_form.part("photo", part);
+                            if let Ok(fb_resp) = client.post(&url).multipart(fb_form).send().await {
+                                if fb_resp.status().is_success() {
+                                    return fb_resp
+                                        .json::<Value>()
+                                        .await
+                                        .map_err(|e| e.to_string());
+                                }
+                            }
+                        }
+                    }
+                    return Err(format!("Telegram sendPhoto HTTP 400 Error: {}", err_body));
+                }
+
                 if status.as_u16() == 409 {
                     tracing::error!("Telegram HTTP 409 Conflict in sendPhoto: Retrying in 10s...");
                     sleep(Duration::from_secs(10)).await;

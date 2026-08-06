@@ -2,12 +2,36 @@ use crate::api::telegram::fsm::FsmStore;
 use crate::api::telegram::locks::{ChatLocksManager, InFlightTracker};
 use crate::api::telegram::{polling, verifier, webhook, webhook_worker};
 use crate::config::AppConfig;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 static FAILED_WEBHOOK_ATTEMPTS: AtomicU32 = AtomicU32::new(0);
 static WEBHOOK_COOLDOWN_UNTIL: AtomicU64 = AtomicU64::new(0);
+pub static IS_POLLER_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// RAII Guard that automatically resets IS_POLLER_ACTIVE to false when dropped (even on panic).
+pub struct PollerActiveGuard;
+
+impl Default for PollerActiveGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PollerActiveGuard {
+    pub fn new() -> Self {
+        IS_POLLER_ACTIVE.store(true, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for PollerActiveGuard {
+    fn drop(&mut self) {
+        IS_POLLER_ACTIVE.store(false, Ordering::SeqCst);
+        tracing::info!("IS_POLLER_ACTIVE flag reset to false via RAII guard");
+    }
+}
 
 pub const MAX_WEBHOOK_FAILURES: u32 = 3;
 pub const WEBHOOK_COOLDOWN_SECS: u64 = 300;
@@ -82,6 +106,7 @@ pub fn start_telegram_services(
                         "Webhook circuit breaker active (cooldown). Falling back to Long Polling directly."
                     );
                     let poller_cancel = parent_cancel_token.child_token();
+                    let _active_guard = PollerActiveGuard::new();
                     let poller_h = polling::start_poller_worker(
                         poller_config,
                         fsm_store,
@@ -119,10 +144,13 @@ pub fn start_telegram_services(
                         let recovery_poller_cancel = poller_cancel.clone();
                         let recovery_parent_cancel = parent_cancel_token.clone();
                         tokio::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_secs(
-                                WEBHOOK_COOLDOWN_SECS,
-                            ))
-                            .await;
+                            tokio::select! {
+                                _ = recovery_parent_cancel.cancelled() => {
+                                    tracing::info!("Webhook recovery task cancelled by parent token.");
+                                    return;
+                                }
+                                _ = tokio::time::sleep(std::time::Duration::from_secs(WEBHOOK_COOLDOWN_SECS)) => {}
+                            }
                             tracing::info!("Webhook circuit breaker cooldown expired. Cancelling poller worker and attempting Webhook recovery...");
                             recovery_poller_cancel.cancel();
                             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -135,6 +163,7 @@ pub fn start_telegram_services(
                             } else {
                                 tracing::warn!("Webhook recovery re-attempt failed. Restarting Long Polling worker.");
                                 let new_poller_cancel = recovery_parent_cancel.child_token();
+                                let _active_guard = PollerActiveGuard::new();
                                 let poller_h = polling::start_poller_worker(
                                     recovery_config,
                                     recovery_fsm_store,
@@ -149,6 +178,7 @@ pub fn start_telegram_services(
                     }
                     // Wait 5 seconds for in-flight Webhook POST requests to drain before starting Long Polling
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let _active_guard = PollerActiveGuard::new();
                     let poller_h = polling::start_poller_worker(
                         poller_config,
                         fsm_store,
@@ -168,6 +198,7 @@ pub fn start_telegram_services(
         }
 
         let poller_cancel = parent_cancel_token.child_token();
+        let _active_guard = PollerActiveGuard::new();
         let poller_h = polling::start_poller_worker(
             poller_config,
             fsm_store,

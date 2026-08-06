@@ -118,6 +118,11 @@ pub async fn handle_telegram_webhook(
         return StatusCode::UNAUTHORIZED;
     }
 
+    if super::lifecycle::IS_POLLER_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+        tracing::debug!("Webhook update ignored because Long Polling worker is active");
+        return StatusCode::OK;
+    }
+
     let update_id = match update.get("update_id").and_then(|v| v.as_i64()) {
         Some(id) => id,
         None => return StatusCode::OK,

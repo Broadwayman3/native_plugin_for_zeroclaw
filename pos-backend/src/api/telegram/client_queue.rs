@@ -88,9 +88,21 @@ impl OutboundQueueManager {
 
         let cid = chat_id.unwrap_or(0);
         let sender = self.get_or_spawn_actor(cid);
-        let _ = sender.send(task_with_resp).await;
+        if let Err(tokio::sync::mpsc::error::SendError(failed_task)) =
+            sender.send(task_with_resp).await
+        {
+            // Actor was closed during 15-min GC race. Evict stale sender and retry once with fresh actor.
+            self.remove_chat_sender(cid);
+            let fresh_sender = self.get_or_spawn_actor(cid);
+            let _ = fresh_sender.send(failed_task).await;
+        }
 
         rx.await.map_err(|_| "Response dropped".to_string())?
+    }
+
+    fn remove_chat_sender(&self, chat_id: i64) {
+        let mut map = self.chat_senders.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(&chat_id);
     }
 
     fn get_or_spawn_actor(&self, chat_id: i64) -> mpsc::Sender<QueueTask> {
@@ -185,6 +197,33 @@ async fn send_json_direct(client: &Client, url: &str, payload: &Value) -> Result
                 if status.is_success() {
                     return resp.json::<Value>().await.map_err(|e| e.to_string());
                 }
+                if status.as_u16() == 400 {
+                    let err_body = resp.text().await.unwrap_or_default();
+                    if err_body.contains("can't parse entities")
+                        || err_body.contains("cant parse entities")
+                    {
+                        tracing::error!(
+                            url = %url,
+                            error = %err_body,
+                            payload = %payload.to_string(),
+                            "Telegram API HTTP 400 Bad Request: MarkdownV2 entity parse error! Retrying with plain-text fallback..."
+                        );
+                        if let Some(obj) = payload.as_object() {
+                            let mut fallback = obj.clone();
+                            fallback.remove("parse_mode");
+                            let fallback_val = Value::Object(fallback);
+                            if let Ok(fb_resp) = client.post(url).json(&fallback_val).send().await {
+                                if fb_resp.status().is_success() {
+                                    return fb_resp
+                                        .json::<Value>()
+                                        .await
+                                        .map_err(|e| e.to_string());
+                                }
+                            }
+                        }
+                    }
+                    return Err(format!("Telegram API HTTP 400 Error: {}", err_body));
+                }
                 if status.as_u16() == 409 {
                     sleep(Duration::from_secs(10)).await;
                     if attempts < 3 {
@@ -257,6 +296,40 @@ async fn send_photo_direct(
                 let status = resp.status();
                 if status.is_success() {
                     return resp.json::<Value>().await.map_err(|e| e.to_string());
+                }
+                if status.as_u16() == 400 {
+                    let err_body = resp.text().await.unwrap_or_default();
+                    if err_body.contains("can't parse entities")
+                        || err_body.contains("cant parse entities")
+                    {
+                        tracing::error!(
+                            chat_id = chat_id,
+                            error = %err_body,
+                            caption = %caption,
+                            "Telegram sendPhoto HTTP 400 Bad Request: MarkdownV2 entity parse error! Retrying with plain-text fallback..."
+                        );
+                        let mut fb_form = Form::new()
+                            .text("chat_id", chat_id.to_string())
+                            .text("caption", caption.to_string());
+                        if let Some(m) = reply_markup {
+                            fb_form = fb_form.text("reply_markup", m.to_string());
+                        }
+                        if let Ok(part) = Part::bytes(photo_bytes.clone())
+                            .file_name(filename.to_string())
+                            .mime_str(mime_type)
+                        {
+                            fb_form = fb_form.part("photo", part);
+                            if let Ok(fb_resp) = client.post(&url).multipart(fb_form).send().await {
+                                if fb_resp.status().is_success() {
+                                    return fb_resp
+                                        .json::<Value>()
+                                        .await
+                                        .map_err(|e| e.to_string());
+                                }
+                            }
+                        }
+                    }
+                    return Err(format!("Telegram sendPhoto HTTP 400 Error: {}", err_body));
                 }
                 if status.as_u16() == 429 && attempts < 3 {
                     let retry_secs = if let Ok(j) = resp.json::<Value>().await {

@@ -6,7 +6,7 @@ The project has **526 total tests** (487 in `pos-backend`, 31 in `pos-core-logic
 
 | Crate | Tests | Focus |
 |-------|-------|-------|
-| `pos-backend` | 481 + 6 proptest | REST API, DB, Telegram listener, FSM, Low Watermark, Panic safety, i18n, security, edge cases |
+| `pos-backend` | 487 (481 unit + 6 proptest) | REST API, DB, Telegram listener, FSM, Low Watermark, Panic safety, i18n, security, edge cases |
 | `pos-core-logic` | 27 + 4 proptest | Shared business logic (Solana Pay, Squads, Token-2022) |
 | `solana-pos-core` | 5 + 3 proptest | WASM plugin unit tests |
 

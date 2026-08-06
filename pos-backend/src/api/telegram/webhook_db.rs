@@ -1,22 +1,33 @@
 use crate::db;
 use deadpool_sqlite::Pool;
+use lru::LruCache;
 use once_cell::sync::Lazy;
-use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::sync::Mutex;
 
-static IDEMPOTENCY_CACHE: Lazy<Mutex<HashSet<i64>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+static IDEMPOTENCY_CACHE: Lazy<Mutex<LruCache<i64, ()>>> =
+    Lazy::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(10000).unwrap())));
 
 pub fn is_cached_processed(update_id: i64) -> bool {
-    let cache = IDEMPOTENCY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    cache.contains(&update_id)
+    let mut cache = IDEMPOTENCY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    cache.get(&update_id).is_some()
 }
 
 pub fn mark_cached_processed(update_id: i64) {
     let mut cache = IDEMPOTENCY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if cache.len() > 10000 {
-        cache.clear();
+    cache.put(update_id, ());
+}
+
+/// Checks if update_id is cached under single lock acquisition.
+/// Returns true if already processed, or inserts into LRU and returns false.
+pub fn check_and_mark_processed(update_id: i64) -> bool {
+    let mut cache = IDEMPOTENCY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if cache.get(&update_id).is_some() {
+        true
+    } else {
+        cache.put(update_id, ());
+        false
     }
-    cache.insert(update_id);
 }
 
 /// Enqueues an incoming webhook update payload to SQLite with deadline fallback support.
@@ -27,7 +38,7 @@ pub async fn enqueue_update_payload(
     chat_id: Option<i64>,
     payload_str: &str,
 ) -> Result<bool, String> {
-    if is_cached_processed(update_id) {
+    if check_and_mark_processed(update_id) {
         return Ok(false);
     }
 

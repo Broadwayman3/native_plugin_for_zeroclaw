@@ -73,8 +73,8 @@
 |-----------|------|-------------|
 | WASM Plugin | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate → `wasm32-wasip2` via WIT |
 | Core Logic | [`pos-core-logic`](./plugins/solana-pos-core/pos-core-logic) | Shared business logic |
-| REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (18 REST API routes), SQLite WAL, domain logic |
-| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Low Watermark (`WatermarkTracker`) sliding window offset advancement, Per-Chat Bounded FIFO Queues (capacity 64), `inner_handle` JoinHandle panic isolation, Webhook DB queue (`webhook.rs`), Atomic CAS invoice updates, In-Memory LRU idempotency cache (`webhook_db.rs`), Failover circuit breaker (`lifecycle.rs`), 12-factor stdout logging (`RUST_LOG`) |
+| REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (19 REST API routes / 20 handlers), SQLite WAL, domain logic |
+| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Low Watermark (`WatermarkTracker`) offset advancement, Async Backpressure (`enqueue_timeout(2s)`) with `Semaphore(100)` OOM guard, `PollerActiveGuard` RAII panic safety, Single-Lock LRU idempotency cache (`webhook_db.rs`), MarkdownV2 plain-text fallback, Failover circuit breaker (`lifecycle.rs`), Strict lock hierarchy (`chat_lock` -> `invoice_lock`) |
 | Skills | [`skills/`](./skills) | LLM skill definitions (Solana Pay, Nonce, PIX, etc.) |
 | SOPs | [`sops/`](./sops) | Standard Operating Procedures (JSON) |
 | WIT Interface | [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) | WASI Component Model contract |
@@ -84,7 +84,7 @@
 | Document | Description |
 |----------|-------------|
 | [Architecture](./docs/ARCHITECTURE.md) | Crate structure, WIT ABI, data flow & resilience |
-| [API Reference](./docs/API.md) | 18 REST API routes, Webhook, Solana Actions v2 & x402 specification |
+| [API Reference](./docs/API.md) | 19 REST API routes (20 handlers), Webhook, Solana Actions v2 & x402 specification |
 | [Security](./docs/SECURITY.md) | Threat model, defense matrix, DLQ mechanics |
 | [Database](./docs/DATABASE.md) | Schema, migrations, pragmas & atomic CAS |
 | [Deployment](./docs/DEPLOYMENT.md) | Docker, local dev, env vars & RUST_LOG filtering |

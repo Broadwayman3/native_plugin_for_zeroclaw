@@ -2,7 +2,7 @@
 
 Base URL: `http://localhost:8080`
 
-Total Endpoints: **18 REST API routes (19 handlers)**
+Total Endpoints: **19 REST API routes (20 handlers)**
 
 ---
 
@@ -31,7 +31,7 @@ GET /api/v1/settings
 
 ### Update Settings (POST) - Manager Auth
 ```http
-GET /api/v1/settings/update
+POST /api/v1/settings/update
 ```
 - **Headers**: `X-Telegram-User-Id: <manager_id>`
 - **Description**: Updates quick receipt configuration. Requires `X-Telegram-User-Id` matching `MANAGER_TELEGRAM_ID`.
@@ -64,11 +64,13 @@ POST /api/v1/telegram/webhook
 - **Webhook Mode**: Used when `TELEGRAM_WEBHOOK_URL` is set in configuration. Registers webhook with Telegram API on startup.
 - **Long Polling Mode**: Used when `TELEGRAM_WEBHOOK_URL` is omitted OR when Webhook registration fails. Calls `deleteWebhook` and initiates `getUpdates?offset={low_watermark}&timeout=20` long-poll loop.
 - **Circuit Breaker Failover**: Webhook registration failures or network issues trip a 5-minute circuit breaker (`WEBHOOK_COOLDOWN_SECS = 300`). Pending DB updates are drained before falling back to Long Polling.
-- **Rate-Limiting & Queue Backpressure**:
+- **Rate-Limiting & Async Queue Backpressure**:
   - Per-chat bounded MPSC channels (capacity 64) enforce strict FIFO order without head-of-line blocking across chats.
-  - When a chat queue reaches full capacity (64 items), the system records a DLQ failure (`"Per-chat queue capacity full (64)"`) and returns an automated Telegram rate-limit notice:
+  - Async queue dispatch uses `enqueue_timeout` with a 2-second backpressure timeout spawned inside non-blocking tasks guarded by `Semaphore(100)` for RAM/OOM protection.
+  - When a chat queue remains at full capacity (64 items) after the 2s backpressure wait, the system records a DLQ failure (`"Per-chat queue capacity full (64)"`) and dispatches an automated Telegram notice:
     `"⚠️ Too many commands in progress. Please wait a few seconds."`
-- **Stale Update Filtering**: `STALE_UPDATE_TTL_SECS` (default 300s) rejects old top-level `message` and `edited_message` payloads with clock-skew tolerance (`msg_date >= now`). `callback_query` inline menu actions and system updates are exempted.
+- **Stale Update & Callback TTL Filtering**: `STALE_UPDATE_TTL_SECS` (default 300s) validates timestamps for `message` and `edited_message` (`edit_date`). `callback_query` inline menu actions are checked against TTL; if expired, `answerCallbackQuery("⚠️ Action expired")` is immediately dispatched to clear the Telegram UI spinner.
+- **MarkdownV2 Safety Fallback**: Message formatting errors (HTTP 400 `"can't parse entities"`) for text and photos with captions trigger raw error logging (`tracing::error!`) and an automatic fallback retry without `parse_mode: MarkdownV2` to guarantee receipt delivery.
 
 ---
 

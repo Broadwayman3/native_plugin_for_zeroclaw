@@ -70,7 +70,7 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 
 **Status values**: `processed`, `retry_pending`, `failed`
 
-**In-Memory LRU Cache**: `UpdateIdempotencyCache` in `webhook_db.rs` wraps an in-memory thread-safe `LruCache<i64, ()>` (capacity 10,000). Updates are checked against the cache first. Upon successful DB commitment, `mark_cached_processed(update_id)` atomically inserts the ID into RAM, eliminating redundant SQLite queries.
+**In-Memory Single-Lock LRU Cache**: `IDEMPOTENCY_CACHE` in `webhook_db.rs` wraps an in-memory thread-safe `LruCache<i64, ()>` (capacity 10,000). Incoming update IDs call `check_and_mark_processed(update_id)` to atomically check cache presence, promote position in LRU, and insert new entries under a single `Mutex` lock before hitting SQLite, eliminating redundant DB queries and lock contention.
 
 ### telegram_fsm_sessions
 

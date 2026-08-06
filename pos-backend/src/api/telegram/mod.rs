@@ -140,10 +140,17 @@ pub async fn dispatch_update_content(
         return Ok(());
     }
 
-    // Process Message
-    if let Some(msg) = update.get("message") {
-        // Safe Clock Skew Stale Update TTL Check for top-level message (exempting callback_query)
-        if let Some(date_secs) = msg.get("date").and_then(|v| v.as_u64()) {
+    // Process Message (message or edited_message)
+    let msg_obj = update
+        .get("message")
+        .or_else(|| update.get("edited_message"));
+    if let Some(msg) = msg_obj {
+        // Safe Clock Skew Stale Update TTL Check (checking edit_date or date)
+        if let Some(date_secs) = msg
+            .get("edit_date")
+            .or_else(|| msg.get("date"))
+            .and_then(|v| v.as_u64())
+        {
             let now_secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
@@ -229,6 +236,44 @@ pub async fn dispatch_update_content(
             .and_then(|m| m.get("chat"))
             .and_then(|c| c.get("id"))
             .and_then(|v| v.as_i64());
+
+        // Stale Update TTL Check for callback_query
+        if let Some(cb_date_secs) = msg
+            .and_then(|m| m.get("edit_date").or_else(|| m.get("date")))
+            .and_then(|v| v.as_u64())
+        {
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            if config.stale_update_ttl_secs > 0
+                && cb_date_secs < now_secs
+                && (now_secs - cb_date_secs) > config.stale_update_ttl_secs
+            {
+                tracing::warn!(
+                    cb_id = cb_id,
+                    date_secs = cb_date_secs,
+                    now_secs = now_secs,
+                    ttl_secs = config.stale_update_ttl_secs,
+                    "Stale callback query exceeds TTL threshold. Answering query and skipping action."
+                );
+                if !cb_id.is_empty() {
+                    let ans = serde_json::json!({
+                        "callback_query_id": cb_id,
+                        "text": "⚠️ Action expired",
+                        "show_alert": false
+                    });
+                    let _ = client::send_telegram_request_with_priority(
+                        client,
+                        &format!("{}/answerCallbackQuery", base_url),
+                        &ans,
+                        client_queue::Priority::High,
+                    )
+                    .await;
+                }
+                return Ok(());
+            }
+        }
 
         if let Some(chat_id) = chat_id {
             handlers::handle_callback_query(

@@ -12,6 +12,10 @@ This document tracks completed enhancements and future architecture specificatio
 - **[COMPLETED] Stateless Supergroup Admin Mode (`admin_session.rs`)**: Anonymous admin posts (`from` missing) and linked channel forwards execute in Stateless One-Shot Mode (`user_id = 0`) to prevent FSM cross-contamination while preserving `from.id` authorization for callback queries.
 - **[COMPLETED] Bounded Poller Execution & DLQ Backoff (`polling.rs`)**: Wrapped update tasks in 30-second timeouts with 3 exponential backoff retries on transient DB errors.
 - **[COMPLETED] Fast-Track Callback Query Acknowledgment (`callbacks.rs`)**: Immediate `answerCallbackQuery` execution prior to SQLite locks, eliminating `query is too old` client timeouts.
+- **[COMPLETED] Telegram Listener Async Backpressure & OOM Guard (`polling.rs`)**: Implemented `enqueue_timeout` (2s timeout) spawned in non-blocking tasks with `Semaphore(100)` concurrency bounding to prevent RAM exhaustion under high update volumes.
+- **[COMPLETED] Panic-Safe Poller RAII Guard (`lifecycle.rs`)**: Implemented `PollerActiveGuard` with `impl Drop` ensuring `IS_POLLER_ACTIVE` is atomically restored to `false` even on poller thread panic or early cancellation.
+- **[COMPLETED] MarkdownV2 Plain-Text Fallback (`client.rs` & `client_queue.rs`)**: Outbound requests catching HTTP 400 `"can't parse entities"` log raw error text (`tracing::error!`) and automatically retry without `parse_mode: MarkdownV2` for text and photo captions.
+- **[COMPLETED] Single-Lock Idempotency LRU Cache (`webhook_db.rs`)**: Implemented `check_and_mark_processed(update_id)` performing LRU lookup, position promotion, and insertion under a single `Mutex` lock to eliminate lock contention.
 
 ---
 

@@ -10,6 +10,12 @@ pub enum LockKey {
 }
 
 /// Safe per-session or per-invoice concurrency manager using Weak references.
+///
+/// LOCK HIERARCHY RULES (DEADLOCK PREVENTION):
+/// 1. Top-level dispatcher acquires `chat_lock` per `(chat_id, user_id)` first.
+/// 2. Specific invoice handlers (e.g., `orders.rs`) acquire `invoice_lock` per `invoice_id` second as a child lock.
+/// 3. Background services (`verifier.rs`, Squads watcher) may acquire `invoice_lock`, but MUST NEVER attempt
+///    to acquire a `chat_lock` afterwards.
 #[derive(Clone, Default)]
 pub struct ChatLocksManager {
     locks: Arc<Mutex<HashMap<LockKey, Weak<AsyncMutex<()>>>>>,
@@ -206,5 +212,46 @@ impl ChatQueueDispatcher {
 
         entry.last_active = now;
         entry.sender.try_send(task)
+    }
+
+    /// Enqueues a task for session `(chat_id, user_id)` with backpressure timeout.
+    /// Returns Ok(()) if enqueued within timeout, or Err if bounded capacity (64) remained full.
+    pub async fn enqueue_timeout(
+        &self,
+        chat_id: i64,
+        user_id: i64,
+        task: DispatchTask,
+        timeout: Duration,
+    ) -> Result<(), mpsc::error::SendTimeoutError<DispatchTask>> {
+        let key = (chat_id, user_id);
+        let sender = {
+            let mut map = self.senders.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+
+            if map.len() > 64 {
+                map.retain(|_, entry| {
+                    now.duration_since(entry.last_active) < Duration::from_secs(60)
+                });
+            }
+
+            let entry = map.entry(key).or_insert_with(|| {
+                let (tx, mut rx) = mpsc::channel::<DispatchTask>(64);
+                tokio::spawn(async move {
+                    while let Some(task_fn) = rx.recv().await {
+                        let handle = task_fn();
+                        let _ = handle.await;
+                    }
+                });
+                QueueEntry {
+                    sender: tx,
+                    last_active: now,
+                }
+            });
+
+            entry.last_active = now;
+            entry.sender.clone()
+        };
+
+        sender.send_timeout(task, timeout).await
     }
 }

@@ -61,6 +61,7 @@ pub fn start_poller_worker(
 
         let watermark_tracker = WatermarkTracker::new();
         let queue_dispatcher = ChatQueueDispatcher::new();
+        let dispatch_semaphore = Arc::new(tokio::sync::Semaphore::new(100));
 
         loop {
             if cancel_token.is_cancelled() {
@@ -285,46 +286,53 @@ pub fn start_poller_worker(
                                     })
                                 });
 
-                                // Non-blocking dispatch to session FIFO queue with bounded capacity (64)
-                                if let Err(_full_err) = queue_dispatcher.try_enqueue(
-                                    target_chat_id,
-                                    user_id,
-                                    task_closure,
-                                ) {
-                                    tracing::warn!(
-                                        chat_id = target_chat_id,
-                                        update_id = update_id,
-                                        "Per-chat bounded queue full (capacity 64). Recording DLQ and rate-limiting user."
-                                    );
-                                    let pool_dlq = db_pool.clone();
-                                    let db_path_dlq = config.db_path.clone();
-                                    let update_str = update.to_string();
-                                    let client_c = client.clone();
-                                    let base_c = base_url.clone();
-                                    let watermark_fb = watermark_guard_fallback;
+                                // Async backpressure dispatch to session FIFO queue with 2s timeout and OOM protection
+                                let dispatcher_clone = queue_dispatcher.clone();
+                                let pool_dlq = db_pool.clone();
+                                let db_path_dlq = config.db_path.clone();
+                                let update_str = update.to_string();
+                                let client_c = client.clone();
+                                let base_c = base_url.clone();
+                                let watermark_fb = watermark_guard_fallback;
+                                let sem_clone = dispatch_semaphore.clone();
 
-                                    // Lightweight DLQ recording task without heavy business execution (OOM-safe)
-                                    tokio::spawn(async move {
-                                        let reached_dlq = super::webhook_db::record_failure(
+                                tokio::spawn(async move {
+                                    let _permit = sem_clone.acquire_owned().await.ok();
+                                    let enqueue_res = dispatcher_clone
+                                        .enqueue_timeout(
+                                            target_chat_id,
+                                            user_id,
+                                            task_closure,
+                                            Duration::from_secs(2),
+                                        )
+                                        .await;
+
+                                    if let Err(_timeout_err) = enqueue_res {
+                                        tracing::warn!(
+                                            chat_id = target_chat_id,
+                                            update_id = update_id,
+                                            "Per-chat bounded queue full (capacity 64) after 2s backpressure. Recording DLQ and notifying user."
+                                        );
+
+                                        let _reached_dlq = super::webhook_db::record_failure(
                                             pool_dlq.as_ref(),
                                             &db_path_dlq,
                                             update_id,
                                             chat_id,
                                             &update_str,
-                                            "Per-chat queue capacity full (64)",
+                                            "Per-chat queue capacity full (64) after 2s backpressure",
                                             1,
                                         )
                                         .await;
 
-                                        if reached_dlq {
-                                            if let Some(lw) = watermark_fb.complete() {
-                                                super::state::set_update_offset_memory(lw);
-                                                let db_path_p = db_path_dlq.clone();
-                                                let _ = tokio::task::spawn_blocking(move || {
-                                                    super::state::set_update_offset(&db_path_p, lw);
-                                                })
-                                                .await;
-                                            }
+                                        // Unconditionally complete watermark guard on timeout to prevent update_offset freezing
+                                        if let Some(lw) = watermark_fb.complete() {
+                                            super::state::set_update_offset_memory(lw);
+                                            let db_path_p = db_path_dlq.clone();
+                                            let _ = tokio::task::spawn_blocking(move || {
+                                                super::state::set_update_offset(&db_path_p, lw);
+                                            })
+                                            .await;
                                         }
 
                                         if target_chat_id != 0 {
@@ -343,8 +351,8 @@ pub fn start_poller_worker(
                                             )
                                             .await;
                                         }
-                                    });
-                                }
+                                    }
+                                });
                             }
 
                             // If watermark tracker is empty, advance offset to batch_max_offset

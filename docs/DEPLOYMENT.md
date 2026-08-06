@@ -64,7 +64,7 @@ location /api/v1/telegram/webhook {
 ```
 
 > [!NOTE]
-> Do NOT intercept HTTP 500 status codes with proxy error pages. Axum returns `500 Internal Server Error` on connection pool exhaustion (>4.5s) so that Telegram Bot API gateways retry update delivery automatically.
+> Do NOT intercept HTTP 500 status codes with proxy error pages. Axum returns `500 Internal Server Error` on connection pool exhaustion (>4.5s) so that Telegram Bot API gateways retry update delivery automatically. If Webhook registration fails 3 consecutive times, a 5-minute circuit breaker (`WEBHOOK_COOLDOWN_SECS = 300`) activates, automatically draining pending DB updates and switching to Long Polling mode.
 
 ## Environment Variables
 

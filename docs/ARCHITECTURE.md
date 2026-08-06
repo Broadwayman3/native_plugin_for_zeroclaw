@@ -173,12 +173,12 @@ world plugin {
 Telegram Gateways / API
          │
          ▼
-Poller / Webhook Listener
+Poller / Webhook Listener (guarded by PollerActiveGuard RAII)
          │
 ┌────────┴──────────────────────────┐
 │ WatermarkTracker (BTreeSet<i64>)  │ ◄── Tracks Low Watermark (Min Unconfirmed ID)
 └────────┬──────────────────────────┘
-         │ non-blocking try_enqueue
+         │ async enqueue_timeout (2s timeout, Semaphore(100) OOM guard)
 ┌────────▼──────────────────────────┐
 │ ChatQueueDispatcher (MPSC cap=64) │ ◄── Strict Per-Chat FIFO Order
 └────────┬──────────────────────────┘
@@ -193,15 +193,16 @@ Success               DLQ Commit
    │                      │
    └──────────┬───────────┘
               ▼
-watermark_guard.complete() ──▶ Advance Offset in SQLite & RAM
+watermark_guard.complete() ──▶ Advance Offset in SQLite & RAM (Unconditional on Timeout)
 ```
 
-1. **Idempotency Registration & In-Memory LRU**: Incoming `update_id`s are checked against `UpdateIdempotencyCache` in RAM before hitting SQLite `processed_updates`.
-2. **Stale Update TTL Filter**: Top-level `message` and `edited_message` timestamps are validated against `stale_update_ttl_secs` (default 300s) with clock-skew tolerance. `callback_query` inline button clicks and system events are exempted.
-3. **Low Watermark Offset Tracking**: `WatermarkTracker` tracks in-flight `update_id`s in a `BTreeSet`. Persistent offset advances to the Low Watermark (`min(pending_ids)`), allowing continuous polling without head-of-line batch blocking.
-4. **Per-Chat Bounded FIFO Queue Dispatcher**: `ChatQueueDispatcher` queues tasks in session-bound `mpsc::channel(64)` channels, guaranteeing strict FIFO order within each chat without blocking the Poller loop. Idle queues are safely purged after 60s of inactivity.
-5. **Panic-Safe JoinHandle Isolation**: Inner tasks are spawned via `tokio::spawn`. Panics (`is_panic()`) are caught, logged, and isolated in SQLite DLQ (`failed_updates`) without halting Low Watermark progression.
+1. **Idempotency Registration & Single-Lock LRU**: Incoming `update_id`s are checked against `UpdateIdempotencyCache` in RAM via `check_and_mark_processed(update_id)` under a single `Mutex` lock before hitting SQLite `processed_updates`.
+2. **Stale Update & Callback TTL Filter**: Top-level `message` and `edited_message` timestamps (`edit_date`) are validated against `stale_update_ttl_secs` (default 300s) with clock-skew tolerance. `callback_query` inline button clicks are checked against TTL; expired buttons trigger `answerCallbackQuery("⚠️ Action expired")` to release the Telegram UI spinner.
+3. **Low Watermark Offset Tracking**: `WatermarkTracker` tracks in-flight `update_id`s in a `BTreeSet`. Persistent offset advances to the Low Watermark (`min(pending_ids)`), allowing continuous polling without head-of-line batch blocking. Watermark completion is unconditional on timeout to eliminate update offset freezing.
+4. **Per-Chat Bounded FIFO Queue Dispatcher & Backpressure**: `ChatQueueDispatcher` queues tasks in session-bound `mpsc::channel(64)` channels, guaranteeing strict FIFO order within each chat without blocking the Poller loop. Dispatch tasks use a 2-second `enqueue_timeout` backpressure wait inside non-blocking tasks guarded by `Semaphore(100)` for OOM protection. Idle queues are safely purged after 60s of inactivity.
+5. **Panic-Safe Isolation & RAII Guard**: `PollerActiveGuard` implements `Drop` to guarantee `IS_POLLER_ACTIVE` is restored to `false` even on poller task panic. Inner update tasks are spawned via `tokio::spawn`. Panics (`is_panic()`) are caught, logged, and isolated in SQLite DLQ (`failed_updates`) without halting Low Watermark progression.
 6. **Circuit Breaker Failover**: Webhook registration failures trip a 5-minute circuit breaker (`WEBHOOK_COOLDOWN_SECS = 300`). SQLite `pending_webhook_updates` are drained before starting Long Polling worker.
+7. **Strict Lock Hierarchy (Deadlock Prevention)**: Global session locks follow `chat_lock` -> `invoice_lock`. Background worker tasks (RPC `verifier.rs`, Squads watcher) must NEVER acquire `chat_lock` after acquiring `invoice_lock`.
 
 ### Payment Flow
 
