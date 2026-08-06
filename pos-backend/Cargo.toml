@@ -56,8 +56,13 @@ dotenvy = "0.15"
 urlencoding = "2.1"
 url = "2.5"
 
-# HTTP client for RPC blockhash queries
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP client for RPC blockhash queries and Telegram API
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+
+# QR code generation & PNG rendering
+qrcode = "0.14"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 
 # Rate limiting
 governor = "0.6"

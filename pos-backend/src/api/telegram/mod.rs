@@ -50,6 +50,13 @@ pub fn start_telegram_services(config: Arc<AppConfig>) {
             let poll_url = format!("{}/getUpdates?offset={}&timeout=10", base_url, offset);
             match client.get(&poll_url).send().await {
                 Ok(resp) => {
+                    let status = resp.status();
+                    if status.as_u16() == 409 {
+                        tracing::error!("Telegram HTTP 409 Conflict: duplicate bot instance running. Retrying in 10s...");
+                        sleep(Duration::from_secs(10)).await;
+                        continue;
+                    }
+
                     if let Ok(json) = resp.json::<serde_json::Value>().await {
                         if let Some(result) = json.get("result").and_then(|v| v.as_array()) {
                             let mut handles = Vec::new();
@@ -128,7 +135,10 @@ async fn process_single_update(
     update: &serde_json::Value,
     update_id: i64,
 ) {
-    let chat_id = if let Some(msg) = update.get("message") {
+    let chat_id = if let Some(msg) = update
+        .get("message")
+        .or_else(|| update.get("edited_message"))
+    {
         msg.get("chat")
             .and_then(|c| c.get("id"))
             .and_then(|v| v.as_i64())
@@ -137,82 +147,101 @@ async fn process_single_update(
             .and_then(|m| m.get("chat"))
             .and_then(|c| c.get("id"))
             .and_then(|v| v.as_i64())
+    } else if let Some(my_chat) = update.get("my_chat_member") {
+        my_chat
+            .get("chat")
+            .and_then(|c| c.get("id"))
+            .and_then(|v| v.as_i64())
     } else {
         None
     };
 
-    let target_chat_id = chat_id.unwrap_or(0);
+    // If update has no chat_id (e.g. system update), process directly without per-chat lock
+    if let Some(target_chat_id) = chat_id {
+        // Safely acquire per-chat lock (without holding the map lock across .await!)
+        let chat_lock = {
+            let mut map = chat_locks.lock().unwrap_or_else(|e| e.into_inner());
+            map.entry(target_chat_id)
+                .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+                .clone()
+        };
 
-    // Safely acquire per-chat lock (without holding the map lock across .await!)
-    let chat_lock = {
-        let mut map = chat_locks.lock().unwrap_or_else(|e| e.into_inner());
-        map.entry(target_chat_id)
-            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-            .clone()
-    };
+        {
+            let _guard = chat_lock.lock().await;
+            dispatch_update_content(client, base_url, config, fsm, update).await;
 
-    {
-        let _guard = chat_lock.lock().await;
-
-        // Process Message (with reply_to_message support)
-        if let Some(msg) = update.get("message") {
-            let chat_id = msg
-                .get("chat")
-                .and_then(|c| c.get("id"))
-                .and_then(|v| v.as_i64());
-            let text = msg.get("text").and_then(|v| v.as_str());
-            let user_id = msg
-                .get("from")
-                .and_then(|f| f.get("id"))
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            let reply_to_text = msg
-                .get("reply_to_message")
-                .and_then(|r| r.get("text"))
-                .and_then(|v| v.as_str());
-
-            if let (Some(chat_id), Some(text)) = (chat_id, text) {
-                handlers::handle_user_message(
-                    client,
-                    base_url,
-                    config,
-                    fsm,
-                    chat_id,
-                    user_id,
-                    text,
-                    reply_to_text,
-                )
-                .await;
+            // Memory GC: Performed under _guard AND map lock before dropping guard.
+            // Guarantees no concurrent execution if a new task inserts a new mutex.
+            let mut map = chat_locks.lock().unwrap_or_else(|e| e.into_inner());
+            if Arc::strong_count(&chat_lock) <= 2 {
+                map.remove(&target_chat_id);
             }
-        }
-
-        // Process Callback Query
-        if let Some(cb) = update.get("callback_query") {
-            let cb_id = cb.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let data = cb.get("data").and_then(|v| v.as_str()).unwrap_or("");
-            let msg = cb.get("message");
-            let chat_id = msg
-                .and_then(|m| m.get("chat"))
-                .and_then(|c| c.get("id"))
-                .and_then(|v| v.as_i64());
-
-            if let Some(chat_id) = chat_id {
-                handlers::handle_callback_query(client, base_url, config, chat_id, cb_id, data)
-                    .await;
-            }
-        }
-    } // Lock guard dropped here!
+        } // Lock guard dropped here!
+    } else {
+        dispatch_update_content(client, base_url, config, fsm, update).await;
+    }
 
     // Mark update_id as processed in SQLite ONLY AFTER processing completes
     if let Ok(conn) = crate::db::get_db_connection(&config.db_path) {
         let _ = crate::db::updates::check_and_register(&conn, update_id);
     }
+}
 
-    // Memory GC: Remove chat_id from chat_locks if no other task is waiting for this chat
+/// Dispatches update payload to message or callback query handlers.
+async fn dispatch_update_content(
+    client: &reqwest::Client,
+    base_url: &str,
+    config: &AppConfig,
+    fsm: &FsmStore,
+    update: &serde_json::Value,
+) {
+    // Process Message or Edited Message
+    if let Some(msg) = update
+        .get("message")
+        .or_else(|| update.get("edited_message"))
     {
-        let mut map = chat_locks.lock().unwrap_or_else(|e| e.into_inner());
-        if Arc::strong_count(&chat_lock) <= 2 {
-            map.remove(&target_chat_id);
+        let chat_id = msg
+            .get("chat")
+            .and_then(|c| c.get("id"))
+            .and_then(|v| v.as_i64());
+        let text = msg.get("text").and_then(|v| v.as_str());
+        let user_id = msg
+            .get("from")
+            .and_then(|f| f.get("id"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let reply_to_text = msg
+            .get("reply_to_message")
+            .and_then(|r| r.get("text"))
+            .and_then(|v| v.as_str());
+
+        if let (Some(chat_id), Some(text)) = (chat_id, text) {
+            handlers::handle_user_message(
+                client,
+                base_url,
+                config,
+                fsm,
+                chat_id,
+                user_id,
+                text,
+                reply_to_text,
+            )
+            .await;
+        }
+    }
+
+    // Process Callback Query
+    if let Some(cb) = update.get("callback_query") {
+        let cb_id = cb.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let data = cb.get("data").and_then(|v| v.as_str()).unwrap_or("");
+        let msg = cb.get("message");
+        let chat_id = msg
+            .and_then(|m| m.get("chat"))
+            .and_then(|c| c.get("id"))
+            .and_then(|v| v.as_i64());
+
+        if let Some(chat_id) = chat_id {
+            handlers::handle_callback_query(client, base_url, config, chat_id, cb_id, data).await;
         }
     }
 }

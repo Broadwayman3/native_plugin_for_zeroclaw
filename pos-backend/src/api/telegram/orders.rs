@@ -1,4 +1,8 @@
-use super::client::send_telegram_request;
+use super::client::{
+    generate_qr_code_png_bytes, send_telegram_photo_bytes, send_telegram_request,
+    start_chat_action_loop,
+};
+
 use super::fsm::FsmStore;
 use crate::config::AppConfig;
 use crate::db;
@@ -20,6 +24,14 @@ pub async fn handle_pos_order(
 ) {
     let sanitized = sanitize_external_input(text, 100);
     let def_label = t_raw("default_item", Some(lang), &[]);
+
+    // Start background chat action typing indicator loop (MUST be aborted at end!)
+    let action_task = start_chat_action_loop(
+        client.clone(),
+        base_url.to_string(),
+        chat_id,
+        "upload_photo",
+    );
 
     // 1. Check FSM for existing pending item for this (chat_id, user_id)
     let pending_session = if user_id > 0 {
@@ -64,7 +76,12 @@ pub async fn handle_pos_order(
                 "selective": true
             }
         });
-        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        if let Err(e) =
+            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
+        {
+            tracing::error!(error = %e, "Failed to send price_needed prompt");
+        }
+        action_task.abort();
         return;
     }
 
@@ -77,7 +94,12 @@ pub async fn handle_pos_order(
             "chat_id": chat_id,
             "text": "Error: Amount must be positive.",
         });
-        let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+        if let Err(e) =
+            send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
+        {
+            tracing::error!(error = %e, "Failed to send positive amount error");
+        }
+        action_task.abort();
         return;
     }
 
@@ -90,8 +112,12 @@ pub async fn handle_pos_order(
                 "chat_id": chat_id,
                 "text": "Error: Price feed unavailable for this currency.",
             });
-            let _ =
-                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
+            if let Err(e) =
+                send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
+            {
+                tracing::error!(error = %e, "Failed to send price feed error");
+            }
+            action_task.abort();
             return;
         }
     };
@@ -136,7 +162,6 @@ pub async fn handle_pos_order(
         "POS Payment",
     );
     let phantom_link = pos_core_logic::solana_pay::generate_phantom_universal_link(&solana_url);
-    let qr_url = crate::domain::formatters::generate_solana_pay_qr_image_url(&solana_url, 300);
 
     let receipt = format_itemized_receipt(
         &inv_id,
@@ -151,26 +176,64 @@ pub async fn handle_pos_order(
 
     let keyboard = get_cancel_invoice_inline_keyboard(&inv_id, Some(&phantom_link), lang);
 
-    let photo_payload = serde_json::json!({
-        "chat_id": chat_id,
-        "photo": qr_url,
-        "caption": receipt,
-        "parse_mode": "MarkdownV2",
-        "reply_markup": keyboard
-    });
+    // Generate local QR code PNG bytes
+    let qr_bytes_res = generate_qr_code_png_bytes(&solana_url);
 
-    if let Ok(json) =
-        send_telegram_request(client, &format!("{}/sendPhoto", base_url), &photo_payload).await
-    {
-        if let Some(msg_id) = json
-            .get("result")
-            .and_then(|r| r.get("message_id"))
-            .and_then(|v| v.as_i64())
+    let mut msg_sent = false;
+    if let Ok(qr_bytes) = qr_bytes_res {
+        if let Ok(json) = send_telegram_photo_bytes(
+            client,
+            base_url,
+            chat_id,
+            qr_bytes,
+            "qr.png",
+            "image/png",
+            &receipt,
+            Some(&keyboard),
+        )
+        .await
         {
-            if let Ok(conn) = db::get_db_connection(&config.db_path) {
-                let _ =
-                    db::invoices::update_invoice_telegram_context(&conn, &inv_id, chat_id, msg_id);
+            msg_sent = true;
+            if let Some(msg_id) = json
+                .get("result")
+                .and_then(|r| r.get("message_id"))
+                .and_then(|v| v.as_i64())
+            {
+                if let Ok(conn) = db::get_db_connection(&config.db_path) {
+                    let _ = db::invoices::update_invoice_telegram_context(
+                        &conn, &inv_id, chat_id, msg_id,
+                    );
+                }
             }
         }
     }
+
+    // Fallback: If sending photo failed, send text message receipt with Phantom link
+    if !msg_sent {
+        let msg_payload = serde_json::json!({
+            "chat_id": chat_id,
+            "text": receipt,
+            "parse_mode": "MarkdownV2",
+            "reply_markup": keyboard
+        });
+
+        if let Ok(json) =
+            send_telegram_request(client, &format!("{}/sendMessage", base_url), &msg_payload).await
+        {
+            if let Some(msg_id) = json
+                .get("result")
+                .and_then(|r| r.get("message_id"))
+                .and_then(|v| v.as_i64())
+            {
+                if let Ok(conn) = db::get_db_connection(&config.db_path) {
+                    let _ = db::invoices::update_invoice_telegram_context(
+                        &conn, &inv_id, chat_id, msg_id,
+                    );
+                }
+            }
+        }
+    }
+
+    // Stop background chat action typing indicator loop
+    action_task.abort();
 }
