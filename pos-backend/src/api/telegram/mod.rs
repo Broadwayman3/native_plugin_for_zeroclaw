@@ -1,5 +1,6 @@
 pub mod chat_action;
 pub mod client;
+pub mod client_queue;
 pub mod fsm;
 pub mod fsm_store;
 pub mod handlers;
@@ -155,7 +156,7 @@ pub async fn process_single_update(
     db_pool: Option<&deadpool_sqlite::Pool>,
     update: &serde_json::Value,
     update_id: i64,
-) {
+) -> Result<(), String> {
     let (chat_id, user_id) = if let Some(msg) = update
         .get("message")
         .or_else(|| update.get("edited_message"))
@@ -182,17 +183,6 @@ pub async fn process_single_update(
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
         (cid, uid)
-    } else if let Some(my_chat) = update.get("my_chat_member") {
-        let cid = my_chat
-            .get("chat")
-            .and_then(|c| c.get("id"))
-            .and_then(|v| v.as_i64());
-        let uid = my_chat
-            .get("from")
-            .and_then(|f| f.get("id"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        (cid, uid)
     } else {
         (None, 0)
     };
@@ -205,37 +195,61 @@ pub async fn process_single_update(
         dispatch_update_content(client, base_url, config, fsm, update).await
     };
 
-    if let Err(e) = dispatch_res {
-        tracing::error!(update_id = update_id, error = %e, "Update content dispatch failed; skipping processed_updates registration to allow retry");
-        return;
+    if let Err(ref e) = dispatch_res {
+        tracing::error!(update_id = update_id, error = %e, "Update content dispatch failed; checking retries/DLQ");
+        let reached_dlq = if let Some(pool) = db_pool {
+            if let Ok(conn) = pool.get().await {
+                conn.interact(move |c| {
+                    crate::db::updates::record_failure_and_check_max_retries(c, update_id, 3)
+                        .unwrap_or(false)
+                })
+                .await
+                .unwrap_or(false)
+            } else {
+                false
+            }
+        } else {
+            let db_path = config.db_path.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Ok(conn) = crate::db::get_db_connection(&db_path) {
+                    crate::db::updates::record_failure_and_check_max_retries(&conn, update_id, 3)
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            })
+            .await
+            .unwrap_or(false)
+        };
+
+        if !reached_dlq {
+            return Err(e.clone());
+        }
     }
 
-    // Register update_id as processed using deadpool-sqlite pool from AppState if available
     if let Some(pool) = db_pool {
         if let Ok(conn) = pool.get().await {
             let _ = conn
                 .interact(move |c| {
-                    if let Err(e) = crate::db::updates::check_and_register(c, update_id) {
-                        tracing::warn!(update_id = update_id, error = %e, "Failed to register processed update_id");
-                    }
+                    let _ = crate::db::updates::check_and_register(c, update_id);
                 })
                 .await;
-            return;
+            return Ok(());
         }
     }
 
     let db_path = config.db_path.clone();
     let _ = tokio::task::spawn_blocking(move || match crate::db::get_db_connection(&db_path) {
         Ok(conn) => {
-            if let Err(e) = crate::db::updates::check_and_register(&conn, update_id) {
-                tracing::warn!(update_id = update_id, error = %e, "Failed to register processed update_id");
-            }
+            let _ = crate::db::updates::check_and_register(&conn, update_id);
         }
         Err(e) => {
             tracing::error!(db_path = %db_path, error = %e, "Failed to connect to SQLite in process_single_update");
         }
     })
     .await;
+
+    Ok(())
 }
 
 /// Dispatches update payload to message or callback query handlers.
@@ -351,6 +365,11 @@ pub async fn dispatch_update_content(
     if let Some(cb) = update.get("callback_query") {
         let cb_id = cb.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let data = cb.get("data").and_then(|v| v.as_str()).unwrap_or("");
+        let user_id = cb
+            .get("from")
+            .and_then(|f| f.get("id"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
         let msg = cb.get("message");
         let chat_id = msg
             .and_then(|m| m.get("chat"))
@@ -364,6 +383,7 @@ pub async fn dispatch_update_content(
                 config,
                 fsm.pool(),
                 chat_id,
+                user_id,
                 cb_id,
                 data,
             )

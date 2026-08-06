@@ -123,7 +123,7 @@ pub async fn handle_telegram_webhook(
     };
 
     // 2. Claim update_id in in-flight tracker to eliminate concurrent execution race conditions
-    let _flight_guard = match state.in_flight.try_claim(update_id) {
+    let flight_guard = match state.in_flight.try_claim(update_id) {
         Some(guard) => guard,
         None => {
             tracing::info!(
@@ -134,58 +134,63 @@ pub async fn handle_telegram_webhook(
         }
     };
 
-    // 3. Deduplication pre-check using deadpool-sqlite interact
-    let is_already_processed = if let Some(ref pool) = state.db_pool {
-        if let Ok(conn) = pool.get().await {
-            conn.interact(move |c| db::updates::is_processed(c, update_id).unwrap_or(false))
-                .await
-                .unwrap_or(false)
-        } else {
-            false
-        }
-    } else {
-        let db_path = state.config.db_path.clone();
-        tokio::task::spawn_blocking(move || {
-            if let Ok(conn) = db::get_db_connection(&db_path) {
-                db::updates::is_processed(&conn, update_id).unwrap_or(false)
+    // 3. Fast Ack: Spawn background task carrying flight_guard and return 200 OK immediately
+    tokio::spawn(async move {
+        let _guard = flight_guard; // Guard is held for the full duration of background processing
+
+        let is_already_processed = if let Some(ref pool) = state.db_pool {
+            if let Ok(conn) = pool.get().await {
+                conn.interact(move |c| db::updates::is_processed(c, update_id).unwrap_or(false))
+                    .await
+                    .unwrap_or(false)
             } else {
                 false
             }
-        })
-        .await
-        .unwrap_or(false)
-    };
+        } else {
+            let db_path = state.config.db_path.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Ok(conn) = db::get_db_connection(&db_path) {
+                    db::updates::is_processed(&conn, update_id).unwrap_or(false)
+                } else {
+                    false
+                }
+            })
+            .await
+            .unwrap_or(false)
+        };
 
-    if is_already_processed {
-        // Already completely processed previously — return 200 OK to stop Telegram retries
-        return StatusCode::OK;
-    }
-
-    // 3. Process update asynchronously with shared state & 15s timeout
-    let base_url = format!(
-        "https://api.telegram.org/bot{}",
-        state.config.telegram_bot_token
-    );
-
-    let process_fut = super::process_single_update(
-        &state.http_client,
-        &base_url,
-        &state.config,
-        &state.fsm_store,
-        &state.chat_locks,
-        state.db_pool.as_ref(),
-        &update,
-        update_id,
-    );
-
-    match tokio::time::timeout(Duration::from_secs(15), process_fut).await {
-        Ok(_) => StatusCode::OK,
-        Err(_) => {
-            tracing::error!(
-                update_id = update_id,
-                "Telegram Webhook update processing timed out after 15s"
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
+        if is_already_processed {
+            return;
         }
-    }
+
+        let base_url = format!(
+            "https://api.telegram.org/bot{}",
+            state.config.telegram_bot_token
+        );
+
+        // In-task exponential backoff retries for Webhook mode (up to 3 attempts)
+        for attempt in 1..=3 {
+            let res = super::process_single_update(
+                &state.http_client,
+                &base_url,
+                &state.config,
+                &state.fsm_store,
+                &state.chat_locks,
+                state.db_pool.as_ref(),
+                &update,
+                update_id,
+            )
+            .await;
+
+            if res.is_ok() {
+                break;
+            }
+
+            if attempt < 3 {
+                tokio::time::sleep(Duration::from_secs(1 << (attempt - 1))).await;
+            }
+        }
+    });
+
+    StatusCode::OK
 }

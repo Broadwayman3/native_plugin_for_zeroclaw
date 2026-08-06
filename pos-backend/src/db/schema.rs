@@ -101,6 +101,23 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
         )?;
     }
 
+    let update_columns: Vec<String> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(processed_updates)")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    if !update_columns.contains(&"retry_count".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE processed_updates ADD COLUMN retry_count INTEGER DEFAULT 0",
+        )?;
+    }
+    if !update_columns.contains(&"status".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE processed_updates ADD COLUMN status TEXT DEFAULT 'processed'",
+        )?;
+    }
+
     // Seed nonce accounts if empty
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM nonce_accounts", [], |row| row.get(0))?;
     if count == 0 {

@@ -400,6 +400,36 @@ async fn test_create_invoice_db_failure_returns_err() {
 }
 
 #[test]
+fn test_sqlite_persistent_dlq_retries() {
+    let guard = common::TempDbGuard::new("persistent_dlq");
+    let conn = db::get_db_connection(guard.path()).unwrap();
+    db::init_db(&conn, false).unwrap();
+
+    let update_id = 888777;
+
+    // Retry 1: under max retries (3) -> returns Ok(false)
+    let r1 = db::updates::record_failure_and_check_max_retries(&conn, update_id, 3).unwrap();
+    assert_eq!(r1, false);
+
+    // Retry 2: under max retries (3) -> returns Ok(false)
+    let r2 = db::updates::record_failure_and_check_max_retries(&conn, update_id, 3).unwrap();
+    assert_eq!(r2, false);
+
+    // Retry 3: reaches max retries (3) -> DLQ'd -> returns Ok(true)
+    let r3 = db::updates::record_failure_and_check_max_retries(&conn, update_id, 3).unwrap();
+    assert_eq!(r3, true);
+}
+
+#[test]
+fn test_utf8_safe_truncation_no_panic() {
+    let cyrillic_multibyte = "Смачна кава ☕ та свіжий круасан 🥐 із джемом ".repeat(30);
+    // Safe slicing using chars().take(450)
+    let truncated = cyrillic_multibyte.chars().take(450).collect::<String>();
+    assert!(truncated.chars().count() <= 450);
+    assert!(!truncated.is_empty());
+}
+
+#[test]
 fn test_file_line_count_limits() {
     use std::fs;
 

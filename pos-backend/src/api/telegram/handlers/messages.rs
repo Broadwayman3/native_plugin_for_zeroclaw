@@ -139,12 +139,9 @@ pub async fn handle_user_message(
             return Ok(());
         }
 
-        let summary_text = format!(
-            "📊 *Sales Summary*\nMerchant: `{}`",
-            &config.merchant_wallet_pubkey[..8]
-        );
-        let escaped = escape_telegram_markdown_v2(&summary_text);
-        let payload = build_send_message_payload(chat_id, &escaped, Some("MarkdownV2"), None);
+        let esc_pubkey = escape_telegram_markdown_v2(&config.merchant_wallet_pubkey[..8]);
+        let summary_text = format!("📊 *Sales Summary*\nMerchant: `{}`", esc_pubkey);
+        let payload = build_send_message_payload(chat_id, &summary_text, Some("MarkdownV2"), None);
         let _ = send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await;
         return Ok(());
     }

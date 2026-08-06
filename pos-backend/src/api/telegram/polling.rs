@@ -174,19 +174,25 @@ pub fn start_poller_worker(
                                                 &update_clone,
                                                 update_id,
                                             )
-                                            .await;
+                                            .await
                                         });
-                                        handles.push(handle);
+                                        handles.push((update_id, handle));
                                     }
 
-                                    // Wait for all updates in batch to finish before advancing & persisting offset to SQLite
-                                    for handle in handles {
-                                        let _ = handle.await;
+                                    // Wait for all updates in batch to finish
+                                    let mut min_failed_offset: Option<i64> = None;
+                                    for (uid, handle) in handles {
+                                        if let Ok(Err(_)) = handle.await {
+                                            min_failed_offset = Some(match min_failed_offset {
+                                                Some(curr) => curr.min(uid),
+                                                None => uid,
+                                            });
+                                        }
                                     }
 
-                                    offset = next_offset;
+                                    offset = min_failed_offset.unwrap_or(next_offset);
 
-                                    // Persist max update offset to SQLite via spawn_blocking
+                                    // Persist update offset to SQLite via spawn_blocking
                                     let db_path_persist = config.db_path.clone();
                                     let current_offset = offset;
                                     let _ = tokio::task::spawn_blocking(move || {

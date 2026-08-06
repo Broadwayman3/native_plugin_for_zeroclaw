@@ -1,4 +1,6 @@
-use crate::api::telegram::client::send_telegram_request;
+use crate::api::telegram::client::{send_telegram_request, send_telegram_request_with_priority};
+use crate::api::telegram::client_queue::Priority;
+use crate::api::telegram::handlers::refund::is_manager_authorized;
 use crate::api::telegram::state::set_user_lang;
 use crate::config::AppConfig;
 
@@ -7,19 +9,33 @@ use crate::domain::i18n::{get_localized_confirmation, get_main_reply_keyboard};
 use crate::domain::keyboards::{build_answer_callback_payload, build_send_message_payload};
 use crate::domain::sanitizer::{escape_telegram_markdown_v2, sanitize_external_input};
 
-/// Handles incoming Telegram callback queries with guaranteed answerCallbackQuery and atomic cancellation.
+/// Handles incoming Telegram callback queries with guaranteed high-priority answerCallbackQuery and atomic cancellation.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_callback_query(
     client: &reqwest::Client,
     base_url: &str,
     config: &AppConfig,
     pool: Option<&deadpool_sqlite::Pool>,
     chat_id: i64,
+    user_id: i64,
     cb_id: &str,
     raw_data: &str,
 ) -> Result<(), String> {
     let sanitized_data = sanitize_external_input(raw_data, 100);
 
     if sanitized_data.starts_with("cancel_") {
+        if let Err(err_msg) = is_manager_authorized(config, user_id) {
+            let answer = build_answer_callback_payload(cb_id, err_msg, true);
+            let _ = send_telegram_request_with_priority(
+                client,
+                &format!("{}/answerCallbackQuery", base_url),
+                &answer,
+                Priority::High,
+            )
+            .await;
+            return Ok(());
+        }
+
         let inv_id = sanitized_data
             .trim_start_matches("cancel_")
             .trim_start_matches("invoice_");
@@ -32,12 +48,12 @@ pub async fn handle_callback_query(
                     .interact(move |c| db::invoices::cancel_invoice(c, &inv_id_str))
                     .await;
                 if let Ok(Ok(count)) = res {
-                    cancel_success = count > 0;
+                    cancel_success = count == 1; // Strict single row update verification
                 }
             }
         } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
             if let Ok(count) = db::invoices::cancel_invoice(&conn, inv_id) {
-                cancel_success = count > 0;
+                cancel_success = count == 1; // Strict single row update verification
             }
         }
 
@@ -57,10 +73,11 @@ pub async fn handle_callback_query(
         };
 
         let answer = build_answer_callback_payload(cb_id, toast_text, false);
-        if let Err(e) = send_telegram_request(
+        if let Err(e) = send_telegram_request_with_priority(
             client,
             &format!("{}/answerCallbackQuery", base_url),
             &answer,
+            Priority::High,
         )
         .await
         {
@@ -93,10 +110,11 @@ pub async fn handle_callback_query(
             &format!("Language set to {}", lang_code.to_uppercase()),
             false,
         );
-        if let Err(e) = send_telegram_request(
+        if let Err(e) = send_telegram_request_with_priority(
             client,
             &format!("{}/answerCallbackQuery", base_url),
             &answer,
+            Priority::High,
         )
         .await
         {
@@ -116,10 +134,11 @@ pub async fn handle_callback_query(
         }
     } else {
         let answer = build_answer_callback_payload(cb_id, "OK", false);
-        if let Err(e) = send_telegram_request(
+        if let Err(e) = send_telegram_request_with_priority(
             client,
             &format!("{}/answerCallbackQuery", base_url),
             &answer,
+            Priority::High,
         )
         .await
         {

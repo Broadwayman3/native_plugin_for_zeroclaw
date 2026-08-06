@@ -175,9 +175,11 @@ pub async fn handle_pos_order(
     );
     let phantom_link = pos_core_logic::solana_pay::generate_phantom_universal_link(&solana_url);
 
+    let safe_items = parsed.items.chars().take(450).collect::<String>();
+
     let receipt = format_itemized_receipt(
         &inv_id,
-        &parsed.items,
+        &safe_items,
         0.0,
         usdc_amt,
         lang,
@@ -188,8 +190,25 @@ pub async fn handle_pos_order(
 
     let keyboard = get_cancel_invoice_inline_keyboard(&inv_id, Some(&phantom_link), lang);
 
-    let mut msg_sent = false;
+    let short_caption = format!(
+        "🧾 *Invoice \\#{}*",
+        crate::domain::sanitizer::escape_telegram_markdown_v2(&inv_id)
+    );
+
+    let (photo_caption, need_separate_receipt_msg) = if receipt.chars().count() <= 1000 {
+        (&receipt[..], false)
+    } else {
+        (&short_caption[..], true)
+    };
+
+    let mut photo_msg_sent = false;
     if let Ok(photo_bytes) = generate_qr_code_png_bytes(&solana_url) {
+        let photo_keyboard = if need_separate_receipt_msg {
+            None
+        } else {
+            Some(&keyboard)
+        };
+
         if let Ok(json) = send_telegram_photo_bytes(
             client,
             base_url,
@@ -197,12 +216,12 @@ pub async fn handle_pos_order(
             photo_bytes,
             "qr_code.png",
             "image/png",
-            &receipt,
-            Some(&keyboard),
+            photo_caption,
+            photo_keyboard,
         )
         .await
         {
-            msg_sent = true;
+            photo_msg_sent = true;
             if let Some(msg_id) = json
                 .get("result")
                 .and_then(|r| r.get("message_id"))
@@ -231,8 +250,8 @@ pub async fn handle_pos_order(
         }
     }
 
-    // Fallback: If sending photo failed, send text message receipt with Phantom link
-    if !msg_sent {
+    let mut text_msg_sent = false;
+    if !photo_msg_sent || need_separate_receipt_msg {
         let msg_payload = serde_json::json!({
             "chat_id": chat_id,
             "text": receipt,
@@ -243,36 +262,38 @@ pub async fn handle_pos_order(
         if let Ok(json) =
             send_telegram_request(client, &format!("{}/sendMessage", base_url), &msg_payload).await
         {
-            msg_sent = true;
-            if let Some(msg_id) = json
-                .get("result")
-                .and_then(|r| r.get("message_id"))
-                .and_then(|v| v.as_i64())
-            {
-                let inv_id_clone = inv_id.clone();
-                if let Some(pool) = fsm.pool() {
-                    if let Ok(conn) = pool.get().await {
-                        let _ = conn
-                            .interact(move |c| {
-                                db::invoices::update_invoice_telegram_context(
-                                    c,
-                                    &inv_id_clone,
-                                    chat_id,
-                                    msg_id,
-                                )
-                            })
-                            .await;
+            text_msg_sent = true;
+            if !photo_msg_sent {
+                if let Some(msg_id) = json
+                    .get("result")
+                    .and_then(|r| r.get("message_id"))
+                    .and_then(|v| v.as_i64())
+                {
+                    let inv_id_clone = inv_id.clone();
+                    if let Some(pool) = fsm.pool() {
+                        if let Ok(conn) = pool.get().await {
+                            let _ = conn
+                                .interact(move |c| {
+                                    db::invoices::update_invoice_telegram_context(
+                                        c,
+                                        &inv_id_clone,
+                                        chat_id,
+                                        msg_id,
+                                    )
+                                })
+                                .await;
+                        }
+                    } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
+                        let _ = db::invoices::update_invoice_telegram_context(
+                            &conn, &inv_id, chat_id, msg_id,
+                        );
                     }
-                } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
-                    let _ = db::invoices::update_invoice_telegram_context(
-                        &conn, &inv_id, chat_id, msg_id,
-                    );
                 }
             }
         }
     }
 
-    if !msg_sent {
+    if !photo_msg_sent && !text_msg_sent {
         tracing::error!(inv_id = %inv_id, "Failed to deliver invoice receipt to Telegram API");
         return Err(format!(
             "Failed to deliver invoice {} receipt to Telegram API",

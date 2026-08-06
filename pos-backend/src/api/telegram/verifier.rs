@@ -1,12 +1,13 @@
-use serde_json::Value;
-use std::collections::HashSet;
-use std::sync::Arc;
-use tokio::time::{sleep, Duration};
-
+use crate::api::telegram::client::send_telegram_request_with_priority;
+use crate::api::telegram::client_queue::Priority;
 use crate::config::AppConfig;
 use crate::db;
 use crate::domain::sanitizer::escape_telegram_markdown_v2;
 use crate::domain::verification::verify_solana_transaction_with_reference;
+use serde_json::Value;
+use std::collections::HashSet;
+use std::sync::Arc;
+use tokio::time::{sleep, Duration};
 
 /// Starts background Solana RPC invoice payment verification worker loop.
 pub fn start_verifier_worker(config: Arc<AppConfig>) {
@@ -239,15 +240,16 @@ pub fn start_verifier_worker(config: Arc<AppConfig>) {
                                     "parse_mode": "MarkdownV2",
                                     "reply_markup": { "inline_keyboard": [] }
                                 });
-                                if let Ok(resp) = client
-                                    .post(format!("{}/editMessageCaption", base_url))
-                                    .json(&edit_payload)
-                                    .send()
-                                    .await
+                                if send_telegram_request_with_priority(
+                                    &client,
+                                    &format!("{}/editMessageCaption", base_url),
+                                    &edit_payload,
+                                    Priority::High,
+                                )
+                                .await
+                                .is_ok()
                                 {
-                                    if resp.status().is_success() {
-                                        notified = true;
-                                    }
+                                    notified = true;
                                 }
                             }
 
@@ -258,11 +260,13 @@ pub fn start_verifier_worker(config: Arc<AppConfig>) {
                                     "text": new_caption,
                                     "parse_mode": "MarkdownV2"
                                 });
-                                let _ = client
-                                    .post(format!("{}/sendMessage", base_url))
-                                    .json(&msg_payload)
-                                    .send()
-                                    .await;
+                                let _ = send_telegram_request_with_priority(
+                                    &client,
+                                    &format!("{}/sendMessage", base_url),
+                                    &msg_payload,
+                                    Priority::High,
+                                )
+                                .await;
                             }
                         }
                     }
@@ -306,22 +310,26 @@ async fn handle_expired_invoices(client: &reqwest::Client, base_url: &str, db_pa
                         "parse_mode": "MarkdownV2",
                         "reply_markup": { "inline_keyboard": [] }
                     });
-                    let _ = client
-                        .post(format!("{}/editMessageCaption", base_url))
-                        .json(&edit_payload)
-                        .send()
-                        .await;
+                    let _ = send_telegram_request_with_priority(
+                        client,
+                        &format!("{}/editMessageCaption", base_url),
+                        &edit_payload,
+                        Priority::High,
+                    )
+                    .await;
                 } else {
                     let msg_payload = serde_json::json!({
                         "chat_id": chat_id,
                         "text": new_caption,
                         "parse_mode": "MarkdownV2"
                     });
-                    let _ = client
-                        .post(format!("{}/sendMessage", base_url))
-                        .json(&msg_payload)
-                        .send()
-                        .await;
+                    let _ = send_telegram_request_with_priority(
+                        client,
+                        &format!("{}/sendMessage", base_url),
+                        &msg_payload,
+                        Priority::High,
+                    )
+                    .await;
                 }
 
                 // Mark expired notification sent in SQLite
