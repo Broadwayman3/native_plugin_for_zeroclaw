@@ -16,7 +16,9 @@
 | Context Flooder | Flood LLM context window | Context truncator: caps payload size (<150 tokens) | Mitigated |
 | Webhook DoS Attacker | Huge body / memory exhaustion | Webhook Body Limit: strict 64 KB request body size cap | Mitigated |
 | Secret Token Spoofer | Fake Telegram webhook POSTs | Constant-time token comparison (`constant_time_eq`) on `X-Telegram-Bot-Api-Secret-Token` | Mitigated |
-| Webhook Failure | Webhook processing disruption | Dead-Letter Queue (DLQ): update moved to failed_updates after 3 consecutive retries | Mitigated |
+| Webhook Failure / Data Loss | DB exhaustion / dropped update | Synchronous WAL insert with 4.5s pool acquire timeout returning HTTP 500 for gateway retries | Mitigated |
+| Anonymous Admin Race | Supergroup admin FSM collision | `admin_session.rs`: Stateless mode (`user_id = 0`) for `from`-less messages & linked channel posts | Mitigated |
+| NTP Time Drift | Rate limiter pause freeze/panic | `rate_limiter.rs`: Monotonic `tokio::time::Instant` timer with auto-reset guard | Mitigated |
 
 ## Custody Architecture
 
@@ -52,7 +54,10 @@ When processing incoming webhook updates from SQLite FIFO queue (`pending_webhoo
 1. **Input Sanitization (`sanitize_external_input`)**: All incoming Telegram user text undergoes NFKC normalization, Cyrillic homoglyph stripping, zero-width space removal, and prompt-injection regex scrubbing.
 2. **MarkdownV2 Escaping (`escape_telegram_markdown_v2`)**: All outgoing response text is escaped against MarkdownV2 reserved characters (`_`, `*`, `[`, `]`, `(`, `)`, `~`, `` ` ``, `>`, `#`, `+`, `-`, `=`, `|`, `{`, `}`, `.`, `!`) to prevent formatting syntax injection into Telegram client UI.
 3. **Invoice Lock Isolation (`extract_invoice_id`)**: Extracting `INV-` tokens from callback queries or commands routes synchronization through `LockKey::Invoice(invoice_id)`, preventing group chat session deadlocks when multiple users interact with a shared invoice.
-4. **Per-Chat Rate Limiting**: Outbound Telegram requests use sliding-window rate limiting (`Priority::Normal`) to ensure compliance with Telegram Bot API HTTP 429 limits.
+4. **Per-Chat Rate Limiting & GC Worker (`rate_limiter.rs`)**: Outbound Telegram requests use sliding-window rate limiting (`Priority::Normal`) with periodic 10-minute GC passes (`retain_recent_keys()`) and global HTTP 429 monotonic pause signals.
+5. **Stateless Supergroup Admin Handling (`admin_session.rs`)**: Messages from anonymous group admins or linked channel forwards (missing `from` field) run in Stateless One-Shot Mode (`user_id = 0`), preventing FSM cross-contamination while preserving `from.id` authorization for callback queries.
+6. **Fast-Track Callback Queries (`callbacks.rs`)**: `answerCallbackQuery` is acknowledged immediately prior to DB locking operations, avoiding `query is too old` Telegram client timeouts.
+7. **Task Bounded Execution & Poller Retries (`polling.rs`)**: Polling update handles execute within a 30-second `tokio::time::timeout`. Failed tasks retry DB error logging up to 3 times before monotonically advancing update offsets.
 
 ## Security Audit Results
 

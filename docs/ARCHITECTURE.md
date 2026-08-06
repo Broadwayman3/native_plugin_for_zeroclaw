@@ -49,9 +49,12 @@ pos-backend/src/
 │   ├── x402.rs          # x402 machine commerce
 │   └── telegram/        # Telegram Bot API integration & listener
 │       ├── mod.rs       # Telegram module exports, update processor & extract_invoice_id
+│       ├── admin_session.rs # Anonymous group admin detection & Stateless Mode routing
+│       ├── rate_limiter.rs # Keyed rate-limiter GC worker & global HTTP 429 pause timer
+│       ├── webhook_db.rs # Synchronous SQLite Webhook queue transactions with 4.5s pool acquire timeout
 │       ├── lifecycle.rs # Service spawner & graceful child_token shutdown handles
 │       ├── polling.rs   # Long Polling loop worker with monotonic AtomicI64 offset
-│       ├── webhook.rs   # Webhook POST handler with post-COMMIT Notify triggering
+│       ├── webhook.rs   # Webhook POST handler returning 500 on DB timeout for zero data loss
 │       ├── webhook_worker.rs # Webhook FIFO queue worker with Semaphore(50) backpressure
 │       ├── lang_cache.rs # Thread-safe O(1) lru::LruCache for user language preferences
 │       ├── verifier.rs  # Solana RPC invoice payment verifier loop

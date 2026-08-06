@@ -138,6 +138,14 @@ PRAGMA synchronous=NORMAL;
 PRAGMA cache_size=-64000;  -- 64MB RAM cache
 ```
 
+## Connection Pooling & Webhook Zero Data Loss
+
+- **`deadpool-sqlite` Pool Acquisition Timeout**: `pool.get()` is wrapped in `tokio::time::timeout(Duration::from_millis(4500), ...)`. If connection pool acquisition exceeds 4.5 seconds under high load, the Webhook handler fast-fails with `HTTP 500 Internal Server Error`, ensuring Telegram's gateway retries update delivery instead of dropping data.
+
+## DLQ & DB Retry Backoff Policy
+
+- **Atomic Failure Recording**: `db::updates::record_failure_and_check_max_retries` performs up to **3 retry attempts** with exponential backoff (`50ms * (1 << attempt)`) on transient connection errors before logging warnings and advancing update offsets.
+
 ## Atomic State Transitions
 
 All invoice status updates use atomic guards to prevent race conditions:
@@ -157,3 +165,4 @@ RETURNING pubkey;
 ```
 
 Falls back to `BEGIN IMMEDIATE` transaction for SQLite < 3.35.0.
+

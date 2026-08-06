@@ -2,11 +2,11 @@
 
 ## Overview
 
-The project has **520 total tests** (481 in `pos-backend`, 31 in `pos-core-logic`, 8 in `solana-pos-core`) including property-based tests across three crates.
+The project has **524 total tests** (485 in `pos-backend`, 31 in `pos-core-logic`, 8 in `solana-pos-core`) including property-based tests across three crates.
 
 | Crate | Tests | Focus |
 |-------|-------|-------|
-| `pos-backend` | 475 + 6 proptest | REST API, DB, Telegram listener, FSM, i18n, security, edge cases |
+| `pos-backend` | 479 + 6 proptest | REST API, DB, Telegram listener, FSM, i18n, security, edge cases |
 | `pos-core-logic` | 27 + 4 proptest | Shared business logic (Solana Pay, Squads, Token-2022) |
 | `solana-pos-core` | 5 + 3 proptest | WASM plugin unit tests |
 
@@ -25,7 +25,7 @@ Tests are numbered sequentially: `test_001` through `test_394`.
 ### Individual crates
 
 ```bash
-# pos-backend (481 tests)
+# pos-backend (485 tests)
 cargo test --manifest-path pos-backend/Cargo.toml -- --test-threads=1
 
 # pos-core-logic (31 tests)
@@ -56,7 +56,7 @@ cd plugins/solana-pos-core && cargo test --lib --release
 | `test_pix_brl.rs` | 10 | PIX QR CRC16 checksum validation |
 | `test_i18n.rs` | 10 | i18n string translation, locale switching |
 | `test_api.rs` | 10 | REST API endpoint contract tests |
-| `test_listener_vulnerabilities.rs` | 8 | Telegram security, edited message filtering, DoS guards |
+| `test_listener_vulnerabilities.rs` | 12 | Telegram security, edited message filtering, anonymous admin context, 429 pause, DoS guards |
 | `test_security.rs` | 6 | API key redaction, secret masking |
 | `test_prompt_injection.rs` | 6 | Prompt injection defense tests |
 | `test_qa_red_team.rs` | 5 | Red team security audit |

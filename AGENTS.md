@@ -93,7 +93,7 @@ plugins/solana-pos-core/
 ## Documentation
 
 - `docs/ARCHITECTURE.md` — crate structure, WIT ABI, data flow
-- `docs/API.md` — REST API reference (12 endpoints)
+- `docs/API.md` — REST API reference (13 REST API routes)
 - `docs/SECURITY.md` — threat model, defense matrix
 - `docs/DATABASE.md` — schema, migrations, pragmas
 - `docs/DEPLOYMENT.md` — Docker, local dev, env vars

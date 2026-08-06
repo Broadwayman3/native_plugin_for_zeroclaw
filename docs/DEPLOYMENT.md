@@ -45,6 +45,27 @@ Server starts on `http://localhost:8080`.
 ./scripts/verify_all.sh
 ```
 
+## Reverse Proxy & Webhook Configuration
+
+When deploying behind Nginx, Cloudflare, or Caddy reverse proxies:
+
+```nginx
+location /api/v1/telegram/webhook {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Telegram-Bot-Api-Secret-Token $http_x_telegram_bot_api_secret_token;
+    
+    # Must be > 10 seconds to allow Axum to return 500 status codes on SQLite deadpool timeouts (4.5s)
+    proxy_read_timeout 15s;
+    proxy_connect_timeout 10s;
+}
+```
+
+> [!NOTE]
+> Do NOT intercept HTTP 500 status codes with proxy error pages. Axum returns `500 Internal Server Error` on connection pool exhaustion (>4.5s) so that Telegram Bot API gateways retry update delivery automatically.
+
 ## Environment Variables
 
 | Variable | Description | Example |

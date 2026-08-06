@@ -1,6 +1,16 @@
-# Future POS Terminal Enhancements (ForceReply UX & WASM Solana Actions)
+# Future POS Terminal Enhancements & Completed Roadmap
 
-This document outlines the architecture, implementation specifications, and verification strategy for future enhancements to the **ZeroClaw Solana POS Agent** project.
+This document tracks completed enhancements and future architecture specifications for the **ZeroClaw Solana POS Agent** project.
+
+---
+
+## ✅ Completed Enhancements (v1.0.0 Production Release)
+
+- **[COMPLETED] Zero-Data-Loss Webhook Ingestion (`webhook_db.rs`)**: Synchronous WAL insertion with a 4.5s connection pool acquire timeout returning HTTP 500 status codes for gateway retries.
+- **[COMPLETED] Keyed Rate Limiter GC & Monotonic Pause Timer (`rate_limiter.rs`)**: Periodic 10-minute `retain_recent_keys()` memory cleanup pass and monotonic `tokio::time::Instant` HTTP 429 global pause timer with auto-reset guard.
+- **[COMPLETED] Stateless Supergroup Admin Mode (`admin_session.rs`)**: Anonymous admin posts (`from` missing) and linked channel forwards execute in Stateless One-Shot Mode (`user_id = 0`) to prevent FSM cross-contamination while preserving `from.id` authorization for callback queries.
+- **[COMPLETED] Bounded Poller Execution & DLQ Backoff (`polling.rs`)**: Wrapped update tasks in 30-second timeouts with 3 exponential backoff retries on transient DB errors.
+- **[COMPLETED] Fast-Track Callback Query Acknowledgment (`callbacks.rs`)**: Immediate `answerCallbackQuery` execution prior to SQLite locks, eliminating `query is too old` client timeouts.
 
 ---
 
