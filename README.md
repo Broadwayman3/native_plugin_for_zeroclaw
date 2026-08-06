@@ -72,8 +72,8 @@
 |-----------|------|-------------|
 | WASM Plugin | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate → `wasm32-wasip2` via WIT |
 | Core Logic | [`pos-core-logic`](./plugins/solana-pos-core/pos-core-logic) | Shared business logic |
-| REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server, SQLite, domain logic |
-| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook queue worker, Long Polling, FSM |
+| REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (13 REST API routes), SQLite WAL, domain logic |
+| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook queue worker, Long Polling, FSM, $O(1)$ LRU cache (`lang_cache.rs`) |
 | Skills | [`skills/`](./skills) | LLM skill definitions (Solana Pay, Nonce, PIX, etc.) |
 | SOPs | [`sops/`](./sops) | Standard Operating Procedures (JSON) |
 | WIT Interface | [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) | WASI Component Model contract |
@@ -83,8 +83,8 @@
 | Document | Description |
 |----------|-------------|
 | [Architecture](./docs/ARCHITECTURE.md) | Crate structure, WIT ABI, data flow |
-| [API Reference](./docs/API.md) | REST API & Webhook specification |
-| [Security](./docs/SECURITY.md) | Threat model, defense matrix |
+| [API Reference](./docs/API.md) | 13 REST API routes & Webhook specification |
+| [Security](./docs/SECURITY.md) | Threat model, defense matrix, DLQ mechanics |
 | [Database](./docs/DATABASE.md) | Schema, migrations, pragmas |
 | [Deployment](./docs/DEPLOYMENT.md) | Docker, local dev, env vars |
 | [Testing](./docs/TESTING.md) | Test strategy, module breakdown |

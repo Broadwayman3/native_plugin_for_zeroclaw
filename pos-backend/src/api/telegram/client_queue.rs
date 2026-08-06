@@ -137,15 +137,16 @@ impl OutboundQueueManager {
                     }
                     Ok(None) => break, // Channel closed
                     Err(_) => {
-                        // 15-minute idle timeout hit: acquire lock BEFORE cleanup
+                        // 15-minute idle timeout hit: remove tx from map under lock first
                         if let Some(map_arc) = senders_weak.upgrade() {
                             let mut map = map_arc.lock().unwrap_or_else(|e| e.into_inner());
-                            if let Some(sender) = map.get(&chat_id) {
-                                if sender.is_closed() || rx.is_closed() {
-                                    map.remove(&chat_id);
-                                }
-                            } else {
-                                map.remove(&chat_id);
+                            map.remove(&chat_id);
+                        }
+                        // Drain any remaining messages that arrived right before removal
+                        while let Ok(task) = rx.try_recv() {
+                            let res = execute_task_direct(&client, task.payload).await;
+                            if let Some(responder) = task.responder {
+                                let _ = responder.send(res);
                             }
                         }
                         break;

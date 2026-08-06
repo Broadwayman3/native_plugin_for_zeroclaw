@@ -2,10 +2,16 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::Mutex as AsyncMutex;
 
-/// Safe per-chat ordering concurrency manager using Weak references.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum LockKey {
+    UserSession(i64, i64),
+    Invoice(String),
+}
+
+/// Safe per-session or per-invoice concurrency manager using Weak references.
 #[derive(Clone, Default)]
 pub struct ChatLocksManager {
-    locks: Arc<Mutex<HashMap<i64, Weak<AsyncMutex<()>>>>>,
+    locks: Arc<Mutex<HashMap<LockKey, Weak<AsyncMutex<()>>>>>,
 }
 
 impl ChatLocksManager {
@@ -15,10 +21,23 @@ impl ChatLocksManager {
         }
     }
 
-    /// Gets existing lock or creates a new AsyncMutex for chat_id.
-    /// Weak references eliminate GC race conditions across concurrent tasks.
-    pub fn get_or_create(&self, chat_id: i64, _user_id: i64) -> Arc<AsyncMutex<()>> {
-        let key = chat_id;
+    /// Gets existing lock or creates a new AsyncMutex for (chat_id, user_id).
+    /// For group chats (chat_id < 0), key is (chat_id, user_id). For private chats, user_id == chat_id.
+    pub fn get_or_create(&self, chat_id: i64, user_id: i64) -> Arc<AsyncMutex<()>> {
+        let key = if chat_id < 0 && user_id != 0 {
+            LockKey::UserSession(chat_id, user_id)
+        } else {
+            LockKey::UserSession(chat_id, chat_id)
+        };
+        self.get_or_create_key(key)
+    }
+
+    /// Gets or creates an AsyncMutex lock by invoice_id.
+    pub fn get_or_create_by_invoice(&self, invoice_id: &str) -> Arc<AsyncMutex<()>> {
+        self.get_or_create_key(LockKey::Invoice(invoice_id.to_string()))
+    }
+
+    fn get_or_create_key(&self, key: LockKey) -> Arc<AsyncMutex<()>> {
         let mut map = self.locks.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(weak) = map.get(&key) {
             if let Some(strong) = weak.upgrade() {

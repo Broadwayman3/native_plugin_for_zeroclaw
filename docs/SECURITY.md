@@ -16,7 +16,7 @@
 | Context Flooder | Flood LLM context window | Context truncator: caps payload size (<150 tokens) | Mitigated |
 | Webhook DoS Attacker | Huge body / memory exhaustion | Webhook Body Limit: strict 64 KB request body size cap | Mitigated |
 | Secret Token Spoofer | Fake Telegram webhook POSTs | Constant-time token comparison (`constant_time_eq`) on `X-Telegram-Bot-Api-Secret-Token` | Mitigated |
-| Webhook Outage | Webhook endpoint disruption | Circuit Breaker: automatic failover to Long Polling after 3 consecutive failures | Mitigated |
+| Webhook Failure | Webhook processing disruption | Dead-Letter Queue (DLQ): update moved to failed_updates after 3 consecutive retries | Mitigated |
 
 ## Custody Architecture
 
@@ -40,13 +40,19 @@ All payment confirmations are verified against three conditions:
 - Loopback: `localhost`, `::1`
 - IPv6 reserved: `fe80::/10`, `fc00::/7`, `2001:db8::/32`
 
-## Input Sanitization
+## Dead-Letter Queue (DLQ) & Failure Handling
 
-All external input (customer names, memos, merchant tags) is sanitized via:
-- Control character stripping (`\x00-\x1f`)
-- Prompt injection pattern detection
-- Zero-width Unicode character removal
-- NFKC normalization (not NFC)
+When processing incoming webhook updates from SQLite FIFO queue (`pending_webhook_updates`):
+1. Updates are attempted up to **3 times** with exponential retry delay.
+2. If processing fails 3 consecutive times, the update is moved to the **`failed_updates`** table (Dead-Letter Queue).
+3. A sanitized notification is dispatched to the user/chat to inform them of the processing error.
+
+## Telegram Defense Matrix
+
+1. **Input Sanitization (`sanitize_external_input`)**: All incoming Telegram user text undergoes NFKC normalization, Cyrillic homoglyph stripping, zero-width space removal, and prompt-injection regex scrubbing.
+2. **MarkdownV2 Escaping (`escape_telegram_markdown_v2`)**: All outgoing response text is escaped against MarkdownV2 reserved characters (`_`, `*`, `[`, `]`, `(`, `)`, `~`, `` ` ``, `>`, `#`, `+`, `-`, `=`, `|`, `{`, `}`, `.`, `!`) to prevent formatting syntax injection into Telegram client UI.
+3. **Invoice Lock Isolation (`extract_invoice_id`)**: Extracting `INV-` tokens from callback queries or commands routes synchronization through `LockKey::Invoice(invoice_id)`, preventing group chat session deadlocks when multiple users interact with a shared invoice.
+4. **Per-Chat Rate Limiting**: Outbound Telegram requests use sliding-window rate limiting (`Priority::Normal`) to ensure compliance with Telegram Bot API HTTP 429 limits.
 
 ## Security Audit Results
 

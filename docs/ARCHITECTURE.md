@@ -48,16 +48,17 @@ pos-backend/src/
 │   ├── sales.rs         # Sales summary
 │   ├── x402.rs          # x402 machine commerce
 │   └── telegram/        # Telegram Bot API integration & listener
-│       ├── mod.rs       # Telegram module exports & update processor
-│       ├── lifecycle.rs # Service spawner & graceful shutdown handles
-│       ├── polling.rs   # Long Polling loop worker with ACK safety
-│       ├── webhook.rs   # Webhook endpoint POST handler (64KB cap)
-│       ├── webhook_worker.rs # Webhook FIFO queue background worker
+│       ├── mod.rs       # Telegram module exports, update processor & extract_invoice_id
+│       ├── lifecycle.rs # Service spawner & graceful child_token shutdown handles
+│       ├── polling.rs   # Long Polling loop worker with monotonic AtomicI64 offset
+│       ├── webhook.rs   # Webhook POST handler with post-COMMIT Notify triggering
+│       ├── webhook_worker.rs # Webhook FIFO queue worker with Semaphore(50) backpressure
+│       ├── lang_cache.rs # Thread-safe O(1) lru::LruCache for user language preferences
 │       ├── verifier.rs  # Solana RPC invoice payment verifier loop
-│       ├── locks.rs     # ChatLocksManager & InFlightTracker
+│       ├── locks.rs     # ChatLocksManager (LockKey::UserSession & LockKey::Invoice)
 │       ├── fsm_store.rs # Persistent Telegram FSM DAO
 │       ├── client.rs    # Reqwest Telegram API client & helpers
-│       ├── client_queue.rs # Rate-limited outbound message queue
+│       ├── client_queue.rs # Rate-limited outbound message queue actor
 │       ├── handlers/    # Telegram command & callback query handlers
 │       ├── orders.rs    # POS text order parsing & receipt builder
 │       ├── qr.rs        # Inline QR code receipt builder

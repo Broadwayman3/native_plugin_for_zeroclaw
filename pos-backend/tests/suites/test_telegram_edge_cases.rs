@@ -189,3 +189,35 @@ fn test_385_order_parser_decimal_comma() {
         "385: comma list text must remain intact"
     );
 }
+
+#[tokio::test]
+async fn test_386_invoice_lock_routing() {
+    let locks_mgr = pos_backend::api::telegram::locks::ChatLocksManager::new();
+    let inv_lock1 = locks_mgr.get_or_create_by_invoice("INV-TEST-386");
+    let inv_lock2 = locks_mgr.get_or_create_by_invoice("INV-TEST-386");
+
+    assert!(
+        std::sync::Arc::ptr_eq(&inv_lock1, &inv_lock2),
+        "386: same invoice ID should yield identical AsyncMutex lock handle"
+    );
+}
+
+#[test]
+fn test_387_lang_cache_lru_eviction() {
+    let cache = pos_backend::api::telegram::lang_cache::LangCache::new(2);
+    cache.put(101, "en".to_string());
+    cache.put(102, "uk".to_string());
+
+    assert_eq!(cache.get(101).as_deref(), Some("en"));
+    assert_eq!(cache.get(102).as_deref(), Some("uk"));
+
+    // Put third item, evicting 101 as 102 was recently accessed
+    cache.put(103, "de".to_string());
+    assert_eq!(cache.get(103).as_deref(), Some("de"));
+    assert_eq!(cache.get(102).as_deref(), Some("uk"));
+    assert_eq!(
+        cache.get(101),
+        None,
+        "387: entry 101 should be evicted by LRU capacity"
+    );
+}

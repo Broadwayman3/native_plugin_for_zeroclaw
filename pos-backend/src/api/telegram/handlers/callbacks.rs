@@ -1,5 +1,4 @@
-use crate::api::telegram::client::{send_telegram_request, send_telegram_request_with_priority};
-use crate::api::telegram::client_queue::Priority;
+use crate::api::telegram::client::send_telegram_request;
 use crate::api::telegram::handlers::refund::is_manager_authorized;
 use crate::api::telegram::state::set_user_lang;
 use crate::config::AppConfig;
@@ -26,11 +25,10 @@ pub async fn handle_callback_query(
     if sanitized_data.starts_with("cancel_") {
         if let Err(err_msg) = is_manager_authorized(config, user_id) {
             let answer = build_answer_callback_payload(cb_id, err_msg, true);
-            let _ = send_telegram_request_with_priority(
+            let _ = send_telegram_request(
                 client,
                 &format!("{}/answerCallbackQuery", base_url),
                 &answer,
-                Priority::High,
             )
             .await;
             return Ok(());
@@ -73,11 +71,10 @@ pub async fn handle_callback_query(
         };
 
         let answer = build_answer_callback_payload(cb_id, toast_text, false);
-        if let Err(e) = send_telegram_request_with_priority(
+        if let Err(e) = send_telegram_request(
             client,
             &format!("{}/answerCallbackQuery", base_url),
             &answer,
-            Priority::High,
         )
         .await
         {
@@ -110,11 +107,10 @@ pub async fn handle_callback_query(
             &format!("Language set to {}", lang_code.to_uppercase()),
             false,
         );
-        if let Err(e) = send_telegram_request_with_priority(
+        if let Err(e) = send_telegram_request(
             client,
             &format!("{}/answerCallbackQuery", base_url),
             &answer,
-            Priority::High,
         )
         .await
         {
@@ -134,11 +130,10 @@ pub async fn handle_callback_query(
         }
     } else {
         let answer = build_answer_callback_payload(cb_id, "OK", false);
-        if let Err(e) = send_telegram_request_with_priority(
+        if let Err(e) = send_telegram_request(
             client,
             &format!("{}/answerCallbackQuery", base_url),
             &answer,
-            Priority::High,
         )
         .await
         {

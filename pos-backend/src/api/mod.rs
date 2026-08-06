@@ -28,6 +28,7 @@ pub struct AppState {
     pub in_flight: telegram::locks::InFlightTracker,
     pub db_pool: Option<crate::db::DbPool>,
     pub outbound_queue: telegram::client::TelegramOutboundQueue,
+    pub webhook_notify: Arc<tokio::sync::Notify>,
 }
 
 /// Builds the Axum router with all routes and middleware.
@@ -46,6 +47,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
     };
     let chat_locks = telegram::locks::ChatLocksManager::new();
     let in_flight = telegram::locks::InFlightTracker::new();
+    let webhook_notify = Arc::new(tokio::sync::Notify::new());
 
     let state = AppState {
         config: Arc::new(config.clone()),
@@ -55,6 +57,7 @@ pub async fn build_router(config: &AppConfig) -> Router {
         in_flight,
         db_pool,
         outbound_queue,
+        webhook_notify,
     };
 
     // CORS configuration matching Python's router.py

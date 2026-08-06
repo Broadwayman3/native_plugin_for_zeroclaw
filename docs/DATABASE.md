@@ -20,10 +20,13 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 | `pix_payload` | TEXT | |
 | `tax_rate_pct` | REAL | DEFAULT 0.0 |
 | `items_breakdown` | TEXT | |
+| `telegram_chat_id` | INTEGER | |
+| `telegram_msg_id` | INTEGER | |
+| `telegram_expired_notified` | INTEGER | DEFAULT 0 |
 | `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 
-**Status values**: `pending`, `paid`, `cancelled`, `partially_paid`
+**Status values**: `pending`, `paid`, `cancelled`, `partially_paid`, `expired`
 
 **Indexes**: `idx_invoices_tx_sig` on `tx_signature` WHERE `tx_signature IS NOT NULL` (partial unique)
 
@@ -84,6 +87,11 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 |--------|------|-------------|
 | `key` | TEXT | PRIMARY KEY |
 | `value` | TEXT | NOT NULL |
+
+**Key Entries**:
+- `telegram_update_offset`: Last processed Telegram update_id (persisted with `IN_MEMORY_OFFSET` atomic coordination).
+- `lang_{chat_id}`: Language code preference per chat_id (e.g. `lang_123456` = `"uk"`), backed by $O(1)$ LRU cache.
+- `quick_receipt_amount` & `quick_receipt_currency`: Quick receipt POS defaults.
 
 ### squads_proposals
 

@@ -5,6 +5,7 @@ pub mod events;
 pub mod fsm;
 pub mod fsm_store;
 pub mod handlers;
+pub mod lang_cache;
 pub mod lifecycle;
 pub mod locks;
 pub mod orders;
@@ -21,6 +22,32 @@ use locks::ChatLocksManager;
 
 pub type ChatLocks = locks::ChatLocksManager;
 pub use lifecycle::{start_telegram_services, TelegramServicesHandles};
+
+/// Flexible helper to extract invoice ID (token starting with INV-) from any message or callback query payload.
+pub fn extract_invoice_id(update: &serde_json::Value) -> Option<String> {
+    let raw_str = update
+        .get("callback_query")
+        .and_then(|cb| cb.get("data"))
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            update
+                .get("message")
+                .and_then(|m| m.get("text"))
+                .and_then(|v| v.as_str())
+        })?;
+
+    if let Some(idx) = raw_str.find("INV-") {
+        let candidate = &raw_str[idx..];
+        let end = candidate
+            .find(|c: char| !c.is_alphanumeric() && c != '-' && c != '_')
+            .unwrap_or(candidate.len());
+        let token = &candidate[..end];
+        if token.len() > 4 {
+            return Some(token.to_string());
+        }
+    }
+    None
+}
 
 /// Helper function to process a single Telegram update with per-(chat_id, user_id) locking & async SQLite registration.
 #[allow(clippy::too_many_arguments)]
@@ -64,7 +91,13 @@ pub async fn process_single_update(
         (None, 0)
     };
 
-    let dispatch_res = if let Some(target_chat_id) = chat_id {
+    let invoice_id = extract_invoice_id(update);
+
+    let dispatch_res = if let Some(ref inv_id) = invoice_id {
+        let inv_lock = chat_locks.get_or_create_by_invoice(inv_id);
+        let _guard = inv_lock.lock().await;
+        dispatch_update_content(client, base_url, config, fsm, update).await
+    } else if let Some(target_chat_id) = chat_id {
         let chat_lock = chat_locks.get_or_create(target_chat_id, user_id);
         let _guard = chat_lock.lock().await;
         dispatch_update_content(client, base_url, config, fsm, update).await

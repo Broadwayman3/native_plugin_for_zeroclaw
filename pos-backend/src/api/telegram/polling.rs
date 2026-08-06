@@ -236,13 +236,20 @@ pub fn start_poller_worker(
 
                                     offset = min_failed_offset.unwrap_or(next_offset);
 
-                                    // Persist update offset to SQLite via spawn_blocking
+                                    // Update offset monotonically in memory with zero disk I/O latency
+                                    super::state::set_update_offset_memory(offset);
+
+                                    // Periodic flush to SQLite every 50 batch cycles
                                     let db_path_persist = config.db_path.clone();
                                     let current_offset = offset;
-                                    let _ = tokio::task::spawn_blocking(move || {
-                                        super::state::set_update_offset(&db_path_persist, current_offset);
-                                    })
-                                    .await;
+                                    if current_offset % 50 == 0 {
+                                        tokio::spawn(async move {
+                                            let _ = tokio::task::spawn_blocking(move || {
+                                                super::state::set_update_offset(&db_path_persist, current_offset);
+                                            })
+                                            .await;
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -254,5 +261,11 @@ pub fn start_poller_worker(
                 }
             }
         }
+
+        let db_path_flush = config.db_path.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            super::state::flush_offset_to_db(&db_path_flush);
+        })
+        .await;
     })
 }

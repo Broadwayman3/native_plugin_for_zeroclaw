@@ -50,7 +50,7 @@ cd plugins/solana-pos-core && cargo test --lib --release
 | `test_database.rs` | 20 | Invoice CRUD, status transitions, cleanup |
 | `test_zeroclaw_integration.rs` | 18 | End-to-end ZeroClaw agent integration |
 | `test_telegram_final.rs` | 14 | SQLite update deduplication, atomic cancellation, offset persistence |
-| `test_telegram_edge_cases.rs` | 12 | Idempotent invoice cancellation, paid status conflicts |
+| `test_telegram_edge_cases.rs` | 14 | Invoice lock routing (`test_386`), $O(1)$ LRU eviction (`test_387`), idempotent invoice cancellation |
 | `test_verification.rs` | 10 | Triple Payment Verification engine |
 | `test_price_feed.rs` | 10 | Fiat rate fallback, circuit breaker |
 | `test_pix_brl.rs` | 10 | PIX QR CRC16 checksum validation |

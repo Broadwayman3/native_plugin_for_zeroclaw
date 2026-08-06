@@ -1,157 +1,260 @@
-# REST API & Webhook Reference
+# REST API & Webhook Specification
 
 Base URL: `http://localhost:8080`
 
-## Endpoints
+Total Endpoints: **13 REST API routes**
 
-### Telegram Webhook
+---
 
-#### Receive Update (POST)
+## 1. System & Health
 
+### Health Check (GET)
+```http
+GET /healthz
 ```
+- **Description**: Lightweight health check endpoint for container orchestrators (Kubernetes / Docker).
+- **Response**: `200 OK`
+
+### Get Settings (GET)
+```http
+GET /api/v1/settings
+```
+- **Description**: Returns current merchant configuration, quick receipt defaults, and accepted currency.
+- **Response**:
+```json
+{
+  "quick_receipt_amount": 200.0,
+  "quick_receipt_currency": "UAH",
+  "merchant_wallet_pubkey": "8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s"
+}
+```
+
+### Update Settings (POST) - Manager Auth
+```http
+POST /api/v1/settings/update
+```
+- **Description**: Updates quick receipt configuration. Requires `X-Telegram-User-Id` matching `MANAGER_TELEGRAM_ID`.
+- **Request Payload**:
+```json
+{
+  "quick_receipt_amount": 250.0,
+  "quick_receipt_currency": "UAH"
+}
+```
+- **Response**: `200 OK`
+
+---
+
+## 2. Telegram Webhook
+
+### Receive Webhook Update (POST)
+```http
 POST /api/v1/telegram/webhook
 ```
-
-Enqueues incoming Telegram updates into SQLite FIFO processing queue.
-- **Header**: `X-Telegram-Bot-Api-Secret-Token` (validated via constant-time comparison `constant_time_eq`)
-- **Body Limit**: 64 KB maximum request payload (requests exceeding 64 KB return HTTP 400)
-- **Response**: Always returns `HTTP 200 OK` for valid secret tokens to prevent Telegram API disabling webhooks.
-
----
-
-### Actions / Blinks
-
-#### Get Actions Spec
-
-```
-GET /actions.json
-```
-
-Returns Solana Actions/Blinks discovery spec.
-
-#### Pay Invoice (GET)
-
-```
-GET /api/v1/actions/pay_invoice
-```
-
-Returns Blink action card (invoice details).
-
-#### Pay Invoice (POST)
-
-```
-POST /api/v1/actions/pay_invoice
-```
-
-Processes Blink action payment transaction.
+- **Headers**: `X-Telegram-Bot-Api-Secret-Token: <token>` (validated via constant-time string comparison)
+- **Body Limit**: 64 KB maximum payload limit
+- **Description**: Enqueues incoming Telegram update into SQLite queue and triggers async `Notify` wakeup.
+- **Response**: `200 OK`
 
 ---
 
-### Sales
+## 3. Invoices
 
-#### Sales Summary
-
+### List Invoices (GET)
+```http
+GET /api/v1/invoices?id=INV-a6f49762&status=pending
 ```
+- **Query Params**: `id` (optional), `status` (optional: `pending`, `paid`, `cancelled`, `expired`)
+- **Response**:
+```json
+[
+  {
+    "id": "INV-a6f49762",
+    "reference_pubkey": "RefKey1111111111111111111111111111111111111",
+    "fiat_currency": "USD",
+    "fiat_amount": 10.0,
+    "usdc_amount": 10.0,
+    "status": "pending",
+    "tx_signature": null,
+    "created_at": "2026-08-06T19:00:00Z"
+  }
+]
+```
+
+### Create Invoice (POST)
+```http
+POST /api/v1/invoices/create
+```
+- **Request Payload**:
+```json
+{
+  "id": "INV-a6f49762",
+  "reference_pubkey": "RefKey1111111111111111111111111111111111111",
+  "fiat_currency": "USD",
+  "fiat_amount": 10.0,
+  "usdc_amount": 10.0,
+  "telegram_chat_id": 123456789,
+  "telegram_msg_id": 42
+}
+```
+- **Response**:
+```json
+{
+  "id": "INV-a6f49762",
+  "status": "pending",
+  "solana_pay_url": "solana:8xAZnR2pMQR3Qv5xK8c7mQ11rF4eG7hJ9kL2nP4s?amount=10.00&spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&reference=RefKey1111111111111111111111111111111111111"
+}
+```
+
+### Update Invoice Status (POST)
+```http
+POST /api/v1/invoices/update_status
+```
+- **Description**: Atomically transitions invoice status using `UPDATE invoices SET status=? WHERE id=? AND status='pending'`.
+- **Request Payload**:
+```json
+{
+  "id": "INV-a6f49762",
+  "status": "paid",
+  "tx_signature": "5K8c7mQ11rF4eG7hJ9kL2nP4s..."
+}
+```
+- **Response**: `200 OK`
+
+### Cancel Invoice (POST)
+```http
+POST /api/v1/invoices/cancel
+```
+- **Request Payload**:
+```json
+{
+  "id": "INV-a6f49762"
+}
+```
+- **Response**: `200 OK`
+
+### Verify Transaction (POST)
+```http
+POST /api/v1/invoices/verify-transaction
+```
+- **Description**: Runs Triple Payment Verification against Solana RPC transaction meta.
+- **Request Payload**:
+```json
+{
+  "invoice_id": "INV-a6f49762",
+  "transaction_meta": { ... }
+}
+```
+- **Response**:
+```json
+{
+  "is_valid": true,
+  "verified_amount": 10.0
+}
+```
+
+---
+
+## 4. Refund & Governance (Manager Auth)
+
+### Approve Refund (POST)
+```http
+POST /api/v1/refund/approve
+```
+- **Headers**: `X-Telegram-User-Id: <manager_id>`
+- **Request Payload**:
+```json
+{
+  "invoice_id": "INV-a6f49762",
+  "amount_usdc": 10.0
+}
+```
+
+### Reject Refund (POST)
+```http
+POST /api/v1/refund/reject
+```
+- **Headers**: `X-Telegram-User-Id: <manager_id>`
+- **Request Payload**:
+```json
+{
+  "invoice_id": "INV-a6f49762",
+  "reason": "Customer request expired"
+}
+```
+
+---
+
+## 5. Nonce Pool
+
+### Allocate Nonce (POST)
+```http
+POST /api/v1/nonce/allocate
+```
+- **Description**: Atomically allocates a free durable nonce account for transaction building.
+- **Response**:
+```json
+{
+  "pubkey": "NoncePubkey11111111111111111111111111111111"
+}
+```
+
+### Release Nonce (POST)
+```http
+POST /api/v1/nonce/release
+```
+- **Request Payload**:
+```json
+{
+  "pubkey": "NoncePubkey11111111111111111111111111111111"
+}
+```
+
+### Sync Nonce Pool (POST)
+```http
+POST /api/v1/nonce/sync
+```
+- **Description**: Refreshes nonce account states and releases stale locks.
+
+---
+
+## 6. POS Order Creation & Sales
+
+### Create POS Order (POST)
+```http
+POST /api/v1/pos/create-order
+```
+- **Request Payload**:
+```json
+{
+  "chat_id": 123456789,
+  "raw_text": "2x Cappuccino 200 UAH"
+}
+```
+
+### Sales Summary (GET)
+```http
 GET /api/v1/sales/summary
 ```
 
-Returns aggregated sales metrics with daily revenue.
-
-#### Premium Analytics (x402)
-
-```
+### Premium Analytics (GET) - x402 Gated
+```http
 GET /api/v1/sales/premium_analytics
 ```
-
-Payment-gated premium analytics (x402 Machine Commerce). Returns HTTP 402 if payment not provided.
-
----
-
-### Invoices
-
-#### List Invoices
-
-```
-GET /api/v1/invoices?id=<invoice_id>&status=<status>
-```
-
-Filter by `id` or `status` query parameters.
-
-#### Create Invoice
-
-```
-POST /api/v1/invoices/create
-```
-
-Creates a new pending invoice. Returns invoice details with Solana Pay URL.
-
-#### Update Invoice Status
-
-```
-POST /api/v1/invoices/update_status
-```
-
-Atomically updates invoice status. Uses `UPDATE ... WHERE status = 'pending'` to prevent race conditions.
-
-#### Cancel Invoice
-
-```
-POST /api/v1/invoices/cancel
-```
-
-Cancels/voids a pending invoice.
+- **Headers**: `X-ACCEPT-PAYMENT: <tx_signature>`
+- **Response**: `402 Payment Required` if header missing, or `200 OK` with analytics payload.
 
 ---
 
-### Nonce Pool
+## 7. Solana Actions / Blinks
 
-#### Allocate Nonce
-
-```
-POST /api/v1/nonce/allocate
-```
-
-Allocates a free durable nonce account from the pool. Returns HTTP 503 if pool exhausted.
-
-#### Release Nonce
-
-```
-POST /api/v1/nonce/release
+### Actions Discovery Spec (GET)
+```http
+GET /actions.json
 ```
 
-Releases a locked nonce account back to the pool.
-
----
-
-### POS Flow
-
-#### Create Order
-
+### Pay Invoice Action (GET & POST)
+```http
+GET /api/v1/actions/pay_invoice
+POST /api/v1/actions/pay_invoice
 ```
-POST /api/v1/pos/create-order
-```
-
-Creates an order from parsed POS text input (replaces Telegram text message handler).
-
----
-
-## Middleware
-
-- **CORS**: Origin `Any`, methods GET/POST/PUT/DELETE/OPTIONS
-- **Rate Limiting**: Sliding window rate limiter (`RateLimiter`), returns HTTP 429 on burst limit violations
-- **Payload Limit**: 1MB maximum request body (64 KB for Telegram Webhook)
-- **Headers**: Content-Type, Authorization, X-ACCEPT-PAYMENT, X-Telegram-Bot-Api-Secret-Token, Content-Encoding, Accept-Encoding
-
-## Error Responses
-
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 400 | Bad Request (invalid input or payload size violation) |
-| 401 | Unauthorized (invalid Telegram webhook secret token) |
-| 402 | Payment Required (x402) |
-| 404 | Not Found |
-| 409 | Conflict (invoice already exists) |
-| 429 | Too Many Requests (rate limit exceeded) |
-| 500 | Internal Server Error |
-| 503 | Service Unavailable (nonce pool exhausted) |

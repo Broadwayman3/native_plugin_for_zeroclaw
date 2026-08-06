@@ -176,6 +176,8 @@ pub async fn handle_telegram_webhook(
 
     if let Err(ref e) = enqueue_res {
         tracing::error!(update_id = update_id, error = %e, "Failed to enqueue webhook update to SQLite");
+    } else if let Ok(true) = enqueue_res {
+        state.webhook_notify.notify_one();
     }
 
     StatusCode::OK

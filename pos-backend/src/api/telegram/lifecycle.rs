@@ -41,6 +41,7 @@ pub fn start_telegram_services(
         return None;
     }
 
+    let webhook_notify = Arc::new(tokio::sync::Notify::new());
     let verifier_handle = verifier::start_verifier_worker(config.clone(), cancel_token.clone());
 
     let fsm_store = if let Some(ref pool) = db_pool {
@@ -57,12 +58,13 @@ pub fn start_telegram_services(
         chat_locks.clone(),
         in_flight.clone(),
         db_pool.clone(),
+        webhook_notify.clone(),
         cancel_token.clone(),
     );
 
     let poller_config = config.clone();
     let poller_pool = db_pool.clone();
-    let poller_cancel_token = cancel_token.clone();
+    let parent_cancel_token = cancel_token.clone();
 
     let listener_handle = tokio::spawn(async move {
         if let Some(ref webhook_url) = poller_config.telegram_webhook_url {
@@ -78,13 +80,14 @@ pub fn start_telegram_services(
                         cooldown_secs = cooldown_until - now,
                         "Webhook circuit breaker active (cooldown). Falling back to Long Polling directly."
                     );
+                    let poller_cancel = parent_cancel_token.child_token();
                     let poller_h = polling::start_poller_worker(
                         poller_config,
                         fsm_store,
                         chat_locks,
                         in_flight.clone(),
                         poller_pool,
-                        poller_cancel_token,
+                        poller_cancel,
                     );
                     let _ = poller_h.await;
                     return;
@@ -98,6 +101,7 @@ pub fn start_telegram_services(
                         "Failed to register Telegram Webhook"
                     );
 
+                    let poller_cancel = parent_cancel_token.child_token();
                     if failures >= MAX_WEBHOOK_FAILURES {
                         let cooldown = now + WEBHOOK_COOLDOWN_SECS;
                         WEBHOOK_COOLDOWN_UNTIL.store(cooldown, Ordering::SeqCst);
@@ -107,7 +111,7 @@ pub fn start_telegram_services(
                         );
 
                         let recovery_config = poller_config.clone();
-                        let recovery_cancel_token = poller_cancel_token.clone();
+                        let recovery_poller_cancel = poller_cancel.clone();
                         tokio::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_secs(
                                 WEBHOOK_COOLDOWN_SECS,
@@ -119,7 +123,7 @@ pub fn start_telegram_services(
                             {
                                 FAILED_WEBHOOK_ATTEMPTS.store(0, Ordering::SeqCst);
                                 WEBHOOK_COOLDOWN_UNTIL.store(0, Ordering::SeqCst);
-                                recovery_cancel_token.cancel();
+                                recovery_poller_cancel.cancel();
                                 tracing::info!("Webhook registration recovered successfully! Webhook mode restored.");
                             } else {
                                 tracing::warn!("Webhook recovery re-attempt failed. Remaining in Polling mode.");
@@ -132,7 +136,7 @@ pub fn start_telegram_services(
                         chat_locks,
                         in_flight.clone(),
                         poller_pool,
-                        poller_cancel_token,
+                        poller_cancel,
                     );
                     let _ = poller_h.await;
                     return;
@@ -144,13 +148,14 @@ pub fn start_telegram_services(
             }
         }
 
+        let poller_cancel = parent_cancel_token.child_token();
         let poller_h = polling::start_poller_worker(
             poller_config,
             fsm_store,
             chat_locks,
             in_flight.clone(),
             poller_pool,
-            poller_cancel_token,
+            poller_cancel,
         );
         let _ = poller_h.await;
     });
