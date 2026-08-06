@@ -25,6 +25,7 @@ fn test_config(guard: &TempDbGuard) -> AppConfig {
         quick_receipt_amount: 200.0,
         quick_receipt_currency: "UAH".into(),
         allow_local_rpc: false,
+        stale_update_ttl_secs: 300,
     }
 }
 

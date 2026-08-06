@@ -1,5 +1,23 @@
 use crate::db;
 use deadpool_sqlite::Pool;
+use once_cell::sync::Lazy;
+use std::collections::HashSet;
+use std::sync::Mutex;
+
+static IDEMPOTENCY_CACHE: Lazy<Mutex<HashSet<i64>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+pub fn is_cached_processed(update_id: i64) -> bool {
+    let cache = IDEMPOTENCY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    cache.contains(&update_id)
+}
+
+pub fn mark_cached_processed(update_id: i64) {
+    let mut cache = IDEMPOTENCY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if cache.len() > 10000 {
+        cache.clear();
+    }
+    cache.insert(update_id);
+}
 
 /// Enqueues an incoming webhook update payload to SQLite with deadline fallback support.
 pub async fn enqueue_update_payload(
@@ -9,9 +27,12 @@ pub async fn enqueue_update_payload(
     chat_id: Option<i64>,
     payload_str: &str,
 ) -> Result<bool, String> {
+    if is_cached_processed(update_id) {
+        return Ok(false);
+    }
+
     let p_str = payload_str.to_string();
-    if let Some(pool) = db_pool {
-        // Enforce 4500ms pool acquire timeout to return HTTP 500 fast before Telegram gateway timeout
+    let res = if let Some(pool) = db_pool {
         let conn_res =
             tokio::time::timeout(std::time::Duration::from_millis(4500), pool.get()).await;
 
@@ -34,7 +55,12 @@ pub async fn enqueue_update_payload(
         })
         .await
         .map_err(|e| format!("Spawn error: {}", e))?
+    };
+
+    if let Ok(true) = res {
+        mark_cached_processed(update_id);
     }
+    res
 }
 
 /// Marks a processed webhook update as completed in SQLite.
@@ -43,6 +69,8 @@ pub async fn mark_done(
     db_path: &str,
     update_id: i64,
 ) -> Result<(), String> {
+    mark_cached_processed(update_id);
+
     if let Some(pool) = db_pool {
         if let Ok(conn) = pool.get().await {
             let _ = conn
@@ -64,25 +92,36 @@ pub async fn mark_done(
 
 /// Checks if an update_id has already been processed in SQLite.
 pub async fn is_update_processed(db_pool: Option<&Pool>, db_path: &str, update_id: i64) -> bool {
-    if let Some(pool) = db_pool {
+    if is_cached_processed(update_id) {
+        return true;
+    }
+
+    let is_proc = if let Some(pool) = db_pool {
         if let Ok(conn) = pool.get().await {
             let res = conn
                 .interact(move |c| db::updates::is_processed(c, update_id).unwrap_or(false))
                 .await;
-            return res.unwrap_or(false);
-        }
-    }
-
-    let db_p = db_path.to_string();
-    tokio::task::spawn_blocking(move || {
-        if let Ok(conn) = db::get_db_connection(&db_p) {
-            db::updates::is_processed(&conn, update_id).unwrap_or(false)
+            res.unwrap_or(false)
         } else {
             false
         }
-    })
-    .await
-    .unwrap_or(false)
+    } else {
+        let db_p = db_path.to_string();
+        tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = db::get_db_connection(&db_p) {
+                db::updates::is_processed(&conn, update_id).unwrap_or(false)
+            } else {
+                false
+            }
+        })
+        .await
+        .unwrap_or(false)
+    };
+
+    if is_proc {
+        mark_cached_processed(update_id);
+    }
+    is_proc
 }
 
 /// Records a webhook update failure, scheduling exponential backoff retry or DLQ movement.

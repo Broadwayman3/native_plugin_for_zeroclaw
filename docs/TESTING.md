@@ -6,7 +6,7 @@ The project has **526 total tests** (487 in `pos-backend`, 31 in `pos-core-logic
 
 | Crate | Tests | Focus |
 |-------|-------|-------|
-| `pos-backend` | 481 + 6 proptest | REST API, DB, Telegram listener, FSM, i18n, security, edge cases |
+| `pos-backend` | 481 + 6 proptest | REST API, DB, Telegram listener, FSM, Low Watermark, Panic safety, i18n, security, edge cases |
 | `pos-core-logic` | 27 + 4 proptest | Shared business logic (Solana Pay, Squads, Token-2022) |
 | `solana-pos-core` | 5 + 3 proptest | WASM plugin unit tests |
 
@@ -43,20 +43,20 @@ cd plugins/solana-pos-core && cargo test --lib --release
 | `test_telegram_handlers.rs` | 38 | Telegram callback/text handler flows |
 | `test_edge_storage.rs` | 31 | SQLite WAL, concurrent writes, migrations |
 | `test_token2022.rs` | 30 | Token-2022 fee calculation, u128 precision |
-| `test_telegram_listener.rs` | 24 | Telegram listener, FIFO queue, FSM session persistence |
+| `test_telegram_listener.rs` | 24 | Telegram listener, Low Watermark offset, FSM session persistence |
 | `test_sanitizer.rs` | 22 | Input sanitization, SSRF, prompt injection, link-aware MarkdownV2 |
 | `test_solana_pay.rs` | 20 | Solana Pay URL generation, reference keys |
 | `test_nonce_pools.rs` | 20 | Nonce pool allocation, release, collision guards |
 | `test_database.rs` | 20 | Invoice CRUD, status transitions, cleanup |
 | `test_zeroclaw_integration.rs` | 18 | End-to-end ZeroClaw agent integration |
-| `test_telegram_final.rs` | 14 | SQLite update deduplication, atomic cancellation, offset persistence |
-| `test_telegram_edge_cases.rs` | 14 | Invoice lock routing (`test_386`), $O(1)$ LRU eviction (`test_387`), idempotent invoice cancellation |
+| `test_telegram_final.rs` | 14 | SQLite update deduplication, atomic cancellation, immediate offset persistence (`test_392`), deduplication (`test_393`) |
+| `test_telegram_edge_cases.rs` | 14 | Session lock routing (`test_386`), $O(1)$ LRU eviction (`test_387`), idempotent invoice cancellation |
+| `test_listener_vulnerabilities.rs` | 14 | Security, Low Watermark offset (`WatermarkTracker`), `inner_handle` JoinHandle panic isolation, Bounded MPSC queues (capacity 64), stale update TTL (`stale_update_ttl_secs`), edited message filtering, anonymous admin context, 429 pause |
 | `test_verification.rs` | 10 | Triple Payment Verification engine |
 | `test_price_feed.rs` | 10 | Fiat rate fallback, circuit breaker |
 | `test_pix_brl.rs` | 10 | PIX QR CRC16 checksum validation |
 | `test_i18n.rs` | 10 | i18n string translation, locale switching |
 | `test_api.rs` | 10 | REST API endpoint contract tests |
-| `test_listener_vulnerabilities.rs` | 12 | Telegram security, edited message filtering, anonymous admin context, 429 pause, DoS guards |
 | `test_security.rs` | 6 | API key redaction, secret masking |
 | `test_prompt_injection.rs` | 6 | Prompt injection defense tests |
 | `test_qa_red_team.rs` | 5 | Red team security audit |

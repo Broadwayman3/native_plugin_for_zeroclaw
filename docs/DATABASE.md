@@ -41,8 +41,8 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 | `attempts` | INTEGER | DEFAULT 0 |
 | `locked_at` | TIMESTAMP | |
 | `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
-| `next_retry_at` | TIMESTAMP | (migration) |
-| `retry_count` | INTEGER | DEFAULT 0 (migration) |
+| `next_retry_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
+| `retry_count` | INTEGER | DEFAULT 0 |
 
 **Status values**: `pending`, `processing`, `retry_pending`, `cancelled`
 
@@ -70,6 +70,8 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 
 **Status values**: `processed`, `retry_pending`, `failed`
 
+**In-Memory LRU Cache**: `UpdateIdempotencyCache` in `webhook_db.rs` wraps an in-memory thread-safe `LruCache<i64, ()>` (capacity 10,000). Updates are checked against the cache first. Upon successful DB commitment, `mark_cached_processed(update_id)` atomically inserts the ID into RAM, eliminating redundant SQLite queries.
+
 ### telegram_fsm_sessions
 
 | Column | Type | Constraints |
@@ -90,8 +92,8 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 | `value` | TEXT | NOT NULL |
 
 **Key Entries**:
-- `telegram_update_offset`: Last processed Telegram update_id (persisted with atomic coordination).
-- `lang_{chat_id}`: Language code preference per chat_id (e.g. `lang_123456` = `"uk"`), backed by $O(1)$ LRU cache.
+- `telegram_update_offset`: Last processed Telegram Low Watermark update_id (persisted with atomic memory + DB coordination).
+- `lang_{chat_id}`: Language code preference per chat_id (e.g. `lang_123456` = `"uk"`), backed by $O(1)$ LRU cache (`lang_cache.rs`).
 - `quick_receipt_amount` & `quick_receipt_currency`: Quick receipt POS defaults.
 
 ### squads_proposals
@@ -152,5 +154,5 @@ UPDATE invoices SET status = 'cancelled' WHERE id = ? AND status = 'pending'
 
 ## Offset & State Persistence
 
-- **Offset Storage**: Last processed Telegram update offset is persisted in SQLite `system_settings` table under `telegram_update_offset`.
+- **Offset Storage**: Last processed Telegram update Low Watermark offset is persisted in SQLite `system_settings` table under `telegram_update_offset` and synchronized in RAM.
 - **User Language Preference**: Chat language preferences are stored under key `lang_{chat_id}` in `system_settings`, backed by an in-memory thread-safe $O(1)$ LRU cache (`lang_cache.rs`).

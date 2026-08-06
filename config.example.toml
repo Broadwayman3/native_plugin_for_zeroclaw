@@ -11,8 +11,13 @@ enabled = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
 webhook_url = "${TELEGRAM_WEBHOOK_URL}"
 bot_secret_token = "${TELEGRAM_BOT_SECRET_TOKEN}"
+stale_update_ttl_secs = 300 # Stale update TTL threshold in seconds (0 = disabled)
 allowed_chat_ids = [] # Leave empty for public customer bot, or specify manager chat ID for admin commands
 manager_chat_id = "${MANAGER_TELEGRAM_ID}"
+
+[pos]
+quick_receipt_amount = 200.0 # Default quick receipt POS amount
+quick_receipt_currency = "UAH" # Default quick receipt currency
 
 [solana]
 rpc_url = "${SOLANA_RPC_URL}"
@@ -22,6 +27,7 @@ merchant_wallet = "${MERCHANT_WALLET_PUBKEY}"
 refund_session_wallet = "${REFUND_SESSION_KEY}"
 nonce_account = "${NONCE_ACCOUNT_PUBKEY}"
 usdc_mint = "${USDC_MINT_ADDRESS}"
+allow_local_rpc = false # Allow local HTTP RPC endpoints for dev testing
 
 [squads_v4]
 program_id = "SQDS4ep65T869rmQrGGsybZb26a6Uq3vig54W62pkhm"
@@ -34,6 +40,7 @@ daily_refund_limit_usdc = 200.0
 fiat_slippage_tolerance_pct = 1.0 # 1.0% tolerance for fiat exchange rate fluctuations during checkout
 require_human_approval_for_refunds = true
 strict_prompt_isolation = true
+api_keys = ["your_api_key_1", "your_api_key_2"] # API keys for authenticated REST routes
 
 [skills]
 directory = "./skills"
@@ -49,4 +56,3 @@ directory = "./plugins"
 
 [plugins.solana_pos_core]
 path = "./plugins/solana-pos-core/target/wasm32-wasip2/release/solana_pos_core.wasm"
-

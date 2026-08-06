@@ -74,7 +74,7 @@
 | WASM Plugin | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate → `wasm32-wasip2` via WIT |
 | Core Logic | [`pos-core-logic`](./plugins/solana-pos-core/pos-core-logic) | Shared business logic |
 | REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (18 REST API routes), SQLite WAL, domain logic |
-| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook DB queue (`webhook.rs`), Long Polling with panic isolation (`polling.rs`), Atomic CAS invoice updates, Canonical `ChatSession` locks (`locks.rs`), Failover worker restart (`lifecycle.rs`), 12-factor stdout logging (`RUST_LOG`) |
+| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Low Watermark (`WatermarkTracker`) sliding window offset advancement, Per-Chat Bounded FIFO Queues (capacity 64), `inner_handle` JoinHandle panic isolation, Webhook DB queue (`webhook.rs`), Atomic CAS invoice updates, In-Memory LRU idempotency cache (`webhook_db.rs`), Failover circuit breaker (`lifecycle.rs`), 12-factor stdout logging (`RUST_LOG`) |
 | Skills | [`skills/`](./skills) | LLM skill definitions (Solana Pay, Nonce, PIX, etc.) |
 | SOPs | [`sops/`](./sops) | Standard Operating Procedures (JSON) |
 | WIT Interface | [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) | WASI Component Model contract |

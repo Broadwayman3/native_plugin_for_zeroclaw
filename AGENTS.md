@@ -61,7 +61,8 @@ pos-backend/src/
 │   ├── nonce.rs         # Durable nonce pool
 │   ├── pos_flow.rs      # POS order creation
 │   ├── sales.rs         # Sales summary
-│   └── x402.rs          # x402 machine commerce
+│   ├── x402.rs          # x402 machine commerce
+│   └── telegram/        # Telegram listener (Low Watermark, Bounded MPSC, JoinHandle panic safety)
 ├── db/                  # SQLite data access
 │   ├── schema.rs        # DDL, migrations, nonce seeding
 │   ├── invoices.rs      # Invoice DAO

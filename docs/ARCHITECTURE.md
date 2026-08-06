@@ -37,47 +37,47 @@ Main binary crate. Provides REST API (18 REST API routes), database layer, and d
 pos-backend/src/
 ├── main.rs              # Axum HTTP server entrypoint
 ├── lib.rs               # Crate root
-├── config.rs            # AppConfig struct, env-var loader
+├── config.rs            # AppConfig struct (stale_update_ttl_secs, quick_receipt, env loader)
 ├── error.rs             # AppError enum (thiserror)
 ├── api/                 # REST endpoints (18 routes) & Telegram listener
-│   ├── mod.rs           # Router builder, CORS, AppState
-│   ├── actions.rs       # Solana Actions/Blinks
-│   ├── invoices.rs      # Invoice CRUD
-│   ├── nonce.rs         # Durable nonce pool
+│   ├── mod.rs           # Router builder, CORS, AppState, stale update TTL filter
+│   ├── actions.rs       # Solana Actions/Blinks (Dialect v2 spec)
+│   ├── invoices.rs      # Invoice CRUD & settings handlers
+│   ├── nonce.rs         # Durable nonce pool management
 │   ├── pos_flow.rs      # POS order creation
-│   ├── sales.rs         # Sales summary
-│   ├── x402.rs          # x402 machine commerce
+│   ├── sales.rs         # Sales summary & x402 machine commerce
+│   ├── x402.rs          # x402 micropayment gated analytics
 │   └── telegram/        # Telegram Bot API integration & listener
-│       ├── mod.rs       # Telegram module exports, update processor & extract_invoice_id
-│       ├── admin_session.rs # Anonymous group admin detection & Stateless Mode routing
+│       ├── mod.rs       # Telegram exports, update processor & stale TTL check
+│       ├── admin_session.rs # Group admin detection & context extraction
 │       ├── chat_action.rs # SendChatAction typing status helper
-│       ├── client.rs    # Reqwest Telegram API client & helpers
-│       ├── client_queue.rs # Rate-limited outbound message queue actor & 429 escalation
+│       ├── client.rs    # Reqwest Telegram API client & multipart photo senders
+│       ├── client_queue.rs # Rate-limited outbound message queue manager
 │       ├── events.rs    # Telegram update event dispatching & callback routing
 │       ├── fsm.rs       # Telegram FSM state types
 │       ├── fsm_store.rs # Persistent Telegram FSM DAO
 │       ├── handlers/    # Telegram command & callback query handlers
 │       ├── lang_cache.rs # Thread-safe O(1) lru::LruCache for user language preferences
-│       ├── lifecycle.rs # Service spawner, 5s drain sleep & Polling worker failover restart
-│       ├── locks.rs     # ChatLocksManager (Canonical LockKey::ChatSession per-user lock)
+│       ├── lifecycle.rs # Service spawner & Webhook to Polling circuit breaker failover
+│       ├── locks.rs     # WatermarkTracker (Low Watermark), ChatQueueDispatcher (bounded 64)
 │       ├── orders.rs    # POS text order parsing & receipt builder
-│       ├── polling.rs   # Long Polling worker with panic_counter isolation & 3s DB backoff
-│       ├── qr.rs        # Inline QR code receipt builder
+│       ├── polling.rs   # Long Polling worker with Low Watermark & JoinHandle panic isolation
+│       ├── qr.rs        # Inline QR code receipt PNG generator
 │       ├── rate_limiter.rs # Keyed rate-limiter GC worker & global HTTP 429 pause timer
-│       ├── state.rs     # Language preference DB operations
+│       ├── state.rs     # Update offset & language preference DB operations
 │       ├── verifier.rs  # Solana RPC invoice payment verifier loop
-│       ├── webhook.rs   # Webhook POST handler returning 500 on DB timeout
-│       ├── webhook_db.rs # Webhook DB helper functions
-│       └── webhook_worker.rs # Webhook FIFO queue worker with Semaphore(50) backpressure
-├── db/                  # SQLite data access
-│   ├── mod.rs           # Connection factory (WAL mode & pragmas)
+│       ├── webhook.rs   # Webhook POST handler returning 500 on DB acquire timeout (>4.5s)
+│       ├── webhook_db.rs # Webhook DB queue DAO & UpdateIdempotencyCache in RAM
+│       └── webhook_worker.rs # Webhook queue worker with Semaphore(50) backpressure
+├── db/                  # SQLite data access (WAL mode & PRAGMA busy_timeout=5000)
+│   ├── mod.rs           # Connection factory & pool creation
 │   ├── schema.rs        # DDL, migrations, nonce seeding, idx_pending_fifo
 │   ├── invoices.rs      # Invoice DAO
 │   ├── nonce.rs         # Nonce account pool
-│   ├── squads.rs        # Squads v4 proposals
+│   ├── squads.rs        # Squads v4 proposals DAO
 │   ├── fsm_dao.rs       # Telegram FSM sessions DAO
-│   ├── sop_checkpoints.rs
-│   ├── updates.rs       # FIFO update queue, DLQ, deduplication
+│   ├── sop_checkpoints.rs # SOP execution state checkpoints
+│   ├── updates.rs       # FIFO update queue, DLQ, deduplication & max retry recording
 │   └── seed.rs          # Sample data
 └── domain/              # Business logic
     ├── constants.rs     # USDC/SOL mints, Base58 alphabet
@@ -86,7 +86,7 @@ pos-backend/src/
     ├── i18n.rs          # 13-language i18n dispatcher
     ├── i18n_strings/    # Translation tables (13 languages)
     ├── validators.rs    # Input validators
-    ├── price_feed.rs    # Multi-tier fiat rate fallback
+    ├── price_feed.rs    # Multi-tier fiat rate fallback (Jupiter → Switchboard → cache)
     ├── keyboards.rs     # Telegram inline keyboards
     ├── order_parser.rs  # POS text → order parser
     ├── formatters.rs    # QR URLs, Base58, pubkey formatting
@@ -167,14 +167,41 @@ world plugin {
 
 ## Data Flow & Resilience
 
-### Telegram Listener & Update Processing
+### Telegram Listener Dataflow & Update Processing Architecture
 
-1. **Idempotency Registration**: Incoming update IDs are registered in `processed_updates`.
-2. **Canonical Session Locks**: `ChatLocksManager` acquires `LockKey::ChatSession` per user/chat to synchronize FSM mutations without deadlocks.
-3. **Atomic SQLite CAS**: Invoice cancellations execute atomic Compare-And-Swap (`rows_updated == 1`).
-4. **Panic Isolation**: `polling.rs` tracks panics per update ID (`panic_counter`). After 3 consecutive panics, the poisoned update is isolated and offset advances.
-5. **DB Outage Backoff**: If DB pool is unavailable, poller holds offset and sleeps 3 seconds to prevent CPU spinning or message loss.
-6. **State Machine Failover**: Transitioning from Webhook to Polling uses a 5-second drain sleep to avoid HTTP 409 Conflict. If Webhook recovery fails, a new Polling worker is automatically spawned.
+```
+Telegram Gateways / API
+         │
+         ▼
+Poller / Webhook Listener
+         │
+┌────────┴──────────────────────────┐
+│ WatermarkTracker (BTreeSet<i64>)  │ ◄── Tracks Low Watermark (Min Unconfirmed ID)
+└────────┬──────────────────────────┘
+         │ non-blocking try_enqueue
+┌────────▼──────────────────────────┐
+│ ChatQueueDispatcher (MPSC cap=64) │ ◄── Strict Per-Chat FIFO Order
+└────────┬──────────────────────────┘
+         │
+┌────────▼──────────────────────────┐
+│ inner_handle (tokio::spawn)       │ ◄── Panic Isolation & 30s Timeout
+└────────┬──────────────────────────┘
+         │
+   ┌─────┴────────────────┐
+   ▼                      ▼
+Success               DLQ Commit
+   │                      │
+   └──────────┬───────────┘
+              ▼
+watermark_guard.complete() ──▶ Advance Offset in SQLite & RAM
+```
+
+1. **Idempotency Registration & In-Memory LRU**: Incoming `update_id`s are checked against `UpdateIdempotencyCache` in RAM before hitting SQLite `processed_updates`.
+2. **Stale Update TTL Filter**: Top-level `message` and `edited_message` timestamps are validated against `stale_update_ttl_secs` (default 300s) with clock-skew tolerance. `callback_query` inline button clicks and system events are exempted.
+3. **Low Watermark Offset Tracking**: `WatermarkTracker` tracks in-flight `update_id`s in a `BTreeSet`. Persistent offset advances to the Low Watermark (`min(pending_ids)`), allowing continuous polling without head-of-line batch blocking.
+4. **Per-Chat Bounded FIFO Queue Dispatcher**: `ChatQueueDispatcher` queues tasks in session-bound `mpsc::channel(64)` channels, guaranteeing strict FIFO order within each chat without blocking the Poller loop. Idle queues are safely purged after 60s of inactivity.
+5. **Panic-Safe JoinHandle Isolation**: Inner tasks are spawned via `tokio::spawn`. Panics (`is_panic()`) are caught, logged, and isolated in SQLite DLQ (`failed_updates`) without halting Low Watermark progression.
+6. **Circuit Breaker Failover**: Webhook registration failures trip a 5-minute circuit breaker (`WEBHOOK_COOLDOWN_SECS = 300`). SQLite `pending_webhook_updates` are drained before starting Long Polling worker.
 
 ### Payment Flow
 
@@ -202,6 +229,6 @@ world plugin {
 
 | Crate | Key Dependencies |
 |-------|-----------------|
-| `pos-backend` | axum, rusqlite (bundled), tokio, serde, regex, thiserror, tracing, tracing-subscriber |
+| `pos-backend` | axum, rusqlite (bundled), tokio, serde, regex, thiserror, tracing, tracing-subscriber, deadpool-sqlite |
 | `pos-core-logic` | serde, rand |
 | `solana-pos-core` | wit-bindgen 0.30.0, pos-core-logic (path) |

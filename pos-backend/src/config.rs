@@ -27,6 +27,8 @@ pub struct AppConfig {
     pub quick_receipt_currency: String,
     /// Allow local HTTP RPC endpoints for dev testing (default: false).
     pub allow_local_rpc: bool,
+    /// Stale update TTL threshold in seconds (default: 300, 0 = disabled).
+    pub stale_update_ttl_secs: u64,
 }
 
 impl AppConfig {
@@ -93,6 +95,10 @@ impl AppConfig {
             "true" | "1" | "yes"
         );
 
+        let stale_update_ttl_secs: u64 = env_or_default("STALE_UPDATE_TTL_SECS", "300")
+            .parse()
+            .unwrap_or(300);
+
         let telegram_bot_token = env_or_default("TELEGRAM_BOT_TOKEN", "");
 
         Ok(Self {
@@ -122,6 +128,7 @@ impl AppConfig {
             quick_receipt_amount,
             quick_receipt_currency,
             allow_local_rpc,
+            stale_update_ttl_secs,
         })
     }
 }

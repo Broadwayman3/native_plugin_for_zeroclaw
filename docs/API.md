@@ -31,7 +31,7 @@ GET /api/v1/settings
 
 ### Update Settings (POST) - Manager Auth
 ```http
-POST /api/v1/settings/update
+GET /api/v1/settings/update
 ```
 - **Headers**: `X-Telegram-User-Id: <manager_id>`
 - **Description**: Updates quick receipt configuration. Requires `X-Telegram-User-Id` matching `MANAGER_TELEGRAM_ID`.
@@ -46,18 +46,29 @@ POST /api/v1/settings/update
 
 ---
 
-## 2. Telegram Webhook
+## 2. Telegram Webhook & Long Polling Listener
 
 ### Receive Webhook Update (POST)
 ```http
 POST /api/v1/telegram/webhook
 ```
-- **Headers**: `X-Telegram-Bot-Api-Secret-Token: <token>` (validated via constant-time string comparison)
+- **Headers**: `X-Telegram-Bot-Api-Secret-Token: <token>` (validated via constant-time string comparison `subtle::ConstantTimeEq`)
 - **Body Limit**: 128 KB maximum payload limit
-- **Description**: Enqueues incoming Telegram update synchronously into SQLite WAL database (`webhook.rs`) with a `4500ms` connection acquire timeout and triggers async worker wakeup.
+- **Description**: Enqueues incoming Telegram update synchronously into SQLite WAL database (`webhook.rs`) with a `4500ms` connection acquire timeout and triggers async worker wakeup (`webhook_notify`).
 - **Response**:
   - `200 OK`: Update successfully stored in SQLite queue.
+  - `401 Unauthorized`: Missing or invalid secret token header.
   - `500 Internal Server Error`: Connection pool acquisition timed out (>4.5s) or DB write failed. Signals Telegram gateway to retry delivery.
+
+### Dual Mode & Circuit Breaker Failover Spec
+- **Webhook Mode**: Used when `TELEGRAM_WEBHOOK_URL` is set in configuration. Registers webhook with Telegram API on startup.
+- **Long Polling Mode**: Used when `TELEGRAM_WEBHOOK_URL` is omitted OR when Webhook registration fails. Calls `deleteWebhook` and initiates `getUpdates?offset={low_watermark}&timeout=20` long-poll loop.
+- **Circuit Breaker Failover**: Webhook registration failures or network issues trip a 5-minute circuit breaker (`WEBHOOK_COOLDOWN_SECS = 300`). Pending DB updates are drained before falling back to Long Polling.
+- **Rate-Limiting & Queue Backpressure**:
+  - Per-chat bounded MPSC channels (capacity 64) enforce strict FIFO order without head-of-line blocking across chats.
+  - When a chat queue reaches full capacity (64 items), the system records a DLQ failure (`"Per-chat queue capacity full (64)"`) and returns an automated Telegram rate-limit notice:
+    `"⚠️ Too many commands in progress. Please wait a few seconds."`
+- **Stale Update Filtering**: `STALE_UPDATE_TTL_SECS` (default 300s) rejects old top-level `message` and `edited_message` payloads with clock-skew tolerance (`msg_date >= now`). `callback_query` inline menu actions and system updates are exempted.
 
 ---
 

@@ -98,12 +98,15 @@ pub async fn process_single_update(
     };
 
     if !is_new {
+        webhook_db::mark_cached_processed(update_id);
         tracing::debug!(
             update_id = update_id,
             "Update already registered in processed_updates, skipping duplicate dispatch"
         );
         return Ok(());
     }
+
+    webhook_db::mark_cached_processed(update_id);
 
     // 2. Dispatch content with single canonical per-session lock to prevent FSM race conditions & deadlocks
     let (chat_id, user_id) = admin_session::extract_effective_user_context(update);
@@ -139,6 +142,25 @@ pub async fn dispatch_update_content(
 
     // Process Message
     if let Some(msg) = update.get("message") {
+        // Safe Clock Skew Stale Update TTL Check for top-level message (exempting callback_query)
+        if let Some(date_secs) = msg.get("date").and_then(|v| v.as_u64()) {
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            if config.stale_update_ttl_secs > 0
+                && date_secs < now_secs
+                && (now_secs - date_secs) > config.stale_update_ttl_secs
+            {
+                tracing::warn!(
+                    date_secs = date_secs,
+                    now_secs = now_secs,
+                    ttl_secs = config.stale_update_ttl_secs,
+                    "Incoming Telegram message exceeds stale update TTL threshold. Skipping stale message."
+                );
+                return Ok(());
+            }
+        }
         let chat_id = msg
             .get("chat")
             .and_then(|c| c.get("id"))
