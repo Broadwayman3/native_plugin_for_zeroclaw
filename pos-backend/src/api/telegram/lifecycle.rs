@@ -112,25 +112,43 @@ pub fn start_telegram_services(
                         );
 
                         let recovery_config = poller_config.clone();
+                        let recovery_fsm_store = fsm_store.clone();
+                        let recovery_chat_locks = chat_locks.clone();
+                        let recovery_in_flight = in_flight.clone();
+                        let recovery_poller_pool = poller_pool.clone();
                         let recovery_poller_cancel = poller_cancel.clone();
+                        let recovery_parent_cancel = parent_cancel_token.clone();
                         tokio::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_secs(
                                 WEBHOOK_COOLDOWN_SECS,
                             ))
                             .await;
-                            tracing::info!("Webhook circuit breaker cooldown expired. Attempting Webhook recovery...");
+                            tracing::info!("Webhook circuit breaker cooldown expired. Cancelling poller worker and attempting Webhook recovery...");
+                            recovery_poller_cancel.cancel();
+                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                             if let Ok(()) =
                                 webhook::register_telegram_webhook(&recovery_config).await
                             {
                                 FAILED_WEBHOOK_ATTEMPTS.store(0, Ordering::SeqCst);
                                 WEBHOOK_COOLDOWN_UNTIL.store(0, Ordering::SeqCst);
-                                recovery_poller_cancel.cancel();
                                 tracing::info!("Webhook registration recovered successfully! Webhook mode restored.");
                             } else {
-                                tracing::warn!("Webhook recovery re-attempt failed. Remaining in Polling mode.");
+                                tracing::warn!("Webhook recovery re-attempt failed. Restarting Long Polling worker.");
+                                let new_poller_cancel = recovery_parent_cancel.child_token();
+                                let poller_h = polling::start_poller_worker(
+                                    recovery_config,
+                                    recovery_fsm_store,
+                                    recovery_chat_locks,
+                                    recovery_in_flight,
+                                    recovery_poller_pool,
+                                    new_poller_cancel,
+                                );
+                                let _ = poller_h.await;
                             }
                         });
                     }
+                    // Wait 5 seconds for in-flight Webhook POST requests to drain before starting Long Polling
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     let poller_h = polling::start_poller_worker(
                         poller_config,
                         fsm_store,

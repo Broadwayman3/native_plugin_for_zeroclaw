@@ -79,6 +79,8 @@ location /api/v1/telegram/webhook {
 | `SQUADS_MULTISIG_PUBKEY` | Squads v4 multisig account | `SQDS4ep65...` |
 | `SQUADS_VAULT_PUBKEY` | Squads v4 vault account | `9xK2...` |
 | `USDC_MINT_PUBKEY` | USDC token mint | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` |
+| `RUST_LOG` | Log filtering spec (reduces 3rd-party crate noise) | `pos_backend=info,pos_core_logic=info,reqwest=warn,hyper=warn,h2=warn,tower_http=warn,deadpool_sqlite=warn` |
+| `NO_COLOR` | Optional: Disable ANSI color codes for log aggregators | `1` |
 
 ## Configuration
 

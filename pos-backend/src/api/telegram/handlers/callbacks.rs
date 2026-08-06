@@ -73,19 +73,17 @@ pub async fn handle_callback_query(
             }
         }
 
+        let esc_inv_id = escape_telegram_markdown_v2(inv_id);
         let msg_text = if cancel_success {
-            format!("❌ Invoice {} has been cancelled.", inv_id)
+            format!("❌ Invoice `{}` has been cancelled\\.", esc_inv_id)
         } else {
             format!(
-                "⚠️ Cannot cancel invoice {} (already paid or expired).",
-                inv_id
+                "⚠️ Cannot cancel invoice `{}` \\(already paid or expired\\)\\.",
+                esc_inv_id
             )
         };
 
-        let payload = serde_json::json!({
-            "chat_id": chat_id,
-            "text": msg_text,
-        });
+        let payload = build_send_message_payload(chat_id, &msg_text, Some("MarkdownV2"), None);
         if let Err(e) =
             send_telegram_request(client, &format!("{}/sendMessage", base_url), &payload).await
         {
@@ -162,7 +160,7 @@ pub async fn handle_callback_query(
             tracing::error!(error = %e, "Failed to send language confirmation message");
         }
     } else {
-        let answer = build_answer_callback_payload(cb_id, "OK", false);
+        let answer = build_answer_callback_payload(cb_id, "⚠️ Action completed or expired.", false);
         if let Err(e) = send_telegram_request(
             client,
             &format!("{}/answerCallbackQuery", base_url),

@@ -31,7 +31,7 @@ ZeroClaw Solana POS Agent is an autonomous AI cash register operating in Telegra
 
 ### pos-backend
 
-Main binary crate. Provides REST API, database layer, and domain logic.
+Main binary crate. Provides REST API (18 REST API routes), database layer, and domain logic.
 
 ```
 pos-backend/src/
@@ -39,7 +39,7 @@ pos-backend/src/
 ├── lib.rs               # Crate root
 ├── config.rs            # AppConfig struct, env-var loader
 ├── error.rs             # AppError enum (thiserror)
-├── api/                 # REST endpoints & Telegram listener
+├── api/                 # REST endpoints (18 routes) & Telegram listener
 │   ├── mod.rs           # Router builder, CORS, AppState
 │   ├── actions.rs       # Solana Actions/Blinks
 │   ├── invoices.rs      # Invoice CRUD
@@ -58,15 +58,15 @@ pos-backend/src/
 │       ├── fsm_store.rs # Persistent Telegram FSM DAO
 │       ├── handlers/    # Telegram command & callback query handlers
 │       ├── lang_cache.rs # Thread-safe O(1) lru::LruCache for user language preferences
-│       ├── lifecycle.rs # Service spawner & graceful child_token shutdown handles
-│       ├── locks.rs     # ChatLocksManager (LockKey::UserSession & LockKey::Invoice)
+│       ├── lifecycle.rs # Service spawner, 5s drain sleep & Polling worker failover restart
+│       ├── locks.rs     # ChatLocksManager (Canonical LockKey::ChatSession per-user lock)
 │       ├── orders.rs    # POS text order parsing & receipt builder
-│       ├── polling.rs   # Long Polling loop worker with monotonic AtomicI64 offset
+│       ├── polling.rs   # Long Polling worker with panic_counter isolation & 3s DB backoff
 │       ├── qr.rs        # Inline QR code receipt builder
 │       ├── rate_limiter.rs # Keyed rate-limiter GC worker & global HTTP 429 pause timer
 │       ├── state.rs     # Language preference DB operations
 │       ├── verifier.rs  # Solana RPC invoice payment verifier loop
-│       ├── webhook.rs   # Webhook POST handler returning 500 on DB timeout for zero data loss
+│       ├── webhook.rs   # Webhook POST handler returning 500 on DB timeout
 │       ├── webhook_db.rs # Webhook DB helper functions
 │       └── webhook_worker.rs # Webhook FIFO queue worker with Semaphore(50) backpressure
 ├── db/                  # SQLite data access
@@ -77,7 +77,7 @@ pos-backend/src/
 │   ├── squads.rs        # Squads v4 proposals
 │   ├── fsm_dao.rs       # Telegram FSM sessions DAO
 │   ├── sop_checkpoints.rs
-│   ├── updates.rs       # TransactionRollbackGuard, FIFO update queue, DLQ, deduplication
+│   ├── updates.rs       # FIFO update queue, DLQ, deduplication
 │   └── seed.rs          # Sample data
 └── domain/              # Business logic
     ├── constants.rs     # USDC/SOL mints, Base58 alphabet
@@ -165,28 +165,16 @@ world plugin {
 }
 ```
 
-## Data Flow
+## Data Flow & Resilience
 
-### Telegram Update Processing Flow
+### Telegram Listener & Update Processing
 
-```mermaid
-graph TD
-    A[Telegram Gateway POST] --> B{Secret Token Validation}
-    B -->|Invalid| C[Return 401 Unauthorized]
-    B -->|Valid| D[deadpool pool.get timeout 4.5s]
-    D -->|Pool Exhausted| E[Return 500 Internal Server Error]
-    D -->|Success| F[INSERT INTO pending_webhook_updates WAL]
-    F --> G[Return 200 OK]
-    F --> H[Async Worker Wakeup]
-    H --> I[BEGIN IMMEDIATE Transaction]
-    I --> J[TransactionRollbackGuard Created]
-    J --> K[UPDATE ... RETURNING fetch_pending_batch limit 50]
-    K --> L{Check manager_authorized if admin action}
-    L -->|Unauthorized| M[Fast-track answerCallbackQuery Error]
-    L -->|Authorized| N[dispatch_update_content]
-    N --> O[COMMIT Transaction & guard.1 = true]
-    N -->|Err / Panic| P[RAII Drop -> ROLLBACK Transaction]
-```
+1. **Idempotency Registration**: Incoming update IDs are registered in `processed_updates`.
+2. **Canonical Session Locks**: `ChatLocksManager` acquires `LockKey::ChatSession` per user/chat to synchronize FSM mutations without deadlocks.
+3. **Atomic SQLite CAS**: Invoice cancellations execute atomic Compare-And-Swap (`rows_updated == 1`).
+4. **Panic Isolation**: `polling.rs` tracks panics per update ID (`panic_counter`). After 3 consecutive panics, the poisoned update is isolated and offset advances.
+5. **DB Outage Backoff**: If DB pool is unavailable, poller holds offset and sleeps 3 seconds to prevent CPU spinning or message loss.
+6. **State Machine Failover**: Transitioning from Webhook to Polling uses a 5-second drain sleep to avoid HTTP 409 Conflict. If Webhook recovery fails, a new Polling worker is automatically spawned.
 
 ### Payment Flow
 
@@ -210,16 +198,10 @@ graph TD
 5. Manager signs in Phantom/Squads App
 6. Squads v4 executes transfer from vault
 
-## WASM Tier 3 Justification
-
-- **Token-2022 Deterministic Fee Math**: u128 checked multiplication eliminates IEEE 754 float precision drift
-- **Cryptographic Payload Isolation**: Squads v4 Anchor instruction serialization in memory-isolated sandbox
-- **Zero Private Key Scope**: WASM plugin has no access to store keys
-
 ## Dependencies
 
 | Crate | Key Dependencies |
 |-------|-----------------|
-| `pos-backend` | axum, rusqlite (bundled), tokio, serde, regex, thiserror |
+| `pos-backend` | axum, rusqlite (bundled), tokio, serde, regex, thiserror, tracing, tracing-subscriber |
 | `pos-core-logic` | serde, rand |
 | `solana-pos-core` | wit-bindgen 0.30.0, pos-core-logic (path) |

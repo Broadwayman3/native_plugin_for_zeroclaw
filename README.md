@@ -58,6 +58,7 @@
 │  │  │  REST   │  │  SQLite  │  │  (shared with WASM)    │ │ │
 │  │  │  API    │  │  WAL     │  │  - Token-2022 fees     │ │ │
 │  │  │         │  │          │  │  - Solana Pay URL      │ │ │
+│  │  │         │  │          │  │  - Squads v4 Borsh     │ │ │
 │  │  └─────────┘  └──────────┘  └────────────────────────┘ │ │
 │  └─────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────┐ │
@@ -72,8 +73,8 @@
 |-----------|------|-------------|
 | WASM Plugin | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate → `wasm32-wasip2` via WIT |
 | Core Logic | [`pos-core-logic`](./plugins/solana-pos-core/pos-core-logic) | Shared business logic |
-| REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (13 REST API routes), SQLite WAL, domain logic |
-| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook DB queue (`webhook.rs`), Long Polling (`polling.rs`), TransactionRollbackGuard RAII safety (`updates.rs`), FSM, Rate Limiter GC (`rate_limiter.rs`), Anonymous Admin Session (`admin_session.rs`), $O(1)$ LRU cache (`lang_cache.rs`), link-aware MarkdownV2 sanitizer |
+| REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (18 REST API routes), SQLite WAL, domain logic |
+| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook DB queue (`webhook.rs`), Long Polling with panic isolation (`polling.rs`), Atomic CAS invoice updates, Canonical `ChatSession` locks (`locks.rs`), Failover worker restart (`lifecycle.rs`), 12-factor stdout logging (`RUST_LOG`) |
 | Skills | [`skills/`](./skills) | LLM skill definitions (Solana Pay, Nonce, PIX, etc.) |
 | SOPs | [`sops/`](./sops) | Standard Operating Procedures (JSON) |
 | WIT Interface | [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) | WASI Component Model contract |
@@ -82,12 +83,12 @@
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](./docs/ARCHITECTURE.md) | Crate structure, WIT ABI, data flow |
-| [API Reference](./docs/API.md) | 13 REST API routes & Webhook specification |
+| [Architecture](./docs/ARCHITECTURE.md) | Crate structure, WIT ABI, data flow & resilience |
+| [API Reference](./docs/API.md) | 18 REST API routes, Webhook, Solana Actions v2 & x402 specification |
 | [Security](./docs/SECURITY.md) | Threat model, defense matrix, DLQ mechanics |
-| [Database](./docs/DATABASE.md) | Schema, migrations, pragmas |
-| [Deployment](./docs/DEPLOYMENT.md) | Docker, local dev, env vars |
-| [Testing](./docs/TESTING.md) | Test strategy, module breakdown |
+| [Database](./docs/DATABASE.md) | Schema, migrations, pragmas & atomic CAS |
+| [Deployment](./docs/DEPLOYMENT.md) | Docker, local dev, env vars & RUST_LOG filtering |
+| [Testing](./docs/TESTING.md) | Test strategy, module breakdown (526 tests) |
 
 ## Security
 
@@ -95,7 +96,7 @@
 - **Tier 3 WASM Sandbox**: Rust plugin in isolated `wasm32-wasip2` environment
 - **Squads v4 Multisig**: Agent = Proposer only; managers hold threshold signers
 - **Triple Payment Verification**: Reference key + token mint + amount check
-- **526 automated tests** (487 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core WASM) including prompt injection defense
+- **526 automated tests** (481 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core WASM) including prompt injection defense
 
 ## License
 

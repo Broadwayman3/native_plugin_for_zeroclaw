@@ -62,6 +62,8 @@ pub fn start_poller_worker(
                 .unwrap_or(0);
 
         let semaphore = Arc::new(tokio::sync::Semaphore::new(20));
+        let mut panic_counter: std::collections::HashMap<i64, u8> =
+            std::collections::HashMap::new();
 
         loop {
             if cancel_token.is_cancelled() {
@@ -107,6 +109,7 @@ pub fn start_poller_worker(
                                 if let Some(result) = json.get("result").and_then(|v| v.as_array()) {
                                     let mut next_offset = offset;
                                     let mut handles = Vec::new();
+                                    let mut min_failed_offset: Option<i64> = None;
 
                                     for update in result {
                                         let update_id =
@@ -119,7 +122,7 @@ pub fn start_poller_worker(
                                             next_offset = update_id + 1;
                                         }
 
-                                        let already_processed = if let Some(ref pool) = db_pool {
+                                        let check_res = if let Some(ref pool) = db_pool {
                                             if let Ok(conn) = pool.get().await {
                                                 let res = conn
                                                     .interact(move |c| {
@@ -127,22 +130,38 @@ pub fn start_poller_worker(
                                                             .unwrap_or(false)
                                                     })
                                                     .await;
-                                                res.unwrap_or(false)
+                                                Ok(res.unwrap_or(false))
                                             } else {
-                                                false
+                                                Err("DB pool connection acquisition failed".to_string())
                                             }
                                         } else {
                                             let db_path_check = config.db_path.clone();
                                             tokio::task::spawn_blocking(move || {
                                                 if let Ok(conn) = db::get_db_connection(&db_path_check) {
-                                                    db::updates::is_processed(&conn, update_id)
-                                                        .unwrap_or(false)
+                                                    Ok(db::updates::is_processed(&conn, update_id)
+                                                        .unwrap_or(false))
                                                 } else {
-                                                    false
+                                                    Err("DB connection error".to_string())
                                                 }
                                             })
                                             .await
-                                            .unwrap_or(false)
+                                            .unwrap_or(Err("DB spawn_blocking join error".to_string()))
+                                        };
+
+                                        let already_processed = match check_res {
+                                            Ok(processed) => processed,
+                                            Err(err) => {
+                                                tracing::error!(
+                                                    update_id = update_id,
+                                                    error = %err,
+                                                    "DB pool unavailable during is_processed check; stopping batch spawn and holding offset"
+                                                );
+                                                min_failed_offset = Some(match min_failed_offset {
+                                                    Some(curr) => curr.min(update_id),
+                                                    None => update_id,
+                                                });
+                                                break;
+                                            }
                                         };
 
                                         if already_processed {
@@ -189,64 +208,111 @@ pub fn start_poller_worker(
                                     }
 
                                     // Wait for all updates in batch to finish via join handles
-                                    let mut min_failed_offset: Option<i64> = None;
                                     for (uid, handle) in handles {
-                                        if let Ok(Err(err_msg)) = handle.await {
-                                            let pool_clone = db_pool.clone();
-                                            let config_clone = config.clone();
-                                            let mut reached_dlq = false;
-                                            let mut db_op_success = false;
+                                        match handle.await {
+                                            Ok(Ok(())) => {
+                                                // Execution succeeded, clear panic counter if any
+                                                panic_counter.remove(&uid);
+                                            }
+                                            Ok(Err(err_msg)) => {
+                                                let pool_clone = db_pool.clone();
+                                                let config_clone = config.clone();
+                                                let mut reached_dlq = false;
+                                                let mut db_op_success = false;
 
-                                            // Retry DB recording up to 3 times to avoid false offset rollbacks
-                                            for retry_attempt in 0..3 {
-                                                let p_clone = pool_clone.clone();
-                                                let c_clone = config_clone.clone();
-                                                let res = if let Some(ref pool) = p_clone {
-                                                    if let Ok(conn) = pool.get().await {
-                                                        conn.interact(move |c| {
-                                                            db::updates::record_failure_and_check_max_retries(c, uid, 3)
-                                                        })
-                                                        .await
-                                                        .unwrap_or(Err(rusqlite::Error::QueryReturnedNoRows))
-                                                    } else {
-                                                        Err(rusqlite::Error::QueryReturnedNoRows)
-                                                    }
-                                                } else {
-                                                    let db_path_check = c_clone.db_path.clone();
-                                                    tokio::task::spawn_blocking(move || {
-                                                        if let Ok(conn) = db::get_db_connection(&db_path_check) {
-                                                            db::updates::record_failure_and_check_max_retries(&conn, uid, 3)
+                                                // Retry DB recording up to 3 times to avoid false offset rollbacks
+                                                for retry_attempt in 0..3 {
+                                                    let p_clone = pool_clone.clone();
+                                                    let c_clone = config_clone.clone();
+                                                    let res = if let Some(ref pool) = p_clone {
+                                                        if let Ok(conn) = pool.get().await {
+                                                            conn.interact(move |c| {
+                                                                db::updates::record_failure_and_check_max_retries(c, uid, 3)
+                                                            })
+                                                            .await
+                                                            .unwrap_or(Err(rusqlite::Error::QueryReturnedNoRows))
                                                         } else {
                                                             Err(rusqlite::Error::QueryReturnedNoRows)
                                                         }
-                                                    })
-                                                    .await
-                                                    .unwrap_or(Err(rusqlite::Error::QueryReturnedNoRows))
-                                                };
+                                                    } else {
+                                                        let db_path_check = c_clone.db_path.clone();
+                                                        tokio::task::spawn_blocking(move || {
+                                                            if let Ok(conn) = db::get_db_connection(&db_path_check) {
+                                                                db::updates::record_failure_and_check_max_retries(&conn, uid, 3)
+                                                            } else {
+                                                                Err(rusqlite::Error::QueryReturnedNoRows)
+                                                            }
+                                                        })
+                                                        .await
+                                                        .unwrap_or(Err(rusqlite::Error::QueryReturnedNoRows))
+                                                    };
 
-                                                if let Ok(dlq_status) = res {
-                                                    reached_dlq = dlq_status;
-                                                    db_op_success = true;
-                                                    break;
+                                                    if let Ok(dlq_status) = res {
+                                                        reached_dlq = dlq_status;
+                                                        db_op_success = true;
+                                                        break;
+                                                    }
+                                                    sleep(Duration::from_millis(50 * (1 << retry_attempt))).await;
                                                 }
-                                                sleep(Duration::from_millis(50 * (1 << retry_attempt))).await;
-                                            }
 
-                                            if db_op_success && !reached_dlq {
-                                                min_failed_offset = Some(match min_failed_offset {
-                                                    Some(curr) => curr.min(uid),
-                                                    None => uid,
-                                                });
-                                            } else {
-                                                tracing::warn!(
-                                                    update_id = uid,
-                                                    error = %err_msg,
-                                                    "Long Polling update reached max retries or DB retry exhausted; advancing offset past update_id."
-                                                );
+                                                if db_op_success {
+                                                    if !reached_dlq {
+                                                        min_failed_offset = Some(match min_failed_offset {
+                                                            Some(curr) => curr.min(uid),
+                                                            None => uid,
+                                                        });
+                                                    } else {
+                                                        tracing::warn!(
+                                                            update_id = uid,
+                                                            error = %err_msg,
+                                                            "Long Polling update reached max retries in DLQ; advancing offset past update_id."
+                                                        );
+                                                    }
+                                                } else {
+                                                    tracing::error!(
+                                                        update_id = uid,
+                                                        error = %err_msg,
+                                                        "DB connection failed while recording update error; holding offset to prevent message loss."
+                                                    );
+                                                    min_failed_offset = Some(match min_failed_offset {
+                                                        Some(curr) => curr.min(uid),
+                                                        None => uid,
+                                                    });
+                                                }
+                                            }
+                                            Err(join_err) => {
+                                                if join_err.is_cancelled() {
+                                                    tracing::info!(update_id = uid, "Polling update worker task cancelled cleanly.");
+                                                } else if join_err.is_panic() {
+                                                    let pcount = panic_counter.entry(uid).or_insert(0);
+                                                    *pcount += 1;
+                                                    if *pcount >= 3 {
+                                                        tracing::error!(
+                                                            update_id = uid,
+                                                            "Poisoned update caused 3 consecutive panics. Isolating update and advancing offset past update_id."
+                                                        );
+                                                        panic_counter.remove(&uid);
+                                                    } else {
+                                                        tracing::warn!(
+                                                            update_id = uid,
+                                                            panic_count = *pcount,
+                                                            "Polling update worker panicked. Holding offset for retry attempt."
+                                                        );
+                                                        min_failed_offset = Some(match min_failed_offset {
+                                                            Some(curr) => curr.min(uid),
+                                                            None => uid,
+                                                        });
+                                                    }
+                                                }
                                             }
                                         }
                                     }
 
+                                    if panic_counter.len() > 100 {
+                                        panic_counter.retain(|_, v| *v < 3);
+                                    }
+
+                                    let has_failed = min_failed_offset.is_some();
                                     offset = min_failed_offset.unwrap_or(next_offset);
 
                                     // Update offset monotonically in memory and flush to SQLite on batch completion
@@ -258,6 +324,11 @@ pub fn start_poller_worker(
                                     })
                                     .await
                                     .ok();
+
+                                    if has_failed {
+                                        tracing::warn!("Polling batch encountered failures/DB outage. Backing off for 3 seconds before next poll.");
+                                        sleep(Duration::from_secs(3)).await;
+                                    }
                                 }
                             }
                         }

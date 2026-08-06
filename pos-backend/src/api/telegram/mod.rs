@@ -64,27 +64,37 @@ pub async fn process_single_update(
     update: &serde_json::Value,
     update_id: i64,
 ) -> Result<(), String> {
-    // 1. Pre-dispatch idempotency check & registration
-    let is_new = if let Some(pool) = db_pool {
-        if let Ok(conn) = pool.get().await {
-            let res = conn
+    // 1. Pre-dispatch idempotency check & registration with explicit DB failure propagation
+    let db_check_res = if let Some(pool) = db_pool {
+        match pool.get().await {
+            Ok(conn) => conn
                 .interact(move |c| crate::db::updates::check_and_register(c, update_id))
-                .await;
-            res.unwrap_or(Ok(false)).unwrap_or(false)
-        } else {
-            false
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.map_err(|e| e.to_string())),
+            Err(e) => Err(format!("DB pool acquisition error: {}", e)),
         }
     } else {
         let db_path = config.db_path.clone();
         tokio::task::spawn_blocking(move || {
-            if let Ok(conn) = crate::db::get_db_connection(&db_path) {
-                crate::db::updates::check_and_register(&conn, update_id).unwrap_or(false)
-            } else {
-                false
-            }
+            let conn = crate::db::get_db_connection(&db_path).map_err(|e| e.to_string())?;
+            crate::db::updates::check_and_register(&conn, update_id).map_err(|e| e.to_string())
         })
         .await
-        .unwrap_or(false)
+        .map_err(|e| e.to_string())
+        .and_then(|r| r)
+    };
+
+    let is_new = match db_check_res {
+        Ok(is_new) => is_new,
+        Err(e) => {
+            tracing::error!(
+                update_id = update_id,
+                error = %e,
+                "DB connection acquisition failed during update idempotency check"
+            );
+            return Err(format!("DB pool error: {}", e));
+        }
     };
 
     if !is_new {
@@ -95,15 +105,10 @@ pub async fn process_single_update(
         return Ok(());
     }
 
-    // 2. Dispatch content with per-session/invoice lock
+    // 2. Dispatch content with single canonical per-session lock to prevent FSM race conditions & deadlocks
     let (chat_id, user_id) = admin_session::extract_effective_user_context(update);
-    let invoice_id = extract_invoice_id(update);
 
-    let dispatch_res = if let Some(ref inv_id) = invoice_id {
-        let inv_lock = chat_locks.get_or_create_by_invoice(inv_id);
-        let _guard = inv_lock.lock().await;
-        dispatch_update_content(client, base_url, config, fsm, update).await
-    } else if let Some(target_chat_id) = chat_id {
+    let dispatch_res = if let Some(target_chat_id) = chat_id {
         let chat_lock = chat_locks.get_or_create(target_chat_id, user_id);
         let _guard = chat_lock.lock().await;
         dispatch_update_content(client, base_url, config, fsm, update).await

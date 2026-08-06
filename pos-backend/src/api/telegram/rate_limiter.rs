@@ -39,6 +39,9 @@ pub fn record_chat_429(chat_id: Option<i64>, retry_after_secs: u64) {
 
     if let Some(cid) = chat_id {
         if let Ok(mut map) = PER_CHAT_PAUSE_MAP.lock() {
+            if map.len() > 256 {
+                map.retain(|_, deadline| *deadline > now);
+            }
             map.insert(cid, pause_deadline);
         }
 
