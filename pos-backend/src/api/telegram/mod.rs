@@ -1,3 +1,4 @@
+pub mod admin_session;
 pub mod chat_action;
 pub mod client;
 pub mod client_queue;
@@ -11,9 +12,11 @@ pub mod locks;
 pub mod orders;
 pub mod polling;
 pub mod qr;
+pub mod rate_limiter;
 pub mod state;
 pub mod verifier;
 pub mod webhook;
+pub mod webhook_db;
 pub mod webhook_worker;
 
 use crate::config::AppConfig;
@@ -61,35 +64,7 @@ pub async fn process_single_update(
     update: &serde_json::Value,
     update_id: i64,
 ) -> Result<(), String> {
-    let (chat_id, user_id) = if let Some(msg) = update
-        .get("message")
-        .or_else(|| update.get("edited_message"))
-    {
-        let cid = msg
-            .get("chat")
-            .and_then(|c| c.get("id"))
-            .and_then(|v| v.as_i64());
-        let uid = msg
-            .get("from")
-            .and_then(|f| f.get("id"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        (cid, uid)
-    } else if let Some(cb) = update.get("callback_query") {
-        let cid = cb
-            .get("message")
-            .and_then(|m| m.get("chat"))
-            .and_then(|c| c.get("id"))
-            .and_then(|v| v.as_i64());
-        let uid = cb
-            .get("from")
-            .and_then(|f| f.get("id"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        (cid, uid)
-    } else {
-        (None, 0)
-    };
+    let (chat_id, user_id) = admin_session::extract_effective_user_context(update);
 
     let invoice_id = extract_invoice_id(update);
 

@@ -167,7 +167,7 @@ pub fn start_poller_worker(
                                             let _guard = flight_guard;
                                             let _permit = sem_clone.acquire_owned().await.ok();
                                             match tokio::time::timeout(
-                                                Duration::from_secs(15),
+                                                Duration::from_secs(30),
                                                 process_single_update(
                                                     &client_clone,
                                                     &base_url_clone,
@@ -182,44 +182,57 @@ pub fn start_poller_worker(
                                             .await
                                             {
                                                 Ok(res) => res,
-                                                Err(_) => Err("Update processing timed out (15s)".to_string()),
+                                                Err(_) => Err("Update processing timed out (30s)".to_string()),
                                             }
                                         });
                                         handles.push((update_id, handle));
                                     }
 
-                                    // Wait for all updates in batch to finish
+                                    // Wait for all updates in batch to finish via join handles
                                     let mut min_failed_offset: Option<i64> = None;
                                     for (uid, handle) in handles {
                                         if let Ok(Err(err_msg)) = handle.await {
                                             let pool_clone = db_pool.clone();
                                             let config_clone = config.clone();
-                                            let reached_dlq = if let Some(ref pool) = pool_clone {
-                                                if let Ok(conn) = pool.get().await {
-                                                    conn.interact(move |c| {
-                                                        db::updates::record_failure_and_check_max_retries(c, uid, 3)
-                                                            .unwrap_or(false)
+                                            let mut reached_dlq = false;
+                                            let mut db_op_success = false;
+
+                                            // Retry DB recording up to 3 times to avoid false offset rollbacks
+                                            for retry_attempt in 0..3 {
+                                                let p_clone = pool_clone.clone();
+                                                let c_clone = config_clone.clone();
+                                                let res = if let Some(ref pool) = p_clone {
+                                                    if let Ok(conn) = pool.get().await {
+                                                        conn.interact(move |c| {
+                                                            db::updates::record_failure_and_check_max_retries(c, uid, 3)
+                                                        })
+                                                        .await
+                                                        .unwrap_or(Err(rusqlite::Error::QueryReturnedNoRows))
+                                                    } else {
+                                                        Err(rusqlite::Error::QueryReturnedNoRows)
+                                                    }
+                                                } else {
+                                                    let db_path_check = c_clone.db_path.clone();
+                                                    tokio::task::spawn_blocking(move || {
+                                                        if let Ok(conn) = db::get_db_connection(&db_path_check) {
+                                                            db::updates::record_failure_and_check_max_retries(&conn, uid, 3)
+                                                        } else {
+                                                            Err(rusqlite::Error::QueryReturnedNoRows)
+                                                        }
                                                     })
                                                     .await
-                                                    .unwrap_or(false)
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                let db_path_check = config_clone.db_path.clone();
-                                                tokio::task::spawn_blocking(move || {
-                                                    if let Ok(conn) = db::get_db_connection(&db_path_check) {
-                                                        db::updates::record_failure_and_check_max_retries(&conn, uid, 3)
-                                                            .unwrap_or(false)
-                                                    } else {
-                                                        false
-                                                    }
-                                                })
-                                                .await
-                                                .unwrap_or(false)
-                                            };
+                                                    .unwrap_or(Err(rusqlite::Error::QueryReturnedNoRows))
+                                                };
 
-                                            if !reached_dlq {
+                                                if let Ok(dlq_status) = res {
+                                                    reached_dlq = dlq_status;
+                                                    db_op_success = true;
+                                                    break;
+                                                }
+                                                sleep(Duration::from_millis(50 * (1 << retry_attempt))).await;
+                                            }
+
+                                            if db_op_success && !reached_dlq {
                                                 min_failed_offset = Some(match min_failed_offset {
                                                     Some(curr) => curr.min(uid),
                                                     None => uid,
@@ -228,7 +241,7 @@ pub fn start_poller_worker(
                                                 tracing::warn!(
                                                     update_id = uid,
                                                     error = %err_msg,
-                                                    "Long Polling update reached max retries (DLQ); advancing offset past update_id."
+                                                    "Long Polling update reached max retries or DB retry exhausted; advancing offset past update_id."
                                                 );
                                             }
                                         }
@@ -236,20 +249,15 @@ pub fn start_poller_worker(
 
                                     offset = min_failed_offset.unwrap_or(next_offset);
 
-                                    // Update offset monotonically in memory with zero disk I/O latency
+                                    // Update offset monotonically in memory and flush to SQLite on batch completion
                                     super::state::set_update_offset_memory(offset);
-
-                                    // Periodic flush to SQLite every 50 batch cycles
                                     let db_path_persist = config.db_path.clone();
                                     let current_offset = offset;
-                                    if current_offset % 50 == 0 {
-                                        tokio::spawn(async move {
-                                            let _ = tokio::task::spawn_blocking(move || {
-                                                super::state::set_update_offset(&db_path_persist, current_offset);
-                                            })
-                                            .await;
-                                        });
-                                    }
+                                    tokio::task::spawn_blocking(move || {
+                                        super::state::set_update_offset(&db_path_persist, current_offset);
+                                    })
+                                    .await
+                                    .ok();
                                 }
                             }
                         }

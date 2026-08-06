@@ -5,7 +5,6 @@ use serde_json::Value;
 use std::time::Duration;
 
 use crate::api::AppState;
-use crate::db;
 
 /// Constant-time string comparison to prevent timing side-channel attacks on secret tokens.
 pub fn constant_time_eq(a: &str, b: &str) -> bool {
@@ -148,37 +147,31 @@ pub async fn handle_telegram_webhook(
         return StatusCode::OK;
     }
 
-    // 2. Write update payload to SQLite pending_webhook_updates queue
-    let enqueue_res = if let Some(ref pool) = state.db_pool {
-        if let Ok(conn) = pool.get().await {
-            let p_str = payload_str.clone();
-            conn.interact(move |c| {
-                db::updates::enqueue_webhook_update(c, update_id, chat_id, &p_str)
-            })
-            .await
-            .unwrap_or(Ok(false))
-        } else {
-            Ok(false)
+    // 2. Write update payload to SQLite pending_webhook_updates queue using 4500ms timeout
+    match super::webhook_db::enqueue_update_payload(
+        state.db_pool.as_ref(),
+        &state.config.db_path,
+        update_id,
+        chat_id,
+        &payload_str,
+    )
+    .await
+    {
+        Ok(true) => {
+            state.webhook_notify.notify_one();
+            StatusCode::OK
         }
-    } else {
-        let db_path = state.config.db_path.clone();
-        let p_str = payload_str.clone();
-        tokio::task::spawn_blocking(move || {
-            if let Ok(conn) = db::get_db_connection(&db_path) {
-                db::updates::enqueue_webhook_update(&conn, update_id, chat_id, &p_str)
-            } else {
-                Ok(false)
-            }
-        })
-        .await
-        .unwrap_or(Ok(false))
-    };
-
-    if let Err(ref e) = enqueue_res {
-        tracing::error!(update_id = update_id, error = %e, "Failed to enqueue webhook update to SQLite");
-    } else if let Ok(true) = enqueue_res {
-        state.webhook_notify.notify_one();
+        Ok(false) => {
+            // Already queued or duplicate update_id
+            StatusCode::OK
+        }
+        Err(e) => {
+            tracing::error!(
+                update_id = update_id,
+                error = %e,
+                "Failed to enqueue webhook update to SQLite; returning HTTP 500 for Telegram retry"
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
-
-    StatusCode::OK
 }

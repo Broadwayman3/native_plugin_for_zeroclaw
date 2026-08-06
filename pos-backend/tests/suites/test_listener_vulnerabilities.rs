@@ -450,3 +450,51 @@ fn test_file_line_count_limits() {
         }
     }
 }
+
+#[test]
+fn test_anonymous_admin_message_vs_callback_query_handling() {
+    // 1. Message update with missing from and matching sender_chat.id == chat.id
+    let anon_msg_update = serde_json::json!({
+        "update_id": 100,
+        "message": {
+            "message_id": 55,
+            "chat": { "id": -100123456, "type": "supergroup" },
+            "sender_chat": { "id": -100123456, "type": "supergroup" },
+            "date": 1600000000,
+            "text": "/pos 50 UAH"
+        }
+    });
+    assert!(
+        pos_backend::api::telegram::admin_session::is_anonymous_admin_message(&anon_msg_update)
+    );
+    let (chat_id, user_id) =
+        pos_backend::api::telegram::admin_session::extract_effective_user_context(&anon_msg_update);
+    assert_eq!(chat_id, Some(-100123456));
+    assert_eq!(user_id, 0); // Anonymous admin message -> Stateless user_id 0
+
+    // 2. Callback query update triggered by anonymous admin (from.id is ALWAYS present)
+    let cb_update = serde_json::json!({
+        "update_id": 101,
+        "callback_query": {
+            "id": "cb123",
+            "from": { "id": 998877, "is_bot": false, "first_name": "Admin" },
+            "message": {
+                "message_id": 55,
+                "chat": { "id": -100123456, "type": "supergroup" }
+            },
+            "data": "cancel_INV-100"
+        }
+    });
+    assert!(!pos_backend::api::telegram::admin_session::is_anonymous_admin_message(&cb_update));
+    let (cb_chat_id, cb_user_id) =
+        pos_backend::api::telegram::admin_session::extract_effective_user_context(&cb_update);
+    assert_eq!(cb_chat_id, Some(-100123456));
+    assert_eq!(cb_user_id, 998877); // Callback query retains real user_id for authorization
+}
+
+#[test]
+fn test_rate_limiter_global_429_pause_signal() {
+    pos_backend::api::telegram::rate_limiter::set_global_429_pause(1);
+    // Trigger GC pass without panic
+    pos_backend::api::telegram::rate_limiter::retain_recent_keys();
+}

@@ -1,5 +1,6 @@
 use super::locks::ChatLocksManager;
 use super::process_single_update;
+use super::webhook_db;
 use crate::api::telegram::fsm::FsmStore;
 use crate::config::AppConfig;
 use crate::db;
@@ -87,48 +88,19 @@ pub fn start_webhook_queue_worker(
                         let _guard = flight_guard;
 
                         // Check if update_id was already completely processed
-                        let is_already_processed = if let Some(ref pool) = pool_clone {
-                            if let Ok(conn) = pool.get().await {
-                                conn.interact(move |c| {
-                                    db::updates::is_processed(c, update_id).unwrap_or(false)
-                                })
-                                .await
-                                .unwrap_or(false)
-                            } else {
-                                false
-                            }
-                        } else {
-                            let db_path_check = config_clone.db_path.clone();
-                            tokio::task::spawn_blocking(move || {
-                                if let Ok(conn) = db::get_db_connection(&db_path_check) {
-                                    db::updates::is_processed(&conn, update_id).unwrap_or(false)
-                                } else {
-                                    false
-                                }
-                            })
-                            .await
-                            .unwrap_or(false)
-                        };
-
-                        if is_already_processed {
-                            if let Some(ref pool) = pool_clone {
-                                if let Ok(conn) = pool.get().await {
-                                    let _ = conn
-                                        .interact(move |c| {
-                                            db::updates::mark_webhook_update_done(c, update_id)
-                                        })
-                                        .await;
-                                }
-                            } else {
-                                let db_path_del = config_clone.db_path.clone();
-                                let _ = tokio::task::spawn_blocking(move || {
-                                    if let Ok(conn) = db::get_db_connection(&db_path_del) {
-                                        let _ =
-                                            db::updates::mark_webhook_update_done(&conn, update_id);
-                                    }
-                                })
-                                .await;
-                            }
+                        if webhook_db::is_update_processed(
+                            pool_clone.as_ref(),
+                            &config_clone.db_path,
+                            update_id,
+                        )
+                        .await
+                        {
+                            let _ = webhook_db::mark_done(
+                                pool_clone.as_ref(),
+                                &config_clone.db_path,
+                                update_id,
+                            )
+                            .await;
                             return;
                         }
 
@@ -151,25 +123,12 @@ pub fn start_webhook_queue_worker(
                         .await;
 
                         if res.is_ok() {
-                            // Mark done in pending queue
-                            if let Some(ref pool) = pool_clone {
-                                if let Ok(conn) = pool.get().await {
-                                    let _ = conn
-                                        .interact(move |c| {
-                                            db::updates::mark_webhook_update_done(c, update_id)
-                                        })
-                                        .await;
-                                }
-                            } else {
-                                let db_path = config_clone.db_path.clone();
-                                let _ = tokio::task::spawn_blocking(move || {
-                                    if let Ok(conn) = db::get_db_connection(&db_path) {
-                                        let _ =
-                                            db::updates::mark_webhook_update_done(&conn, update_id);
-                                    }
-                                })
-                                .await;
-                            }
+                            let _ = webhook_db::mark_done(
+                                pool_clone.as_ref(),
+                                &config_clone.db_path,
+                                update_id,
+                            )
+                            .await;
                         } else {
                             let err_msg = res.err().unwrap_or_default();
                             tracing::error!(
@@ -178,64 +137,16 @@ pub fn start_webhook_queue_worker(
                                 "Webhook update execution failed"
                             );
 
-                            let payload_for_dlq = payload_str.clone();
-                            let err_for_dlq = err_msg.clone();
-
-                            let reached_dlq = if let Some(ref pool) = pool_clone {
-                                if let Ok(conn) = pool.get().await {
-                                    conn.interact(move |c| {
-                                        db::updates::record_webhook_failure(
-                                            c,
-                                            update_id,
-                                            chat_id,
-                                            &payload_for_dlq,
-                                            &err_for_dlq,
-                                            3,
-                                        )
-                                        .unwrap_or(false)
-                                    })
-                                    .await
-                                    .unwrap_or(false)
-                                } else {
-                                    let db_path = config_clone.db_path.clone();
-                                    tokio::task::spawn_blocking(move || {
-                                        if let Ok(conn) = db::get_db_connection(&db_path) {
-                                            db::updates::record_webhook_failure(
-                                                &conn,
-                                                update_id,
-                                                chat_id,
-                                                &payload_for_dlq,
-                                                &err_for_dlq,
-                                                3,
-                                            )
-                                            .unwrap_or(false)
-                                        } else {
-                                            false
-                                        }
-                                    })
-                                    .await
-                                    .unwrap_or(false)
-                                }
-                            } else {
-                                let db_path = config_clone.db_path.clone();
-                                tokio::task::spawn_blocking(move || {
-                                    if let Ok(conn) = db::get_db_connection(&db_path) {
-                                        db::updates::record_webhook_failure(
-                                            &conn,
-                                            update_id,
-                                            chat_id,
-                                            &payload_for_dlq,
-                                            &err_for_dlq,
-                                            3,
-                                        )
-                                        .unwrap_or(false)
-                                    } else {
-                                        false
-                                    }
-                                })
-                                .await
-                                .unwrap_or(false)
-                            };
+                            let reached_dlq = webhook_db::record_failure(
+                                pool_clone.as_ref(),
+                                &config_clone.db_path,
+                                update_id,
+                                chat_id,
+                                &payload_str,
+                                &err_msg,
+                                3,
+                            )
+                            .await;
 
                             if reached_dlq {
                                 if let Some(cid) = chat_id {

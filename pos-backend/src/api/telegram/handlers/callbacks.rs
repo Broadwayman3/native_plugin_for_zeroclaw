@@ -38,6 +38,17 @@ pub async fn handle_callback_query(
             .trim_start_matches("cancel_")
             .trim_start_matches("invoice_");
 
+        // 1. Fast-Track answerCallbackQuery BEFORE long DB operation to prevent callback timeout
+        let ack_answer =
+            build_answer_callback_payload(cb_id, "⏳ Processing cancellation...", false);
+        let _ = send_telegram_request(
+            client,
+            &format!("{}/answerCallbackQuery", base_url),
+            &ack_answer,
+        )
+        .await;
+
+        // 2. Perform DB cancellation
         let mut cancel_success = false;
         let inv_id_str = inv_id.to_string();
         if let Some(pool) = pool {
@@ -55,31 +66,14 @@ pub async fn handle_callback_query(
             }
         }
 
-        let (toast_text, msg_text) = if cancel_success {
-            (
-                "Invoice Cancelled ❌",
-                format!("❌ Invoice {} has been cancelled.", inv_id),
-            )
+        let msg_text = if cancel_success {
+            format!("❌ Invoice {} has been cancelled.", inv_id)
         } else {
-            (
-                "Cancellation Failed ⚠️",
-                format!(
-                    "⚠️ Cannot cancel invoice {} (already paid or expired).",
-                    inv_id
-                ),
+            format!(
+                "⚠️ Cannot cancel invoice {} (already paid or expired).",
+                inv_id
             )
         };
-
-        let answer = build_answer_callback_payload(cb_id, toast_text, false);
-        if let Err(e) = send_telegram_request(
-            client,
-            &format!("{}/answerCallbackQuery", base_url),
-            &answer,
-        )
-        .await
-        {
-            tracing::error!(error = %e, "Failed to send answerCallbackQuery");
-        }
 
         let payload = serde_json::json!({
             "chat_id": chat_id,

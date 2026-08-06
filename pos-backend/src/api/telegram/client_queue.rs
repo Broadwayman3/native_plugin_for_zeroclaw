@@ -1,30 +1,12 @@
-use governor::{Quota, RateLimiter};
-use once_cell::sync::Lazy;
 use reqwest::multipart::{Form, Part};
 use reqwest::Client;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, Duration};
 
-static GLOBAL_TELEGRAM_LIMITER: Lazy<governor::DefaultDirectRateLimiter> = Lazy::new(|| {
-    let quota = Quota::per_second(NonZeroU32::new(25).unwrap());
-    RateLimiter::direct(quota)
-});
-
-static PER_CHAT_TELEGRAM_LIMITER: Lazy<governor::DefaultKeyedRateLimiter<i64>> = Lazy::new(|| {
-    let quota = Quota::per_second(NonZeroU32::new(1).unwrap());
-    RateLimiter::keyed(quota)
-});
-
-pub async fn enforce_rate_limit(chat_id: Option<i64>) {
-    GLOBAL_TELEGRAM_LIMITER.until_ready().await;
-    if let Some(cid) = chat_id {
-        PER_CHAT_TELEGRAM_LIMITER.until_key_ready(&cid).await;
-    }
-}
+pub use super::rate_limiter::enforce_rate_limit;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {
@@ -216,6 +198,7 @@ async fn send_json_direct(client: &Client, url: &str, payload: &Value) -> Result
                     } else {
                         2
                     };
+                    super::rate_limiter::set_global_429_pause(retry_secs);
                     if attempts < 3 {
                         sleep(Duration::from_secs(retry_secs + 1)).await;
                         continue;
@@ -275,7 +258,16 @@ async fn send_photo_direct(
                     return resp.json::<Value>().await.map_err(|e| e.to_string());
                 }
                 if status.as_u16() == 429 && attempts < 3 {
-                    sleep(Duration::from_secs(3)).await;
+                    let retry_secs = if let Ok(j) = resp.json::<Value>().await {
+                        j.get("parameters")
+                            .and_then(|p| p.get("retry_after"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(3)
+                    } else {
+                        3
+                    };
+                    super::rate_limiter::set_global_429_pause(retry_secs);
+                    sleep(Duration::from_secs(retry_secs + 1)).await;
                     continue;
                 } else if status.is_server_error() && attempts < 3 {
                     sleep(Duration::from_millis(500 * (1 << attempts))).await;

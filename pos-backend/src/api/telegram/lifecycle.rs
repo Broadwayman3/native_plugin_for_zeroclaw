@@ -42,6 +42,7 @@ pub fn start_telegram_services(
     }
 
     let webhook_notify = Arc::new(tokio::sync::Notify::new());
+    let _gc_handle = super::rate_limiter::start_rate_limiter_gc_worker(cancel_token.clone());
     let verifier_handle = verifier::start_verifier_worker(config.clone(), cancel_token.clone());
 
     let fsm_store = if let Some(ref pool) = db_pool {
