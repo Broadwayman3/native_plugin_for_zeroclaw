@@ -71,6 +71,8 @@ location /api/v1/telegram/webhook {
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather | `8861640052:AAH...` |
+| `TELEGRAM_WEBHOOK_URL` | Optional Telegram webhook endpoint URL | `https://your-domain.com/api/v1/telegram/webhook` |
+| `TELEGRAM_BOT_SECRET_TOKEN` | Secret token for constant-time webhook header validation | `sec_token_8861640052...` |
 | `MANAGER_TELEGRAM_ID` | Telegram user ID for manager approvals | `123456789` |
 | `SOLANA_RPC_URL` | Solana RPC endpoint | `https://devnet.helius-rpc.com/?api-key=...` |
 | `MERCHANT_WALLET_PUBKEY` | Store wallet public key | `8xAZ...mQ11` |

@@ -142,9 +142,24 @@ PRAGMA cache_size=-64000;  -- 64MB RAM cache
 
 - **`deadpool-sqlite` Pool Acquisition Timeout**: `pool.get()` is wrapped in `tokio::time::timeout(Duration::from_millis(4500), ...)`. If connection pool acquisition exceeds 4.5 seconds under high load, the Webhook handler fast-fails with `HTTP 500 Internal Server Error`, ensuring Telegram's gateway retries update delivery instead of dropping data.
 
+## SQLite RAII Transaction Safety (`TransactionRollbackGuard`)
+
+- **`BEGIN IMMEDIATE` Write Lock**: Batch claiming in `fetch_pending_batch()` executes an immediate write transaction lock to eliminate `SQLITE_BUSY` contention across worker threads.
+- **RAII Rollback Guard**: A custom `TransactionRollbackGuard<'a>(&'a Connection, bool)` struct implements `Drop`. If any `panic!` or error occurs before explicit `COMMIT` (`guard.1 = true`), `ROLLBACK` executes automatically upon drop, preventing uncommitted transaction leaks.
+
+## Strict Per-Chat FIFO Queue & Lease Expiration
+
+- **Atomic Batch Claim Query**: Uses `UPDATE ... RETURNING` with 30-second lease expiration (`locked_at < datetime('now', '-30 seconds')`).
+- **Head-of-Line Unblocking**: Enforces strict FIFO update execution per `chat_id` for active/ready updates, while unblocking incoming commands when prior updates are waiting in exponential backoff (`retry_pending` with `next_retry_at > datetime('now')`).
+
+## Offset & State Persistence
+
+- **Offset Storage**: Last processed Telegram update offset is persisted in SQLite `system_settings` table under `telegram_update_offset`.
+- **User Language Preference**: Chat language preferences are stored under key `lang_{chat_id}` in `system_settings`, backed by an in-memory thread-safe $O(1)$ LRU cache (`lang_cache.rs`).
+
 ## DLQ & DB Retry Backoff Policy
 
-- **Atomic Failure Recording**: `db::updates::record_failure_and_check_max_retries` performs up to **3 retry attempts** with exponential backoff (`50ms * (1 << attempt)`) on transient connection errors before logging warnings and advancing update offsets.
+- **Atomic Failure Recording**: `db::updates::record_failure_and_check_max_retries` performs up to **3 retry attempts** with exponential backoff (`5s * 2^(attempt-1)`) before moving failed updates to `failed_updates` (DLQ).
 
 ## Atomic State Transitions
 

@@ -50,35 +50,38 @@ pos-backend/src/
 │   └── telegram/        # Telegram Bot API integration & listener
 │       ├── mod.rs       # Telegram module exports, update processor & extract_invoice_id
 │       ├── admin_session.rs # Anonymous group admin detection & Stateless Mode routing
-│       ├── rate_limiter.rs # Keyed rate-limiter GC worker & global HTTP 429 pause timer
-│       ├── webhook_db.rs # Synchronous SQLite Webhook queue transactions with 4.5s pool acquire timeout
-│       ├── lifecycle.rs # Service spawner & graceful child_token shutdown handles
-│       ├── polling.rs   # Long Polling loop worker with monotonic AtomicI64 offset
-│       ├── webhook.rs   # Webhook POST handler returning 500 on DB timeout for zero data loss
-│       ├── webhook_worker.rs # Webhook FIFO queue worker with Semaphore(50) backpressure
-│       ├── lang_cache.rs # Thread-safe O(1) lru::LruCache for user language preferences
-│       ├── verifier.rs  # Solana RPC invoice payment verifier loop
-│       ├── locks.rs     # ChatLocksManager (LockKey::UserSession & LockKey::Invoice)
-│       ├── fsm_store.rs # Persistent Telegram FSM DAO
+│       ├── chat_action.rs # SendChatAction typing status helper
 │       ├── client.rs    # Reqwest Telegram API client & helpers
-│       ├── client_queue.rs # Rate-limited outbound message queue actor
+│       ├── client_queue.rs # Rate-limited outbound message queue actor & 429 escalation
+│       ├── events.rs    # Telegram update event dispatching & callback routing
+│       ├── fsm.rs       # Telegram FSM state types
+│       ├── fsm_store.rs # Persistent Telegram FSM DAO
 │       ├── handlers/    # Telegram command & callback query handlers
+│       ├── lang_cache.rs # Thread-safe O(1) lru::LruCache for user language preferences
+│       ├── lifecycle.rs # Service spawner & graceful child_token shutdown handles
+│       ├── locks.rs     # ChatLocksManager (LockKey::UserSession & LockKey::Invoice)
 │       ├── orders.rs    # POS text order parsing & receipt builder
+│       ├── polling.rs   # Long Polling loop worker with monotonic AtomicI64 offset
 │       ├── qr.rs        # Inline QR code receipt builder
-│       └── events.rs    # Telegram update event dispatching
+│       ├── rate_limiter.rs # Keyed rate-limiter GC worker & global HTTP 429 pause timer
+│       ├── state.rs     # Language preference DB operations
+│       ├── verifier.rs  # Solana RPC invoice payment verifier loop
+│       ├── webhook.rs   # Webhook POST handler returning 500 on DB timeout for zero data loss
+│       ├── webhook_db.rs # Webhook DB helper functions
+│       └── webhook_worker.rs # Webhook FIFO queue worker with Semaphore(50) backpressure
 ├── db/                  # SQLite data access
-│   ├── mod.rs           # Connection factory (WAL mode)
+│   ├── mod.rs           # Connection factory (WAL mode & pragmas)
 │   ├── schema.rs        # DDL, migrations, nonce seeding, idx_pending_fifo
 │   ├── invoices.rs      # Invoice DAO
 │   ├── nonce.rs         # Nonce account pool
 │   ├── squads.rs        # Squads v4 proposals
 │   ├── fsm_dao.rs       # Telegram FSM sessions DAO
 │   ├── sop_checkpoints.rs
-│   ├── updates.rs       # FIFO update queue, DLQ, processed deduplication
+│   ├── updates.rs       # TransactionRollbackGuard, FIFO update queue, DLQ, deduplication
 │   └── seed.rs          # Sample data
 └── domain/              # Business logic
     ├── constants.rs     # USDC/SOL mints, Base58 alphabet
-    ├── sanitizer.rs     # SSRF guard, input sanitization
+    ├── sanitizer.rs     # SSRF guard, input sanitization, link-aware MarkdownV2
     ├── verification.rs  # Triple Payment Verification
     ├── i18n.rs          # 13-language i18n dispatcher
     ├── i18n_strings/    # Translation tables (13 languages)
@@ -163,6 +166,27 @@ world plugin {
 ```
 
 ## Data Flow
+
+### Telegram Update Processing Flow
+
+```mermaid
+graph TD
+    A[Telegram Gateway POST] --> B{Secret Token Validation}
+    B -->|Invalid| C[Return 401 Unauthorized]
+    B -->|Valid| D[deadpool pool.get timeout 4.5s]
+    D -->|Pool Exhausted| E[Return 500 Internal Server Error]
+    D -->|Success| F[INSERT INTO pending_webhook_updates WAL]
+    F --> G[Return 200 OK]
+    F --> H[Async Worker Wakeup]
+    H --> I[BEGIN IMMEDIATE Transaction]
+    I --> J[TransactionRollbackGuard Created]
+    J --> K[UPDATE ... RETURNING fetch_pending_batch limit 50]
+    K --> L{Check manager_authorized if admin action}
+    L -->|Unauthorized| M[Fast-track answerCallbackQuery Error]
+    L -->|Authorized| N[dispatch_update_content]
+    N --> O[COMMIT Transaction & guard.1 = true]
+    N -->|Err / Panic| P[RAII Drop -> ROLLBACK Transaction]
+```
 
 ### Payment Flow
 

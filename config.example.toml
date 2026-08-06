@@ -9,6 +9,8 @@ log_level = "info"
 [channels.telegram]
 enabled = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
+webhook_url = "${TELEGRAM_WEBHOOK_URL}"
+bot_secret_token = "${TELEGRAM_BOT_SECRET_TOKEN}"
 allowed_chat_ids = [] # Leave empty for public customer bot, or specify manager chat ID for admin commands
 manager_chat_id = "${MANAGER_TELEGRAM_ID}"
 

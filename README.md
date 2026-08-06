@@ -2,7 +2,7 @@
 
 > **Tier 3 WASM Native Plugin + Squads v4 Multisig Governance**
 
-![Tests](https://img.shields.io/badge/Tests-524%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
+![Tests](https://img.shields.io/badge/Tests-526%20PASSED-brightgreen?style=for-the-badge&logo=pytest)
 ![WASM Sandbox](https://img.shields.io/badge/Sandbox-Tier%203%20WASM%20wasip2-orange?style=for-the-badge&logo=webassembly)
 ![Custody](https://img.shields.io/badge/Custody-T1%20Invoicing%20%2B%20Squads%20v4-blue?style=for-the-badge&logo=solana)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
@@ -10,7 +10,7 @@
 ## 10-Second Verification
 
 ```bash
-# Complete automated verification (524 tests, WASM build, security checks)
+# Complete automated verification (526 tests, WASM build, security checks)
 ./scripts/verify_all.sh
 ```
 
@@ -73,7 +73,7 @@
 | WASM Plugin | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate → `wasm32-wasip2` via WIT |
 | Core Logic | [`pos-core-logic`](./plugins/solana-pos-core/pos-core-logic) | Shared business logic |
 | REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (13 REST API routes), SQLite WAL, domain logic |
-| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook DB queue (`webhook_db.rs`), Long Polling, FSM, Rate Limiter GC (`rate_limiter.rs`), Anonymous Admin Session (`admin_session.rs`), $O(1)$ LRU cache (`lang_cache.rs`) |
+| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Webhook DB queue (`webhook.rs`), Long Polling (`polling.rs`), TransactionRollbackGuard RAII safety (`updates.rs`), FSM, Rate Limiter GC (`rate_limiter.rs`), Anonymous Admin Session (`admin_session.rs`), $O(1)$ LRU cache (`lang_cache.rs`), link-aware MarkdownV2 sanitizer |
 | Skills | [`skills/`](./skills) | LLM skill definitions (Solana Pay, Nonce, PIX, etc.) |
 | SOPs | [`sops/`](./sops) | Standard Operating Procedures (JSON) |
 | WIT Interface | [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) | WASI Component Model contract |
@@ -95,7 +95,7 @@
 - **Tier 3 WASM Sandbox**: Rust plugin in isolated `wasm32-wasip2` environment
 - **Squads v4 Multisig**: Agent = Proposer only; managers hold threshold signers
 - **Triple Payment Verification**: Reference key + token mint + amount check
-- **524 automated tests** (485 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core WASM) including prompt injection defense
+- **526 automated tests** (487 in pos-backend, 31 in pos-core-logic, 8 in solana-pos-core WASM) including prompt injection defense
 
 ## License
 

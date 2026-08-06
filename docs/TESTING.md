@@ -2,11 +2,11 @@
 
 ## Overview
 
-The project has **524 total tests** (485 in `pos-backend`, 31 in `pos-core-logic`, 8 in `solana-pos-core`) including property-based tests across three crates.
+The project has **526 total tests** (487 in `pos-backend`, 31 in `pos-core-logic`, 8 in `solana-pos-core`) including property-based tests across three crates.
 
 | Crate | Tests | Focus |
 |-------|-------|-------|
-| `pos-backend` | 479 + 6 proptest | REST API, DB, Telegram listener, FSM, i18n, security, edge cases |
+| `pos-backend` | 481 + 6 proptest | REST API, DB, Telegram listener, FSM, i18n, security, edge cases |
 | `pos-core-logic` | 27 + 4 proptest | Shared business logic (Solana Pay, Squads, Token-2022) |
 | `solana-pos-core` | 5 + 3 proptest | WASM plugin unit tests |
 
@@ -25,7 +25,7 @@ Tests are numbered sequentially: `test_001` through `test_394`.
 ### Individual crates
 
 ```bash
-# pos-backend (485 tests)
+# pos-backend (487 tests)
 cargo test --manifest-path pos-backend/Cargo.toml -- --test-threads=1
 
 # pos-core-logic (31 tests)
@@ -44,8 +44,8 @@ cd plugins/solana-pos-core && cargo test --lib --release
 | `test_edge_storage.rs` | 31 | SQLite WAL, concurrent writes, migrations |
 | `test_token2022.rs` | 30 | Token-2022 fee calculation, u128 precision |
 | `test_telegram_listener.rs` | 24 | Telegram listener, FIFO queue, FSM session persistence |
+| `test_sanitizer.rs` | 22 | Input sanitization, SSRF, prompt injection, link-aware MarkdownV2 |
 | `test_solana_pay.rs` | 20 | Solana Pay URL generation, reference keys |
-| `test_sanitizer.rs` | 20 | Input sanitization, SSRF, prompt injection |
 | `test_nonce_pools.rs` | 20 | Nonce pool allocation, release, collision guards |
 | `test_database.rs` | 20 | Invoice CRUD, status transitions, cleanup |
 | `test_zeroclaw_integration.rs` | 18 | End-to-end ZeroClaw agent integration |

@@ -52,8 +52,8 @@ POST /api/v1/settings/update
 POST /api/v1/telegram/webhook
 ```
 - **Headers**: `X-Telegram-Bot-Api-Secret-Token: <token>` (validated via constant-time string comparison)
-- **Body Limit**: 64 KB maximum payload limit
-- **Description**: Enqueues incoming Telegram update synchronously into SQLite WAL database (`webhook_db.rs`) with a `4500ms` `deadpool` connection acquire timeout and triggers async worker wakeup.
+- **Body Limit**: 128 KB maximum payload limit
+- **Description**: Enqueues incoming Telegram update synchronously into SQLite WAL database (`webhook.rs`) with a `4500ms` `deadpool` connection acquire timeout and triggers async worker wakeup.
 - **Response**:
   - `200 OK`: Update successfully stored in SQLite queue.
   - `500 Internal Server Error`: Connection pool acquisition timed out (>4.5s) or DB write failed. Returns 500 to signal Telegram gateway to retry delivery.

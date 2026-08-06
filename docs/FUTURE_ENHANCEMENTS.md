@@ -6,7 +6,8 @@ This document tracks completed enhancements and future architecture specificatio
 
 ## ✅ Completed Enhancements (v1.0.0 Production Release)
 
-- **[COMPLETED] Zero-Data-Loss Webhook Ingestion (`webhook_db.rs`)**: Synchronous WAL insertion with a 4.5s connection pool acquire timeout returning HTTP 500 status codes for gateway retries.
+- **[COMPLETED] WASM-Driven Solana Actions / Blinks Transaction Builder (`solana_pay.rs` & `actions.rs`)**: Implemented `build_actions_payment_transaction()` in `pos-core-logic` and REST endpoints (`GET /actions.json`, `GET /api/v1/actions/pay_invoice`, `POST /api/v1/actions/pay_invoice`) returning unsigned Base64 Solana transactions with reference key metadata indexing and fee-payer signature slot reservation.
+- **[COMPLETED] Zero-Data-Loss Webhook Ingestion (`webhook.rs`)**: Synchronous WAL insertion with a 4.5s connection pool acquire timeout returning HTTP 500 status codes for gateway retries.
 - **[COMPLETED] Keyed Rate Limiter GC & Monotonic Pause Timer (`rate_limiter.rs`)**: Periodic 10-minute `retain_recent_keys()` memory cleanup pass and monotonic `tokio::time::Instant` HTTP 429 global pause timer with auto-reset guard.
 - **[COMPLETED] Stateless Supergroup Admin Mode (`admin_session.rs`)**: Anonymous admin posts (`from` missing) and linked channel forwards execute in Stateless One-Shot Mode (`user_id = 0`) to prevent FSM cross-contamination while preserving `from.id` authorization for callback queries.
 - **[COMPLETED] Bounded Poller Execution & DLQ Backoff (`polling.rs`)**: Wrapped update tasks in 30-second timeouts with 3 exponential backoff retries on transient DB errors.
