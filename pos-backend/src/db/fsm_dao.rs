@@ -73,6 +73,15 @@ pub fn clear_session(conn: &Connection, chat_id: i64, user_id: i64) -> Result<()
     Ok(())
 }
 
+/// Clears all FSM sessions for a given chat_id (e.g. when bot is kicked/removed from chat).
+pub fn clear_all_chat_sessions(conn: &Connection, chat_id: i64) -> Result<usize> {
+    let count = conn.execute(
+        "DELETE FROM telegram_fsm_sessions WHERE chat_id = ?1",
+        params![chat_id],
+    )?;
+    Ok(count)
+}
+
 /// Cleans up expired FSM sessions older than ttl_secs.
 pub fn cleanup_expired_sessions(conn: &Connection, ttl_secs: u64) -> Result<usize> {
     let min_time = (current_unix_timestamp().saturating_sub(ttl_secs)) as i64;

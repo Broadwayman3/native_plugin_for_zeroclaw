@@ -2,11 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::Mutex as AsyncMutex;
 
-/// Safe per-(chat_id, user_id) ordering concurrency manager using Weak references.
+/// Safe per-chat ordering concurrency manager using Weak references.
 #[derive(Clone, Default)]
 pub struct ChatLocksManager {
-    #[allow(clippy::type_complexity)]
-    locks: Arc<Mutex<HashMap<(i64, i64), Weak<AsyncMutex<()>>>>>,
+    locks: Arc<Mutex<HashMap<i64, Weak<AsyncMutex<()>>>>>,
 }
 
 impl ChatLocksManager {
@@ -16,10 +15,10 @@ impl ChatLocksManager {
         }
     }
 
-    /// Gets existing lock or creates a new AsyncMutex for (chat_id, user_id).
+    /// Gets existing lock or creates a new AsyncMutex for chat_id.
     /// Weak references eliminate GC race conditions across concurrent tasks.
-    pub fn get_or_create(&self, chat_id: i64, user_id: i64) -> Arc<AsyncMutex<()>> {
-        let key = (chat_id, user_id);
+    pub fn get_or_create(&self, chat_id: i64, _user_id: i64) -> Arc<AsyncMutex<()>> {
+        let key = chat_id;
         let mut map = self.locks.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(weak) = map.get(&key) {
             if let Some(strong) = weak.upgrade() {

@@ -142,4 +142,26 @@ impl FsmStore {
         })
         .await;
     }
+
+    /// Removes all session states for a given chat_id regardless of user_id.
+    pub async fn clear_chat(&self, chat_id: i64) {
+        if let Some(ref pool) = self.pool {
+            if let Ok(conn) = pool.get().await {
+                let _ = conn
+                    .interact(move |c| {
+                        let _ = db::fsm_dao::clear_all_chat_sessions(c, chat_id);
+                    })
+                    .await;
+                return;
+            }
+        }
+
+        let db_path = self.db_path.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = db::get_db_connection(&db_path) {
+                let _ = db::fsm_dao::clear_all_chat_sessions(&conn, chat_id);
+            }
+        })
+        .await;
+    }
 }

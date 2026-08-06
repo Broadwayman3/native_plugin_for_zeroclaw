@@ -69,7 +69,10 @@ pub fn start_poller_worker(
                 break;
             }
 
-            let poll_url = format!("{}/getUpdates?offset={}&timeout=20", base_url, offset);
+            let poll_url = format!(
+                "{}/getUpdates?offset={}&timeout=20&allowed_updates=%5B%22message%22%2C%22edited_message%22%2C%22callback_query%22%2C%22my_chat_member%22%5D",
+                base_url, offset
+            );
             tokio::select! {
                 _ = cancel_token.cancelled() => {
                     tracing::info!("Polling worker received cancellation signal during getUpdates. Shutting down poller worker cleanly.");
@@ -179,16 +182,51 @@ pub fn start_poller_worker(
                                         handles.push((update_id, handle));
                                     }
 
-                                    // Wait for all updates in batch to finish
-                                    let mut min_failed_offset: Option<i64> = None;
-                                    for (uid, handle) in handles {
-                                        if let Ok(Err(_)) = handle.await {
-                                            min_failed_offset = Some(match min_failed_offset {
-                                                Some(curr) => curr.min(uid),
-                                                None => uid,
-                                            });
-                                        }
-                                    }
+                                     // Wait for all updates in batch to finish
+                                     let mut min_failed_offset: Option<i64> = None;
+                                     for (uid, handle) in handles {
+                                         if let Ok(Err(err_msg)) = handle.await {
+                                             let pool_clone = db_pool.clone();
+                                             let config_clone = config.clone();
+                                             let reached_dlq = if let Some(ref pool) = pool_clone {
+                                                 if let Ok(conn) = pool.get().await {
+                                                     conn.interact(move |c| {
+                                                         db::updates::record_failure_and_check_max_retries(c, uid, 3)
+                                                             .unwrap_or(false)
+                                                     })
+                                                     .await
+                                                     .unwrap_or(false)
+                                                 } else {
+                                                     false
+                                                 }
+                                             } else {
+                                                 let db_path_check = config_clone.db_path.clone();
+                                                 tokio::task::spawn_blocking(move || {
+                                                     if let Ok(conn) = db::get_db_connection(&db_path_check) {
+                                                         db::updates::record_failure_and_check_max_retries(&conn, uid, 3)
+                                                             .unwrap_or(false)
+                                                     } else {
+                                                         false
+                                                     }
+                                                 })
+                                                 .await
+                                                 .unwrap_or(false)
+                                             };
+
+                                             if !reached_dlq {
+                                                 min_failed_offset = Some(match min_failed_offset {
+                                                     Some(curr) => curr.min(uid),
+                                                     None => uid,
+                                                 });
+                                             } else {
+                                                 tracing::warn!(
+                                                     update_id = uid,
+                                                     error = %err_msg,
+                                                     "Long Polling update reached max retries (DLQ); advancing offset past update_id."
+                                                 );
+                                             }
+                                         }
+                                     }
 
                                     offset = min_failed_offset.unwrap_or(next_offset);
 

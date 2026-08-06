@@ -73,6 +73,25 @@ pub fn init_db(conn: &Connection, seed_sample_data: bool) -> Result<(), rusqlite
             payload_json TEXT NOT NULL,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (chat_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS pending_webhook_updates (
+            update_id INTEGER PRIMARY KEY,
+            chat_id INTEGER,
+            payload TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            attempts INTEGER DEFAULT 0,
+            locked_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS failed_updates (
+            update_id INTEGER PRIMARY KEY,
+            chat_id INTEGER,
+            payload TEXT NOT NULL,
+            error_message TEXT,
+            failed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            retry_count INTEGER DEFAULT 0
         );",
     )?;
 

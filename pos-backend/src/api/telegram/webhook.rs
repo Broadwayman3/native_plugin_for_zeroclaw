@@ -45,6 +45,7 @@ pub async fn register_telegram_webhook(config: &crate::config::AppConfig) -> Res
     let mut payload = serde_json::json!({
         "url": webhook_url,
         "drop_pending_updates": false,
+        "allowed_updates": ["message", "edited_message", "callback_query", "my_chat_member"]
     });
 
     let secret = match &config.telegram_bot_secret_token {
@@ -93,6 +94,7 @@ pub async fn register_telegram_webhook(config: &crate::config::AppConfig) -> Res
 }
 
 /// Axum POST endpoint for Telegram Webhook updates.
+/// Persists payload into SQLite `pending_webhook_updates` queue and returns 200 OK fast.
 pub async fn handle_telegram_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -122,75 +124,52 @@ pub async fn handle_telegram_webhook(
         None => return StatusCode::OK,
     };
 
-    // 2. Claim update_id in in-flight tracker to eliminate concurrent execution race conditions
-    let flight_guard = match state.in_flight.try_claim(update_id) {
-        Some(guard) => guard,
-        None => {
-            tracing::info!(
-                update_id = update_id,
-                "Update is already in-flight; returning 200 OK"
-            );
-            return StatusCode::OK;
-        }
-    };
+    let chat_id = update
+        .get("message")
+        .or_else(|| update.get("edited_message"))
+        .and_then(|m| m.get("chat"))
+        .and_then(|c| c.get("id"))
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            update
+                .get("callback_query")
+                .and_then(|cb| cb.get("message"))
+                .and_then(|m| m.get("chat"))
+                .and_then(|c| c.get("id"))
+                .and_then(|v| v.as_i64())
+        });
 
-    // 3. Fast Ack: Spawn background task carrying flight_guard and return 200 OK immediately
-    tokio::spawn(async move {
-        let _guard = flight_guard; // Guard is held for the full duration of background processing
+    let payload_str = update.to_string();
 
-        let is_already_processed = if let Some(ref pool) = state.db_pool {
-            if let Ok(conn) = pool.get().await {
-                conn.interact(move |c| db::updates::is_processed(c, update_id).unwrap_or(false))
-                    .await
-                    .unwrap_or(false)
-            } else {
-                false
-            }
-        } else {
-            let db_path = state.config.db_path.clone();
-            tokio::task::spawn_blocking(move || {
-                if let Ok(conn) = db::get_db_connection(&db_path) {
-                    db::updates::is_processed(&conn, update_id).unwrap_or(false)
-                } else {
-                    false
-                }
+    // 2. Write update payload to SQLite pending_webhook_updates queue
+    let enqueue_res = if let Some(ref pool) = state.db_pool {
+        if let Ok(conn) = pool.get().await {
+            let p_str = payload_str.clone();
+            conn.interact(move |c| {
+                db::updates::enqueue_webhook_update(c, update_id, chat_id, &p_str)
             })
             .await
-            .unwrap_or(false)
-        };
-
-        if is_already_processed {
-            return;
+            .unwrap_or(Ok(false))
+        } else {
+            Ok(false)
         }
-
-        let base_url = format!(
-            "https://api.telegram.org/bot{}",
-            state.config.telegram_bot_token
-        );
-
-        // In-task exponential backoff retries for Webhook mode (up to 3 attempts)
-        for attempt in 1..=3 {
-            let res = super::process_single_update(
-                &state.http_client,
-                &base_url,
-                &state.config,
-                &state.fsm_store,
-                &state.chat_locks,
-                state.db_pool.as_ref(),
-                &update,
-                update_id,
-            )
-            .await;
-
-            if res.is_ok() {
-                break;
+    } else {
+        let db_path = state.config.db_path.clone();
+        let p_str = payload_str.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = db::get_db_connection(&db_path) {
+                db::updates::enqueue_webhook_update(&conn, update_id, chat_id, &p_str)
+            } else {
+                Ok(false)
             }
+        })
+        .await
+        .unwrap_or(Ok(false))
+    };
 
-            if attempt < 3 {
-                tokio::time::sleep(Duration::from_secs(1 << (attempt - 1))).await;
-            }
-        }
-    });
+    if let Err(ref e) = enqueue_res {
+        tracing::error!(update_id = update_id, error = %e, "Failed to enqueue webhook update to SQLite");
+    }
 
     StatusCode::OK
 }

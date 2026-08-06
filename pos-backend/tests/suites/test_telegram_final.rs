@@ -154,10 +154,14 @@ fn test_395_chat_locks_gc_cleanup() {
 fn test_396_composite_chat_locks_isolation() {
     let chat_locks = ChatLocks::new();
     let group_chat_id = 9988776655;
+    let other_chat_id = 1122334455;
 
     let user_a_lock = chat_locks.get_or_create(group_chat_id, 1001);
     let user_b_lock = chat_locks.get_or_create(group_chat_id, 1002);
+    let other_chat_lock = chat_locks.get_or_create(other_chat_id, 1001);
 
-    // Locks for different users in the same group chat must NOT be identical
-    assert!(!Arc::ptr_eq(&user_a_lock, &user_b_lock));
+    // Operations within the same chat share the chat lock for serial execution order
+    assert!(Arc::ptr_eq(&user_a_lock, &user_b_lock));
+    // Different chats receive isolated locks
+    assert!(!Arc::ptr_eq(&user_a_lock, &other_chat_lock));
 }

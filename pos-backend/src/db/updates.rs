@@ -1,11 +1,87 @@
 use rusqlite::{params, Connection};
 
-/// Cleans up old update IDs older than 24 hours.
+/// Cleans up old update IDs older than 24 hours and failed DLQ entries older than 7 days.
 pub fn cleanup_old_updates(conn: &Connection) -> Result<usize, rusqlite::Error> {
-    conn.execute(
+    let deleted_processed = conn.execute(
         "DELETE FROM processed_updates WHERE processed_at < datetime('now', '-1 day')",
         [],
-    )
+    )?;
+    let deleted_failed = conn.execute(
+        "DELETE FROM failed_updates WHERE failed_at < datetime('now', '-7 days')",
+        [],
+    )?;
+    Ok(deleted_processed + deleted_failed)
+}
+
+/// Enqueues an incoming webhook update into pending_webhook_updates atomically using INSERT OR IGNORE.
+pub fn enqueue_webhook_update(
+    conn: &Connection,
+    update_id: i64,
+    chat_id: Option<i64>,
+    payload: &str,
+) -> Result<bool, rusqlite::Error> {
+    let count = conn.execute(
+        "INSERT OR IGNORE INTO pending_webhook_updates (update_id, chat_id, payload, status) VALUES (?1, ?2, ?3, 'pending')",
+        params![update_id, chat_id, payload],
+    )?;
+    Ok(count > 0)
+}
+
+/// Fetches a batch of pending/unlocked webhook updates and atomically locks them in SQLite transaction.
+pub fn fetch_pending_batch(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<(i64, Option<i64>, String)>, rusqlite::Error> {
+    let tx = conn.unchecked_transaction()?;
+    let rows: Vec<(i64, Option<i64>, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT update_id, chat_id, payload FROM pending_webhook_updates 
+             WHERE status = 'pending' OR (status = 'processing' AND locked_at < datetime('now', '-5 minutes'))
+             ORDER BY created_at ASC LIMIT ?1",
+        )?;
+        let mapped = stmt.query_map(params![limit as i64], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        mapped.collect::<Result<Vec<_>, _>>()?
+    };
+
+    for (update_id, _, _) in &rows {
+        tx.execute(
+            "UPDATE pending_webhook_updates SET status = 'processing', locked_at = datetime('now') WHERE update_id = ?1",
+            params![update_id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(rows)
+}
+
+/// Removes a completed update from pending_webhook_updates.
+pub fn mark_webhook_update_done(conn: &Connection, update_id: i64) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "DELETE FROM pending_webhook_updates WHERE update_id = ?1",
+        params![update_id],
+    )?;
+    Ok(())
+}
+
+/// Atomically moves an update to failed_updates (DLQ) after max retries and removes from pending queue.
+pub fn move_to_dlq(
+    conn: &Connection,
+    update_id: i64,
+    chat_id: Option<i64>,
+    payload: &str,
+    error_msg: &str,
+    retry_count: i32,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT OR REPLACE INTO failed_updates (update_id, chat_id, payload, error_message, retry_count) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![update_id, chat_id, payload, error_msg, retry_count],
+    )?;
+    conn.execute(
+        "DELETE FROM pending_webhook_updates WHERE update_id = ?1",
+        params![update_id],
+    )?;
+    Ok(())
 }
 
 /// Checks if a Telegram update ID has already been completely processed or DLQ'd in SQLite.
