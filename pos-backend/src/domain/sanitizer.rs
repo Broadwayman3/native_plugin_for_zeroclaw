@@ -76,6 +76,21 @@ pub fn sanitize_external_input(user_string: &str, max_length: usize) -> String {
     cleaned.trim().chars().take(max_length).collect()
 }
 
+/// Sanitizes command/ID arguments with a strict maximum limit of 100 characters.
+pub fn sanitize_command_input(user_string: &str) -> String {
+    sanitize_external_input(user_string, 100)
+}
+
+/// Sanitizes item titles/names with a maximum limit of 200 characters.
+pub fn sanitize_item_name(user_string: &str) -> String {
+    sanitize_external_input(user_string, 200)
+}
+
+/// Sanitizes payment descriptions or notes with a maximum limit of 1000 characters.
+pub fn sanitize_description(user_string: &str) -> String {
+    sanitize_external_input(user_string, 1000)
+}
+
 /// Redacts API keys, tokens, secrets, and Solana byte array keypairs from error messages.
 pub fn redact_api_key(error_msg: &str) -> String {
     if error_msg.is_empty() {

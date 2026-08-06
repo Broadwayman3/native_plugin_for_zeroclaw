@@ -52,8 +52,12 @@ async fn main() -> anyhow::Result<()> {
     pos_backend::db::init_db(&conn, true)?;
     drop(conn);
 
-    // Start background Telegram long-poller and Solana RPC verifier workers
-    pos_backend::api::telegram::start_telegram_services(std::sync::Arc::new(config.clone()));
+    // Start background Telegram long-poller and Solana RPC verifier workers with single shared DB pool
+    let db_pool = pos_backend::db::create_db_pool(&db_path).ok();
+    pos_backend::api::telegram::start_telegram_services(
+        std::sync::Arc::new(config.clone()),
+        db_pool,
+    );
 
     let app = pos_backend::api::build_router(&config).await;
 

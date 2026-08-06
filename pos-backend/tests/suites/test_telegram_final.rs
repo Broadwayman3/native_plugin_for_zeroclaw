@@ -135,8 +135,9 @@ fn test_395_chat_locks_gc_cleanup() {
     let chat_locks = ChatLocks::new();
     let target_chat_id = 9988776655;
 
-    let lock1 = chat_locks.get_or_create(target_chat_id);
-    let lock2 = chat_locks.get_or_create(target_chat_id);
+    let user_id = 1001;
+    let lock1 = chat_locks.get_or_create(target_chat_id, user_id);
+    let lock2 = chat_locks.get_or_create(target_chat_id, user_id);
 
     assert!(Arc::ptr_eq(&lock1, &lock2));
     let weak2 = Arc::downgrade(&lock2);
@@ -145,6 +146,18 @@ fn test_395_chat_locks_gc_cleanup() {
 
     assert!(weak2.upgrade().is_none());
 
-    let lock3 = chat_locks.get_or_create(target_chat_id);
+    let lock3 = chat_locks.get_or_create(target_chat_id, user_id);
     assert_eq!(Arc::strong_count(&lock3), 1);
+}
+
+#[test]
+fn test_396_composite_chat_locks_isolation() {
+    let chat_locks = ChatLocks::new();
+    let group_chat_id = 9988776655;
+
+    let user_a_lock = chat_locks.get_or_create(group_chat_id, 1001);
+    let user_b_lock = chat_locks.get_or_create(group_chat_id, 1002);
+
+    // Locks for different users in the same group chat must NOT be identical
+    assert!(!Arc::ptr_eq(&user_a_lock, &user_b_lock));
 }

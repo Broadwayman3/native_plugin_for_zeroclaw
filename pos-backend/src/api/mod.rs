@@ -26,6 +26,8 @@ pub struct AppState {
     pub fsm_store: telegram::fsm::FsmStore,
     pub chat_locks: telegram::locks::ChatLocksManager,
     pub in_flight: telegram::locks::InFlightTracker,
+    pub db_pool: Option<crate::db::DbPool>,
+    pub outbound_queue: telegram::client::TelegramOutboundQueue,
 }
 
 /// Builds the Axum router with all routes and middleware.
@@ -35,7 +37,13 @@ pub async fn build_router(config: &AppConfig) -> Router {
         .build()
         .unwrap_or_default();
 
-    let fsm_store = telegram::fsm::FsmStore::new_with_db(config.db_path.clone());
+    let outbound_queue = telegram::client::TelegramOutboundQueue::new(http_client.clone());
+    let db_pool = crate::db::create_db_pool(&config.db_path).ok();
+    let fsm_store = if let Some(ref pool) = db_pool {
+        telegram::fsm::FsmStore::new_with_pool(config.db_path.clone(), pool.clone())
+    } else {
+        telegram::fsm::FsmStore::new_with_db(config.db_path.clone())
+    };
     let chat_locks = telegram::locks::ChatLocksManager::new();
     let in_flight = telegram::locks::InFlightTracker::new();
 
@@ -45,6 +53,8 @@ pub async fn build_router(config: &AppConfig) -> Router {
         fsm_store,
         chat_locks,
         in_flight,
+        db_pool,
+        outbound_queue,
     };
 
     // CORS configuration matching Python's router.py

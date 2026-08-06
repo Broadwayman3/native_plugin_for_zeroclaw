@@ -23,7 +23,7 @@ pub struct Invoice {
     pub updated_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CreateInvoiceRequest {
     pub id: String,
     pub reference_pubkey: String,

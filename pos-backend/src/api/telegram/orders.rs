@@ -4,10 +4,11 @@ use super::client::{
 };
 
 use super::fsm::FsmStore;
+use crate::api::telegram::handlers::refund::is_manager_authorized;
 use crate::config::AppConfig;
 use crate::db;
 use crate::domain::i18n::{format_itemized_receipt, get_cancel_invoice_inline_keyboard, t, t_raw};
-use crate::domain::sanitizer::sanitize_external_input;
+use crate::domain::sanitizer::sanitize_item_name;
 
 /// Processes an incoming POS order text message with FSM context & reply_to_message support.
 #[allow(clippy::too_many_arguments)]
@@ -18,11 +19,20 @@ pub async fn handle_pos_order(
     fsm: &FsmStore,
     chat_id: i64,
     user_id: i64,
+    chat_type: &str,
     lang: &str,
     text: &str,
     _reply_to_text: Option<&str>,
 ) {
-    let sanitized = sanitize_external_input(text, 100);
+    // In group/supergroup chats, ignore unauthenticated random numeric input without slash command
+    if chat_type != "private"
+        && !text.starts_with('/')
+        && is_manager_authorized(config, user_id).is_err()
+    {
+        return;
+    }
+
+    let sanitized = sanitize_item_name(text);
     let def_label = t_raw("default_item", Some(lang), &[]);
 
     // Start background chat action typing indicator loop (automatically aborted on Drop)
@@ -134,20 +144,26 @@ pub async fn handle_pos_order(
     let inv_id = format!("INV-{}", &uuid::Uuid::new_v4().to_string()[..8]);
     let ref_key = pos_core_logic::generate_secure_reference_key();
 
-    // Persist invoice record in SQLite
-    if let Ok(conn) = db::get_db_connection(&config.db_path) {
-        let _ = db::invoices::create_invoice(
-            &conn,
-            &db::invoices::CreateInvoiceRequest {
-                id: inv_id.clone(),
-                reference_pubkey: ref_key.clone(),
-                fiat_currency: Some(fiat_curr.to_string()),
-                fiat_amount: Some(fiat_amt),
-                usdc_amount: usdc_amt,
-                telegram_chat_id: Some(chat_id),
-                telegram_msg_id: None,
-            },
-        );
+    let req = db::invoices::CreateInvoiceRequest {
+        id: inv_id.clone(),
+        reference_pubkey: ref_key.clone(),
+        fiat_currency: Some(fiat_curr.to_string()),
+        fiat_amount: Some(fiat_amt),
+        usdc_amount: usdc_amt,
+        telegram_chat_id: Some(chat_id),
+        telegram_msg_id: None,
+    };
+
+    // Persist invoice record in SQLite via deadpool-sqlite interact
+    if let Some(pool) = fsm.pool() {
+        if let Ok(conn) = pool.get().await {
+            let req_clone = req.clone();
+            let _ = conn
+                .interact(move |c| db::invoices::create_invoice(c, &req_clone))
+                .await;
+        }
+    } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
+        let _ = db::invoices::create_invoice(&conn, &req);
     }
 
     let solana_url = pos_core_logic::build_solana_pay_url(
@@ -196,7 +212,21 @@ pub async fn handle_pos_order(
                 .and_then(|r| r.get("message_id"))
                 .and_then(|v| v.as_i64())
             {
-                if let Ok(conn) = db::get_db_connection(&config.db_path) {
+                let inv_id_clone = inv_id.clone();
+                if let Some(pool) = fsm.pool() {
+                    if let Ok(conn) = pool.get().await {
+                        let _ = conn
+                            .interact(move |c| {
+                                db::invoices::update_invoice_telegram_context(
+                                    c,
+                                    &inv_id_clone,
+                                    chat_id,
+                                    msg_id,
+                                )
+                            })
+                            .await;
+                    }
+                } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
                     let _ = db::invoices::update_invoice_telegram_context(
                         &conn, &inv_id, chat_id, msg_id,
                     );
@@ -222,7 +252,21 @@ pub async fn handle_pos_order(
                 .and_then(|r| r.get("message_id"))
                 .and_then(|v| v.as_i64())
             {
-                if let Ok(conn) = db::get_db_connection(&config.db_path) {
+                let inv_id_clone = inv_id.clone();
+                if let Some(pool) = fsm.pool() {
+                    if let Ok(conn) = pool.get().await {
+                        let _ = conn
+                            .interact(move |c| {
+                                db::invoices::update_invoice_telegram_context(
+                                    c,
+                                    &inv_id_clone,
+                                    chat_id,
+                                    msg_id,
+                                )
+                            })
+                            .await;
+                    }
+                } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
                     let _ = db::invoices::update_invoice_telegram_context(
                         &conn, &inv_id, chat_id, msg_id,
                     );

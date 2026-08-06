@@ -2,10 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::Mutex as AsyncMutex;
 
-/// Safe per-chat ordering concurrency manager using Weak references.
+/// Safe per-(chat_id, user_id) ordering concurrency manager using Weak references.
 #[derive(Clone, Default)]
 pub struct ChatLocksManager {
-    locks: Arc<Mutex<HashMap<i64, Weak<AsyncMutex<()>>>>>,
+    #[allow(clippy::type_complexity)]
+    locks: Arc<Mutex<HashMap<(i64, i64), Weak<AsyncMutex<()>>>>>,
 }
 
 impl ChatLocksManager {
@@ -15,18 +16,19 @@ impl ChatLocksManager {
         }
     }
 
-    /// Gets existing lock or creates a new AsyncMutex for chat_id.
+    /// Gets existing lock or creates a new AsyncMutex for (chat_id, user_id).
     /// Weak references eliminate GC race conditions across concurrent tasks.
-    pub fn get_or_create(&self, chat_id: i64) -> Arc<AsyncMutex<()>> {
+    pub fn get_or_create(&self, chat_id: i64, user_id: i64) -> Arc<AsyncMutex<()>> {
+        let key = (chat_id, user_id);
         let mut map = self.locks.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(weak) = map.get(&chat_id) {
+        if let Some(weak) = map.get(&key) {
             if let Some(strong) = weak.upgrade() {
                 return strong;
             }
         }
 
         let new_lock = Arc::new(AsyncMutex::new(()));
-        map.insert(chat_id, Arc::downgrade(&new_lock));
+        map.insert(key, Arc::downgrade(&new_lock));
 
         // Periodic light GC if map gets large
         if map.len() > 128 {

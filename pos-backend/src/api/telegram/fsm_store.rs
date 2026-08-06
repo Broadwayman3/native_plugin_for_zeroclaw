@@ -9,17 +9,18 @@ pub struct PendingSessionPayload {
     pub currency: Option<String>,
 }
 
-/// Async SQLite-backed FSM store utilizing tokio::task::spawn_blocking.
+/// Async SQLite-backed FSM store utilizing deadpool-sqlite pool.
 #[derive(Clone)]
 pub struct FsmStore {
     db_path: String,
+    pool: Option<deadpool_sqlite::Pool>,
 }
 
 impl Default for FsmStore {
     fn default() -> Self {
-        Self {
-            db_path: "data/pos_store.db".to_string(),
-        }
+        let db_path = "data/pos_store.db".to_string();
+        let pool = db::create_db_pool(&db_path).ok();
+        Self { db_path, pool }
     }
 }
 
@@ -29,7 +30,19 @@ impl FsmStore {
     }
 
     pub fn new_with_db(db_path: String) -> Self {
-        Self { db_path }
+        let pool = db::create_db_pool(&db_path).ok();
+        Self { db_path, pool }
+    }
+
+    pub fn new_with_pool(db_path: String, pool: deadpool_sqlite::Pool) -> Self {
+        Self {
+            db_path,
+            pool: Some(pool),
+        }
+    }
+
+    pub fn pool(&self) -> Option<&deadpool_sqlite::Pool> {
+        self.pool.as_ref()
     }
 
     /// Sets or updates pending session state for (chat_id, user_id).
@@ -40,13 +53,30 @@ impl FsmStore {
         item_name: String,
         currency: Option<String>,
     ) {
-        let db_path = self.db_path.clone();
         let payload = PendingSessionPayload {
             item_name,
             currency,
         };
         let json_str = serde_json::to_string(&payload).unwrap_or_default();
 
+        if let Some(ref pool) = self.pool {
+            if let Ok(conn) = pool.get().await {
+                let _ = conn
+                    .interact(move |c| {
+                        let _ = db::fsm_dao::set_session(
+                            c,
+                            chat_id,
+                            user_id,
+                            "AWAITING_PRICE",
+                            &json_str,
+                        );
+                    })
+                    .await;
+                return;
+            }
+        }
+
+        let db_path = self.db_path.clone();
         let _ = tokio::task::spawn_blocking(move || {
             if let Ok(conn) = db::get_db_connection(&db_path) {
                 let _ =
@@ -58,6 +88,23 @@ impl FsmStore {
 
     /// Gets valid pending session payload for (chat_id, user_id) if within TTL.
     pub async fn get_pending(&self, chat_id: i64, user_id: i64) -> Option<PendingSessionPayload> {
+        if let Some(ref pool) = self.pool {
+            if let Ok(conn) = pool.get().await {
+                let res = conn
+                    .interact(move |c| {
+                        if let Ok(Some((_state, payload_json))) =
+                            db::fsm_dao::get_session(c, chat_id, user_id, FSM_TTL_SECS)
+                        {
+                            return serde_json::from_str::<PendingSessionPayload>(&payload_json)
+                                .ok();
+                        }
+                        None
+                    })
+                    .await;
+                return res.unwrap_or(None);
+            }
+        }
+
         let db_path = self.db_path.clone();
         let res = tokio::task::spawn_blocking(move || {
             if let Ok(conn) = db::get_db_connection(&db_path) {
@@ -76,6 +123,17 @@ impl FsmStore {
 
     /// Removes session state for (chat_id, user_id).
     pub async fn clear(&self, chat_id: i64, user_id: i64) {
+        if let Some(ref pool) = self.pool {
+            if let Ok(conn) = pool.get().await {
+                let _ = conn
+                    .interact(move |c| {
+                        let _ = db::fsm_dao::clear_session(c, chat_id, user_id);
+                    })
+                    .await;
+                return;
+            }
+        }
+
         let db_path = self.db_path.clone();
         let _ = tokio::task::spawn_blocking(move || {
             if let Ok(conn) = db::get_db_connection(&db_path) {

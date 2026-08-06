@@ -21,6 +21,7 @@ pub async fn handle_user_message(
     fsm: &FsmStore,
     chat_id: i64,
     user_id: i64,
+    chat_type: &str,
     raw_text: &str,
     reply_to_text: Option<&str>,
 ) {
@@ -212,6 +213,7 @@ pub async fn handle_user_message(
         fsm,
         chat_id,
         user_id,
+        chat_type,
         &lang,
         text,
         reply_to_text,

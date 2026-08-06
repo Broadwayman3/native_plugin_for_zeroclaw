@@ -129,38 +129,31 @@ pub async fn handle_telegram_webhook(
         }
     };
 
-    // 3. Read-only deduplication pre-check via spawn_blocking
-    let db_path = state.config.db_path.clone();
-    let is_already_processed = tokio::task::spawn_blocking(move || {
-        match db::get_db_connection(&db_path) {
-            Ok(conn) => match db::updates::is_processed(&conn, update_id) {
-                Ok(processed) => Ok(processed),
-                Err(e) => {
-                    tracing::error!(update_id = update_id, error = %e, "DB error in is_processed");
-                    Err(e)
-                }
-            },
-            Err(e) => {
-                tracing::error!(db_path = %db_path, error = %e, "Failed to get DB connection in Webhook");
-                Err(e)
+    // 3. Deduplication pre-check using deadpool-sqlite interact
+    let is_already_processed = if let Some(ref pool) = state.db_pool {
+        if let Ok(conn) = pool.get().await {
+            conn.interact(move |c| db::updates::is_processed(c, update_id).unwrap_or(false))
+                .await
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    } else {
+        let db_path = state.config.db_path.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = db::get_db_connection(&db_path) {
+                db::updates::is_processed(&conn, update_id).unwrap_or(false)
+            } else {
+                false
             }
-        }
-    })
-    .await
-    .unwrap_or(Ok(false));
+        })
+        .await
+        .unwrap_or(false)
+    };
 
-    match is_already_processed {
-        Ok(true) => {
-            // Already completely processed previously — return 200 OK to stop Telegram retries
-            return StatusCode::OK;
-        }
-        Err(_) => {
-            // SQLite connection error — return 500 so Telegram retries when DB unlocks
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
-        Ok(false) => {
-            // Not processed yet — proceed with processing
-        }
+    if is_already_processed {
+        // Already completely processed previously — return 200 OK to stop Telegram retries
+        return StatusCode::OK;
     }
 
     // 3. Process update asynchronously with shared state & 15s timeout
@@ -175,6 +168,7 @@ pub async fn handle_telegram_webhook(
         &state.config,
         &state.fsm_store,
         &state.chat_locks,
+        state.db_pool.as_ref(),
         &update,
         update_id,
     );

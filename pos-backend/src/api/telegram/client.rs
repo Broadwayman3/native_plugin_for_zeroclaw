@@ -30,6 +30,128 @@ static RATE_LIMITER_GC_WORKER: Lazy<()> = Lazy::new(|| {
     });
 });
 
+/// Task payload for JSON requests or Photo multipart uploads.
+pub enum TelegramTaskPayload {
+    Json {
+        url: String,
+        payload: Value,
+    },
+    Photo {
+        base_url: String,
+        chat_id: i64,
+        photo_bytes: Vec<u8>,
+        filename: String,
+        mime_type: String,
+        caption: String,
+        reply_markup: Option<Value>,
+    },
+}
+
+/// Message payload passed over the outbound mpsc channel.
+pub struct TelegramRequestTask {
+    pub task_payload: TelegramTaskPayload,
+    pub responder: Option<tokio::sync::oneshot::Sender<Result<Value, String>>>,
+}
+
+/// Async outbound queue for Telegram API requests to decouple HTTP callers from rate limiting backoff delays.
+#[derive(Clone)]
+pub struct TelegramOutboundQueue {
+    sender: tokio::sync::mpsc::Sender<TelegramRequestTask>,
+}
+
+impl TelegramOutboundQueue {
+    pub fn new(client: Client) -> Self {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<TelegramRequestTask>(1000);
+        tokio::spawn(async move {
+            while let Some(task) = rx.recv().await {
+                let res = match task.task_payload {
+                    TelegramTaskPayload::Json { url, payload } => {
+                        send_telegram_request_direct(&client, &url, &payload).await
+                    }
+                    TelegramTaskPayload::Photo {
+                        base_url,
+                        chat_id,
+                        photo_bytes,
+                        filename,
+                        mime_type,
+                        caption,
+                        reply_markup,
+                    } => {
+                        send_telegram_photo_bytes_direct(
+                            &client,
+                            &base_url,
+                            chat_id,
+                            photo_bytes,
+                            &filename,
+                            &mime_type,
+                            &caption,
+                            reply_markup.as_ref(),
+                        )
+                        .await
+                    }
+                };
+                if let Some(responder) = task.responder {
+                    let _ = responder.send(res);
+                }
+            }
+        });
+        Self { sender: tx }
+    }
+
+    pub async fn send_request(
+        &self,
+        url: impl Into<String>,
+        payload: Value,
+    ) -> Result<Value, String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let task = TelegramRequestTask {
+            task_payload: TelegramTaskPayload::Json {
+                url: url.into(),
+                payload,
+            },
+            responder: Some(tx),
+        };
+        self.sender
+            .send(task)
+            .await
+            .map_err(|e| format!("Queue send error: {}", e))?;
+        rx.await
+            .map_err(|_| "Response channel dropped".to_string())?
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_photo(
+        &self,
+        base_url: impl Into<String>,
+        chat_id: i64,
+        photo_bytes: Vec<u8>,
+        filename: impl Into<String>,
+        mime_type: impl Into<String>,
+        caption: impl Into<String>,
+        reply_markup: Option<Value>,
+    ) -> Result<Value, String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let task = TelegramRequestTask {
+            task_payload: TelegramTaskPayload::Photo {
+                base_url: base_url.into(),
+                chat_id,
+                photo_bytes,
+                filename: filename.into(),
+                mime_type: mime_type.into(),
+                caption: caption.into(),
+                reply_markup,
+            },
+            responder: Some(tx),
+        };
+        self.sender
+            .send(task)
+            .await
+            .map_err(|e| format!("Queue send photo error: {}", e))?;
+        rx.await
+            .map_err(|_| "Photo response channel dropped".to_string())?
+    }
+}
+
 /// Enforces global (25 req/s) and per-chat (1 req/s) rate limits before sending Telegram API requests.
 /// Uses governor's native async `.until_ready()`.
 pub async fn enforce_telegram_rate_limit(chat_id: Option<i64>) {
@@ -96,8 +218,28 @@ pub fn start_chat_action_loop(
     ChatActionGuard::new(handle)
 }
 
-/// Sends a request to Telegram Bot API with rate limiting and retry handling.
+// Global outbound mpsc queue for rate-limited Telegram API requests
+static GLOBAL_OUTBOUND_QUEUE: Lazy<TelegramOutboundQueue> = Lazy::new(|| {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+    TelegramOutboundQueue::new(client)
+});
+
+/// Sends a request to Telegram Bot API via the background mpsc outbound queue with rate limiting and retry handling.
 pub async fn send_telegram_request(
+    _client: &Client,
+    url: &str,
+    payload: &Value,
+) -> Result<Value, String> {
+    GLOBAL_OUTBOUND_QUEUE
+        .send_request(url, payload.clone())
+        .await
+}
+
+/// Internal direct execution of Telegram API HTTP POST.
+pub async fn send_telegram_request_direct(
     client: &Client,
     url: &str,
     payload: &Value,
@@ -160,9 +302,34 @@ pub async fn send_telegram_request(
     }
 }
 
-/// Sends a photo as raw PNG bytes via multipart/form-data to Telegram Bot API.
+/// Sends a photo as raw PNG bytes via multipart/form-data to Telegram Bot API via outbound queue.
 #[allow(clippy::too_many_arguments)]
 pub async fn send_telegram_photo_bytes(
+    _client: &Client,
+    base_url: &str,
+    chat_id: i64,
+    photo_bytes: Vec<u8>,
+    filename: &str,
+    mime_type: &str,
+    caption: &str,
+    reply_markup: Option<&Value>,
+) -> Result<Value, String> {
+    GLOBAL_OUTBOUND_QUEUE
+        .send_photo(
+            base_url,
+            chat_id,
+            photo_bytes,
+            filename,
+            mime_type,
+            caption,
+            reply_markup.cloned(),
+        )
+        .await
+}
+
+/// Direct execution of sendPhoto multipart request.
+#[allow(clippy::too_many_arguments)]
+pub async fn send_telegram_photo_bytes_direct(
     client: &Client,
     base_url: &str,
     chat_id: i64,

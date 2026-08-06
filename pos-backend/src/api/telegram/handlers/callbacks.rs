@@ -12,6 +12,7 @@ pub async fn handle_callback_query(
     client: &reqwest::Client,
     base_url: &str,
     config: &AppConfig,
+    pool: Option<&deadpool_sqlite::Pool>,
     chat_id: i64,
     cb_id: &str,
     raw_data: &str,
@@ -24,7 +25,17 @@ pub async fn handle_callback_query(
             .trim_start_matches("invoice_");
 
         let mut cancel_success = false;
-        if let Ok(conn) = db::get_db_connection(&config.db_path) {
+        let inv_id_str = inv_id.to_string();
+        if let Some(pool) = pool {
+            if let Ok(conn) = pool.get().await {
+                let res = conn
+                    .interact(move |c| db::invoices::cancel_invoice(c, &inv_id_str))
+                    .await;
+                if let Ok(Ok(count)) = res {
+                    cancel_success = count > 0;
+                }
+            }
+        } else if let Ok(conn) = db::get_db_connection(&config.db_path) {
             if let Ok(count) = db::invoices::cancel_invoice(&conn, inv_id) {
                 cancel_success = count > 0;
             }
