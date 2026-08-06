@@ -176,8 +176,12 @@ pub fn start_telegram_services(
                             }
                         });
                     }
-                    // Wait 5 seconds for in-flight Webhook POST requests to drain before starting Long Polling
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    // Wait with 15s safety timeout for in-flight Webhook POST requests & pending queue to drain before starting Long Polling
+                    drain_pending_webhooks_with_timeout(
+                        poller_pool.as_ref(),
+                        &poller_config.db_path,
+                    )
+                    .await;
                     let _active_guard = PollerActiveGuard::new();
                     let poller_h = polling::start_poller_worker(
                         poller_config,
@@ -198,6 +202,7 @@ pub fn start_telegram_services(
         }
 
         let poller_cancel = parent_cancel_token.child_token();
+        drain_pending_webhooks_with_timeout(poller_pool.as_ref(), &poller_config.db_path).await;
         let _active_guard = PollerActiveGuard::new();
         let poller_h = polling::start_poller_worker(
             poller_config,
@@ -215,4 +220,53 @@ pub fn start_telegram_services(
         webhook_worker_handle,
         listener_handle,
     })
+}
+
+/// Drains pending webhook updates from SQLite with a 15-second safety timeout.
+async fn drain_pending_webhooks_with_timeout(
+    db_pool: Option<&deadpool_sqlite::Pool>,
+    db_path: &str,
+) {
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            let pending_count = if let Some(pool) = db_pool {
+                if let Ok(conn) = pool.get().await {
+                    conn.interact(|c| {
+                        c.query_row(
+                            "SELECT COUNT(*) FROM pending_webhook_updates WHERE status = 'pending'",
+                            [],
+                            |r| r.get::<_, i64>(0),
+                        )
+                        .unwrap_or(0)
+                    })
+                    .await
+                    .unwrap_or(0)
+                } else {
+                    0
+                }
+            } else {
+                let db_p = db_path.to_string();
+                tokio::task::spawn_blocking(move || {
+                    if let Ok(conn) = crate::db::get_db_connection(&db_p) {
+                        conn.query_row(
+                            "SELECT COUNT(*) FROM pending_webhook_updates WHERE status = 'pending'",
+                            [],
+                            |r| r.get::<_, i64>(0),
+                        )
+                        .unwrap_or(0)
+                    } else {
+                        0
+                    }
+                })
+                .await
+                .unwrap_or(0)
+            };
+
+            if pending_count == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    })
+    .await;
 }

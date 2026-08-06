@@ -64,8 +64,38 @@ pub async fn process_single_update(
     update: &serde_json::Value,
     update_id: i64,
 ) -> Result<(), String> {
-    // 1. Pre-dispatch idempotency check & registration with explicit DB failure propagation
-    let db_check_res = if let Some(pool) = db_pool {
+    // 1. Pre-dispatch idempotency check (read-only)
+    if webhook_db::is_update_processed(db_pool, &config.db_path, update_id).await {
+        tracing::debug!(
+            update_id = update_id,
+            "Update already registered in processed_updates, skipping duplicate dispatch"
+        );
+        return Ok(());
+    }
+
+    // 2. Dispatch content with single canonical per-session lock (bypassed only for stateless read-only commands)
+    let (chat_id, user_id) = admin_session::extract_effective_user_context(update);
+    let is_stateless = admin_session::is_stateless_read_only_command(update);
+
+    let dispatch_res = if let Some(target_chat_id) = chat_id {
+        if is_stateless {
+            dispatch_update_content(client, base_url, config, fsm, update).await
+        } else {
+            let chat_lock = chat_locks.get_or_create(target_chat_id, user_id);
+            let _guard = chat_lock.lock().await;
+            dispatch_update_content(client, base_url, config, fsm, update).await
+        }
+    } else {
+        dispatch_update_content(client, base_url, config, fsm, update).await
+    };
+
+    if let Err(ref e) = dispatch_res {
+        tracing::error!(update_id = update_id, error = %e, "Update content dispatch failed");
+        return Err(e.clone());
+    }
+
+    // 3. Post-dispatch commit: Register in SQLite processed_updates & LRU cache ONLY upon verified success
+    let db_register_res = if let Some(pool) = db_pool {
         match pool.get().await {
             Ok(conn) => conn
                 .interact(move |c| crate::db::updates::check_and_register(c, update_id))
@@ -85,45 +115,16 @@ pub async fn process_single_update(
         .and_then(|r| r)
     };
 
-    let is_new = match db_check_res {
-        Ok(is_new) => is_new,
-        Err(e) => {
-            tracing::error!(
-                update_id = update_id,
-                error = %e,
-                "DB connection acquisition failed during update idempotency check"
-            );
-            return Err(format!("DB pool error: {}", e));
-        }
-    };
-
-    if !is_new {
-        webhook_db::mark_cached_processed(update_id);
-        tracing::debug!(
+    if let Err(ref e) = db_register_res {
+        tracing::error!(
             update_id = update_id,
-            "Update already registered in processed_updates, skipping duplicate dispatch"
+            error = %e,
+            "DB connection acquisition failed during post-dispatch update registration"
         );
-        return Ok(());
+        return Err(format!("Post-dispatch DB registration error: {}", e));
     }
 
     webhook_db::mark_cached_processed(update_id);
-
-    // 2. Dispatch content with single canonical per-session lock to prevent FSM race conditions & deadlocks
-    let (chat_id, user_id) = admin_session::extract_effective_user_context(update);
-
-    let dispatch_res = if let Some(target_chat_id) = chat_id {
-        let chat_lock = chat_locks.get_or_create(target_chat_id, user_id);
-        let _guard = chat_lock.lock().await;
-        dispatch_update_content(client, base_url, config, fsm, update).await
-    } else {
-        dispatch_update_content(client, base_url, config, fsm, update).await
-    };
-
-    if let Err(ref e) = dispatch_res {
-        tracing::error!(update_id = update_id, error = %e, "Update content dispatch failed");
-        return Err(e.clone());
-    }
-
     Ok(())
 }
 

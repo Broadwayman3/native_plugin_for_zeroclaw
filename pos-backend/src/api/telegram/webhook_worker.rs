@@ -110,17 +110,22 @@ pub fn start_webhook_queue_worker(
                             Err(_) => serde_json::json!({ "update_id": update_id }),
                         };
 
-                        let res = process_single_update(
-                            &client_clone,
-                            &base_url_clone,
-                            &config_clone,
-                            &fsm_clone,
-                            &chat_locks_clone,
-                            pool_clone.as_ref(),
-                            &update_val,
-                            update_id,
+                        let res = tokio::time::timeout(
+                            Duration::from_secs(60),
+                            process_single_update(
+                                &client_clone,
+                                &base_url_clone,
+                                &config_clone,
+                                &fsm_clone,
+                                &chat_locks_clone,
+                                pool_clone.as_ref(),
+                                &update_val,
+                                update_id,
+                            ),
                         )
-                        .await;
+                        .await
+                        .map_err(|_| "Webhook update execution timed out (60s)".to_string())
+                        .and_then(|r| r);
 
                         if res.is_ok() {
                             let _ = webhook_db::mark_done(

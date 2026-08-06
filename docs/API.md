@@ -56,21 +56,25 @@ POST /api/v1/telegram/webhook
 - **Body Limit**: 128 KB maximum payload limit
 - **Description**: Enqueues incoming Telegram update synchronously into SQLite WAL database (`webhook.rs`) with a `4500ms` connection acquire timeout and triggers async worker wakeup (`webhook_notify`).
 - **Response**:
-  - `200 OK`: Update successfully stored in SQLite queue.
+  - `200 OK`: Update successfully stored in SQLite queue, or update skipped as duplicate/ignored during mode transition to prevent Head-of-Line (HoL) delivery blocking in Telegram API.
   - `401 Unauthorized`: Missing or invalid secret token header.
-  - `500 Internal Server Error`: Connection pool acquisition timed out (>4.5s) or DB write failed. Signals Telegram gateway to retry delivery.
+  - `503 Service Unavailable`: Connection pool acquisition timed out (>4.5s) on unrecoverable SQLite failure. Signals Telegram gateway to retry delivery.
+
+> [!IMPORTANT]
+> **Production Reverse Proxy Ops Note**: Set Nginx / Cloudflare `proxy_read_timeout` to **70s**. Update processing tasks wrap handler dispatches in a **60-second `tokio::time::timeout`** to accommodate Solana RPC node and Squads v4 transaction latency.
 
 ### Dual Mode & Circuit Breaker Failover Spec
 - **Webhook Mode**: Used when `TELEGRAM_WEBHOOK_URL` is set in configuration. Registers webhook with Telegram API on startup.
-- **Long Polling Mode**: Used when `TELEGRAM_WEBHOOK_URL` is omitted OR when Webhook registration fails. Calls `deleteWebhook` and initiates `getUpdates?offset={low_watermark}&timeout=20` long-poll loop.
+- **Long Polling Mode**: Used when `TELEGRAM_WEBHOOK_URL` is omitted OR when Webhook registration fails. Calls `deleteWebhook` and initiates `getUpdates?offset={low_watermark}&timeout=20` long-poll loop. Mode transitions execute a `drain_pending_webhooks_with_timeout` barrier (15s safety timeout) to flush pending SQLite updates before launching `polling_worker`.
 - **Circuit Breaker Failover**: Webhook registration failures or network issues trip a 5-minute circuit breaker (`WEBHOOK_COOLDOWN_SECS = 300`). Pending DB updates are drained before falling back to Long Polling.
+- **3-Phase Idempotency Claim Guard**: Incoming updates perform a read-only pre-check (`is_update_processed`). Post-dispatch commitment to SQLite `processed_updates` & LRU cache (`mark_cached_processed`) occurs strictly upon verified handler completion.
 - **Rate-Limiting & Async Queue Backpressure**:
   - Per-chat bounded MPSC channels (capacity 64) enforce strict FIFO order without head-of-line blocking across chats.
   - Async queue dispatch uses `enqueue_timeout` with a 2-second backpressure timeout spawned inside non-blocking tasks guarded by `Semaphore(100)` for RAM/OOM protection.
   - When a chat queue remains at full capacity (64 items) after the 2s backpressure wait, the system records a DLQ failure (`"Per-chat queue capacity full (64)"`) and dispatches an automated Telegram notice:
     `"⚠️ Too many commands in progress. Please wait a few seconds."`
 - **Stale Update & Callback TTL Filtering**: `STALE_UPDATE_TTL_SECS` (default 300s) validates timestamps for `message` and `edited_message` (`edit_date`). `callback_query` inline menu actions are checked against TTL; if expired, `answerCallbackQuery("⚠️ Action expired")` is immediately dispatched to clear the Telegram UI spinner.
-- **MarkdownV2 Safety Fallback**: Message formatting errors (HTTP 400 `"can't parse entities"`) for text and photos with captions trigger raw error logging (`tracing::error!`) and an automatic fallback retry without `parse_mode: MarkdownV2` to guarantee receipt delivery.
+- **MarkdownV2 Safety Fallback**: Message formatting errors (HTTP 400 `"can't parse entities"`) for text and photos with captions trigger raw error logging (`tracing::error!`) and an automatic fallback retry without `parse_mode: MarkdownV2` (unformatted plain text fallback).
 
 ---
 

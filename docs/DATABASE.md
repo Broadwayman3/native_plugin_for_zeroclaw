@@ -44,7 +44,7 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 | `next_retry_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 | `retry_count` | INTEGER | DEFAULT 0 |
 
-**Status values**: `pending`, `processing`, `retry_pending`, `cancelled`
+**Status values**: `pending`, `processing`, `retry_pending`, `done`, `cancelled`
 
 **Indexes**: `idx_pending_fifo` composite index on `(chat_id, status, update_id)` for $O(1)$ FIFO batch query execution
 
@@ -59,6 +59,8 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 | `failed_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 | `retry_count` | INTEGER | DEFAULT 0 |
 
+**Lifecycle**: Updates failing due to handler errors, execution timeouts (60s), or queue backpressure saturation after 3 retries (`max_retries = 3`) are recorded and isolated in DLQ (`failed_updates`) without halting Low Watermark offset progression.
+
 ### processed_updates
 
 | Column | Type | Constraints |
@@ -70,7 +72,7 @@ SQLite with WAL mode. Defined in `pos-backend/src/db/schema.rs`.
 
 **Status values**: `processed`, `retry_pending`, `failed`
 
-**In-Memory Single-Lock LRU Cache**: `IDEMPOTENCY_CACHE` in `webhook_db.rs` wraps an in-memory thread-safe `LruCache<i64, ()>` (capacity 10,000). Incoming update IDs call `check_and_mark_processed(update_id)` to atomically check cache presence, promote position in LRU, and insert new entries under a single `Mutex` lock before hitting SQLite, eliminating redundant DB queries and lock contention.
+**3-Phase Idempotency Registration & LRU Cache**: `IDEMPOTENCY_CACHE` in `webhook_db.rs` wraps an in-memory thread-safe `LruCache<i64, ()>` (capacity 10,000). Incoming update IDs perform a read-only pre-dispatch check (`is_update_processed`). Insertion into SQLite `processed_updates` via `check_and_register` and marking in `IDEMPOTENCY_CACHE` (`mark_cached_processed`) occurs strictly **post-dispatch upon verified handler completion**, eliminating duplicate payment processing while preserving retry capabilities on transient failures.
 
 ### telegram_fsm_sessions
 
@@ -140,13 +142,13 @@ PRAGMA busy_timeout=5000;
 PRAGMA synchronous=NORMAL;
 ```
 
-## Connection Pooling & Webhook Zero Data Loss
+## Connection Pooling & Deadline Control
 
-- **`deadpool-sqlite` Pool Acquisition Timeout**: Connection pool acquisition timeout protects worker threads under high load. If pool acquisition fails, Webhook returns `HTTP 500 Internal Server Error`, ensuring Telegram's gateway retries update delivery.
+- **`deadpool-sqlite` Pool Acquisition Timeout**: Connection pool acquisition uses a `4500ms` deadline timeout in `enqueue_update_payload`. If DB connection pool acquisition fails under unrecoverable SQLite lock contention, Webhook returns `HTTP 503 Service Unavailable`, instructing Telegram to retry update delivery without dropping messages.
 
 ## Head-of-Line Unblocking & Atomic CAS Operations
 
-- **Canonical Session Locking**: Single `ChatSession` per-user/chat lock protects FSM state mutations without deadlocks.
+- **Canonical Session Locking**: Single `ChatSession` per-user/chat lock protects FSM state mutations without deadlocks. For anonymous group admins (`chat_id < 0`, `user_id = 0`), lock keys scope to `(chat_id, 0)`, preventing lock starvation for regular group chat members.
 - **Atomic Invoice CAS**: Status transitions use atomic Compare-And-Swap statements checking `rows_updated == 1`:
 ```sql
 UPDATE invoices SET status = 'cancelled' WHERE id = ? AND status = 'pending'

@@ -57,7 +57,7 @@
 │  │  │  Axum   │  │ rusqlite │  │  pos-core-logic        │ │ │
 │  │  │  REST   │  │  SQLite  │  │  (shared with WASM)    │ │ │
 │  │  │  API    │  │  WAL     │  │  - Token-2022 fees     │ │ │
-│  │  │         │  │          │  │  - Solana Pay URL      │ │ │
+│  │  │  (19)   │  │          │  │  - Solana Pay URL      │ │ │
 │  │  │         │  │          │  │  - Squads v4 Borsh     │ │ │
 │  │  └─────────┘  └──────────┘  └────────────────────────┘ │ │
 │  └─────────────────────────────────────────────────────────┘ │
@@ -74,7 +74,7 @@
 | WASM Plugin | [`plugins/solana-pos-core`](./plugins/solana-pos-core) | Rust crate → `wasm32-wasip2` via WIT |
 | Core Logic | [`pos-core-logic`](./plugins/solana-pos-core/pos-core-logic) | Shared business logic |
 | REST Backend | [`pos-backend`](./pos-backend) | Axum HTTP server (19 REST API routes / 20 handlers), SQLite WAL, domain logic |
-| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Low Watermark (`WatermarkTracker`) offset advancement, Async Backpressure (`enqueue_timeout(2s)`) with `Semaphore(100)` OOM guard, `PollerActiveGuard` RAII panic safety, Single-Lock LRU idempotency cache (`webhook_db.rs`), MarkdownV2 plain-text fallback, Failover circuit breaker (`lifecycle.rs`), Strict lock hierarchy (`chat_lock` -> `invoice_lock`) |
+| Telegram Listener | [`pos-backend/src/api/telegram`](./pos-backend/src/api/telegram) | Low Watermark (`WatermarkTracker`) offset advancement, 3-Phase Idempotency Claim Guard (`webhook_db.rs`), 60s execution timeout (`polling/runner.rs`, `webhook_worker.rs`), Async Backpressure (`enqueue_timeout(2s)`), `PollerActiveGuard` RAII panic safety, Plain-text fallback, Failover 15s drain barrier (`lifecycle.rs`), Strict lock hierarchy (`chat_lock` -> `invoice_lock`) |
 | Skills | [`skills/`](./skills) | LLM skill definitions (Solana Pay, Nonce, PIX, etc.) |
 | SOPs | [`sops/`](./sops) | Standard Operating Procedures (JSON) |
 | WIT Interface | [`wit/v0/pos_core.wit`](./wit/v0/pos_core.wit) | WASI Component Model contract |
@@ -83,12 +83,12 @@
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](./docs/ARCHITECTURE.md) | Crate structure, WIT ABI, data flow & resilience |
-| [API Reference](./docs/API.md) | 19 REST API routes (20 handlers), Webhook, Solana Actions v2 & x402 specification |
-| [Security](./docs/SECURITY.md) | Threat model, defense matrix, DLQ mechanics |
-| [Database](./docs/DATABASE.md) | Schema, migrations, pragmas & atomic CAS |
-| [Deployment](./docs/DEPLOYMENT.md) | Docker, local dev, env vars & RUST_LOG filtering |
-| [Testing](./docs/TESTING.md) | Test strategy, module breakdown (526 tests) |
+| [Architecture](./docs/ARCHITECTURE.md) | Crate structure (<400 lines/file), WIT ABI, Mermaid sequence diagrams, data flow & resilience |
+| [API Reference](./docs/API.md) | 19 REST API routes (20 handlers), Webhook status code specs, Solana Actions v2, x402 & Reverse Proxy Ops Note |
+| [Security](./docs/SECURITY.md) | Threat model matrix (3-phase claim guard, HoL DoS mitigation), defense matrix, DLQ mechanics |
+| [Database](./docs/DATABASE.md) | Schema, migrations, 4500ms pool timeout, 3-phase post-dispatch DB registration, DLQ lifecycle |
+| [Deployment](./docs/DEPLOYMENT.md) | Docker, local dev, Nginx `proxy_read_timeout 70s` config, env vars & RUST_LOG filtering |
+| [Testing](./docs/TESTING.md) | Test strategy, module breakdown (526 tests across 3 crates) |
 
 ## Security
 

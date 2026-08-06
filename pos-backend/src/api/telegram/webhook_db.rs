@@ -18,16 +18,24 @@ pub fn mark_cached_processed(update_id: i64) {
     cache.put(update_id, ());
 }
 
-/// Checks if update_id is cached under single lock acquisition.
-/// Returns true if already processed, or inserts into LRU and returns false.
+/// Checks if update_id is cached under single lock acquisition without premature marking.
 pub fn check_and_mark_processed(update_id: i64) -> bool {
     let mut cache = IDEMPOTENCY_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if cache.get(&update_id).is_some() {
-        true
-    } else {
-        cache.put(update_id, ());
-        false
+    cache.get(&update_id).is_some()
+}
+
+/// 3-Phase Claim: Checks if update_id is already processed in SQLite or LRU cache,
+/// and if not, claims update_id in InFlightTracker.
+pub async fn try_claim_and_check(
+    db_pool: Option<&Pool>,
+    db_path: &str,
+    update_id: i64,
+    in_flight: &super::locks::InFlightTracker,
+) -> Option<super::locks::IdempotencyClaimGuard> {
+    if is_update_processed(db_pool, db_path, update_id).await {
+        return None;
     }
+    in_flight.try_claim_guard(update_id)
 }
 
 /// Enqueues an incoming webhook update payload to SQLite with deadline fallback support.

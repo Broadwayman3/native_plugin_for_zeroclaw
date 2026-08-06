@@ -14,9 +14,24 @@ pub fn is_anonymous_admin_message(update: &Value) -> bool {
     false
 }
 
+/// Returns true if command is a stateless read-only command (/start, /help, /price) that can bypass session locks.
+/// NOTE: /cancel is STATEFUL because it calls fsm.clear_state() and MUST acquire session lock.
+pub fn is_stateless_read_only_command(update: &Value) -> bool {
+    let text = update
+        .get("message")
+        .or_else(|| update.get("edited_message"))
+        .and_then(|m| m.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+
+    let cmd = text.split_whitespace().next().unwrap_or("");
+    matches!(cmd, "/start" | "/help" | "/price")
+}
+
 /// Extracts effective user_id and chat_id from update.
 /// For callback_query: returns (Some(chat_id), from.id) because callback queries ALWAYS include the real user ID in `from`.
-/// For anonymous admin messages: returns (Some(chat_id), 0) to signal stateless handling.
+/// For anonymous admin messages: returns (Some(chat_id), 0) to signal stateless/single-step handling.
 /// For regular user messages: returns (Some(chat_id), from.id).
 pub fn extract_effective_user_context(update: &Value) -> (Option<i64>, i64) {
     if let Some(cb) = update.get("callback_query") {

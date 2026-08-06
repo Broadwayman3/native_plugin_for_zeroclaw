@@ -57,14 +57,17 @@ location /api/v1/telegram/webhook {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Telegram-Bot-Api-Secret-Token $http_x_telegram_bot_api_secret_token;
     
-    # Must be > 10 seconds to allow Axum to return 500 status codes on SQLite deadpool timeouts (4.5s)
-    proxy_read_timeout 15s;
+    # Must be > 65 seconds to accommodate the 60s backend Solana RPC execution wrapper timeout
+    proxy_read_timeout 70s;
     proxy_connect_timeout 10s;
 }
 ```
 
+> [!IMPORTANT]
+> **Production Reverse Proxy Ops Note**: The reverse proxy `proxy_read_timeout` **MUST** be set to at least **65–70 seconds**. Both Poller and Webhook workers wrap update dispatches in a 60-second `tokio::time::timeout` to accommodate Solana RPC node latency during on-chain invoice/Squads proposal creation. A smaller timeout (e.g. 15s or 30s) will cause Nginx to drop HTTP connections before Axum returns `200 OK`.
+
 > [!NOTE]
-> Do NOT intercept HTTP 500 status codes with proxy error pages. Axum returns `500 Internal Server Error` on connection pool exhaustion (>4.5s) so that Telegram Bot API gateways retry update delivery automatically. If Webhook registration fails 3 consecutive times, a 5-minute circuit breaker (`WEBHOOK_COOLDOWN_SECS = 300`) activates, automatically draining pending DB updates and switching to Long Polling mode.
+> Webhook endpoints return `HTTP 200 OK` for duplicate or ignored updates during mode transitions to prevent Head-of-Line (HoL) delivery blocking in Telegram API. `HTTP 503 Service Unavailable` is returned strictly on unrecoverable SQLite connection pool failures.
 
 ## Environment Variables
 

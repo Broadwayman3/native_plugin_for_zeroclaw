@@ -30,7 +30,7 @@ impl ChatLocksManager {
 
     /// Gets existing lock or creates a new AsyncMutex for (chat_id, user_id).
     pub fn get_or_create(&self, chat_id: i64, user_id: i64) -> Arc<AsyncMutex<()>> {
-        let key = if chat_id < 0 && user_id != 0 {
+        let key = if chat_id < 0 {
             LockKey::UserSession(chat_id, user_id)
         } else {
             LockKey::UserSession(chat_id, chat_id)
@@ -59,6 +59,12 @@ impl ChatLocksManager {
         }
 
         new_lock
+    }
+
+    /// Explicitly prunes unused/idle locks.
+    pub fn prune_idle(&self) {
+        let mut map = self.locks.lock().unwrap_or_else(|e| e.into_inner());
+        map.retain(|_, v| v.strong_count() > 0);
     }
 }
 
@@ -99,9 +105,47 @@ impl InFlightTracker {
         }
     }
 
+    pub fn try_claim_guard(&self, update_id: i64) -> Option<IdempotencyClaimGuard> {
+        self.try_claim(update_id)
+            .map(|g| IdempotencyClaimGuard::new(update_id, g))
+    }
+
     pub fn remove(&self, update_id: i64) {
         let mut set = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
         set.remove(&update_id);
+    }
+}
+
+/// 3-Phase Idempotency Claim Guard to prevent race conditions during update execution.
+pub struct IdempotencyClaimGuard {
+    pub update_id: i64,
+    flight_guard: Option<InFlightGuard>,
+    committed: bool,
+}
+
+impl IdempotencyClaimGuard {
+    pub fn new(update_id: i64, flight_guard: InFlightGuard) -> Self {
+        Self {
+            update_id,
+            flight_guard: Some(flight_guard),
+            committed: false,
+        }
+    }
+
+    /// Phase 3: Mark as successfully committed (processed in SQLite & LRU cache).
+    pub fn commit(mut self) {
+        self.committed = true;
+    }
+
+    /// Phase 3 DLQ: Mark as isolated in DLQ (terminal failure, do not retry).
+    pub fn commit_dlq(mut self) {
+        self.committed = true;
+    }
+
+    /// Phase 3 Release: Explicitly release claim on transient error to allow retry.
+    pub fn release(mut self) {
+        self.committed = false;
+        self.flight_guard.take();
     }
 }
 
